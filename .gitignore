@@ -8,3 +8,4 @@ coverage/
 !.env.example
 estilos.md
 notas.md
+prompt-inicial.md

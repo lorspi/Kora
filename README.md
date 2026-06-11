@@ -1,2 +1,31 @@
-# Kora
+<img src="./public/logo-dark.svg#gh-dark-mode-only" alt="Kora Logo" width="400"/>
+<img src="./public/logo-light.svg#gh-light-mode-only" alt="Kora Logo" width="400"/>
+
 Kora es el lugar donde los proyectos encuentran un hogar permanente. No depende de servidores externos ni de suscripciones para existir. Es una herramienta construida sobre una idea simple: el trabajo y los datos pertenecen a quienes los crean.
+
+## URL
+[kora.lorspi.com](https://kora.lorspi.com)
+
+## Get Started
+
+### Requisitos previos
+- Node.js
+
+### Instalación
+1. Clona el repositorio
+2. Instala las dependencias con `npm install`
+3. Ejecuta el servidor de desarrollo con `npm run dev`
+
+## Stack Tecnológico
+- React 19
+- TypeScript
+- Vite
+- Tailwind CSS
+- Zustand
+- Lucide React
+- Motion
+- Express
+
+## Licencia
+Kora está licenciado bajo la Licencia Apache 2.0. Ver el archivo [LICENSE](./LICENSE) para más detalles.
+
