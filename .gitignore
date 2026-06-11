@@ -9,3 +9,16 @@ coverage/
 estilos.md
 notas.md
 prompt-inicial.md
+
+# Firebase
+.agents/
+.firebase/
+.firebaserc
+firebase.json
+firestore.rules
+firestore.indexes.json
+storage.rules
+database.rules.json
+remoteconfig.template.json
+functions/node_modules/
+functions/.runtimeconfig.json

@@ -27,6 +27,7 @@ import {
   Laptop
 } from 'lucide-react';
 import JSZip from 'jszip';
+import { normalizePath, dbGetAllKeys, dbGet } from '../lib/fs';
 import ThemeToggle from './ThemeToggle';
 
 export default function Sidebar() {
@@ -87,13 +88,11 @@ export default function Sidebar() {
   const handleExportZip = async () => {
     try {
       const zip = new JSZip();
-      const { normalizePath } = await import('../lib/fs');
       const state = useProjectStore.getState();
       if (!state.adapter) return;
       const fileAdapter = state.adapter;
       
       if (fileAdapter.getMode() === 'VIRTUAL') {
-        const { dbGetAllKeys, dbGet } = await import('../lib/fs');
         const keys = await dbGetAllKeys();
         for (const key of keys) {
           const entry = await dbGet(key);

@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { useProjectStore } from '../store';
 import { FolderOpen, HardDrive, HelpCircle, AlertTriangle, FileArchive, ArrowRight, Cpu } from 'lucide-react';
-import { FsMode, FileSystemAdapter } from '../lib/fs';
+import { FsMode, FileSystemAdapter, dbClear, dbSet, normalizePath } from '../lib/fs';
 import JSZip from 'jszip';
 import ThemeToggle from './ThemeToggle';
 
@@ -74,7 +74,6 @@ export default function LoadFolderScreen() {
     try {
       const zip = await JSZip.loadAsync(file);
       const virtualAdapter = useProjectStore.getState().adapter || new FileSystemAdapter('VIRTUAL', null);
-      const { dbClear, dbSet, normalizePath } = await import('../lib/fs');
       await dbClear();
       
       let containsConfig = false;
