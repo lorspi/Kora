@@ -401,15 +401,17 @@ export default function TaskDrawer() {
                           {log.comment.attachments && log.comment.attachments.length > 0 && (
                             <div className="mt-2 space-y-1.5">
                               {log.comment.attachments.map(attPath => {
-                                const localUrl = resolvedMedia[attPath] || '';
+                                const localUrl = resolvedMedia[attPath];
                                 const isVideoFile = attPath.endsWith('.mp4') || attPath.endsWith('.mov') || attPath.includes('video');
                                 return (
                                   <div key={attPath} className="rounded-lg overflow-hidden border border-border bg-secondary p-1 shadow-card">
-                                    {isVideoFile ? (
-                                      <video src={localUrl} controls className="max-w-full rounded h-28 mx-auto" />
-                                    ) : (
-                                      <img src={localUrl} alt="Attached" className="max-w-full rounded max-h-24 mx-auto" referrerPolicy="no-referrer" />
-                                    )}
+                                    {localUrl ? (
+                                      isVideoFile ? (
+                                        <video src={localUrl} controls className="max-w-full rounded h-28 mx-auto" />
+                                      ) : (
+                                        <img src={localUrl} alt="Attached" className="max-w-full rounded max-h-24 mx-auto" referrerPolicy="no-referrer" />
+                                      )
+                                    ) : null}
                                     <span className="text-[8px] font-mono block text-center text-muted-foreground py-0.5 truncate">{attPath.split('/').pop()}</span>
                                   </div>
                                 );

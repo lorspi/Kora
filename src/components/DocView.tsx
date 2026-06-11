@@ -129,12 +129,14 @@ export default function DocView() {
     let html = content;
 
     html = html.replace(/!\[(.*?)\]\((attachments\/images\/.*?)\)/g, (match, alt, filePath) => {
-      const resolved = resolvedUrls[filePath] || '';
+      const resolved = resolvedUrls[filePath];
+      if (!resolved) return match;
       return `<div class="my-4"><img src="${resolved}" alt="${alt}" class="rounded-xl max-h-96 mx-auto border border-border shadow-card" referrerPolicy="no-referrer" /><span class="block text-center text-[10px] text-muted-foreground mt-1 font-mono">${alt}</span></div>`;
     });
 
     html = html.replace(/<video src="(attachments\/videos\/.*?)"(.*?)><\/video>/g, (match, filePath, attrs) => {
-      const resolved = resolvedUrls[filePath] || '';
+      const resolved = resolvedUrls[filePath];
+      if (!resolved) return match;
       return `<video src="${resolved}" class="max-w-full rounded-xl border border-border shadow-card mx-auto my-4" controls ${attrs}></video>`;
     });
 
