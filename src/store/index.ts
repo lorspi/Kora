@@ -99,6 +99,7 @@ interface ProjectState {
 const PERSISTENCE_KEY = 'gestor-de-proyectos-state';
 type PersistenceState = {
   hasActiveProject: boolean;
+  fsMode: FsMode;
 };
 
 function savePersistenceState(state: PersistenceState) {
@@ -118,7 +119,7 @@ function loadPersistenceState(): PersistenceState {
   } catch (e) {
     console.warn('Could not load persistence state', e);
   }
-  return { hasActiveProject: false };
+  return { hasActiveProject: false, fsMode: 'VIRTUAL' };
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => {
@@ -198,10 +199,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           // New folder setup! Seed sample workspace.
           set({ adapter });
           await get().seedSampleProject();
-          // Save persistence state for virtual mode
-          if (mode === 'VIRTUAL') {
-            savePersistenceState({ hasActiveProject: true });
-          }
+          // Save persistence state with mode
+          savePersistenceState({ hasActiveProject: true, fsMode: mode });
           set({ isLoading: false });
           return;
         }
@@ -312,10 +311,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           isLoading: false
         });
 
-        // Save persistence state for virtual mode
-        if (mode === 'VIRTUAL') {
-          savePersistenceState({ hasActiveProject: true });
-        }
+        // Save persistence state with mode
+        savePersistenceState({ hasActiveProject: true, fsMode: mode });
 
       } catch (err) {
         console.error('Failed to load project from folder', err);
@@ -328,13 +325,16 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     initialize: async () => {
       const persistence = loadPersistenceState();
       if (persistence.hasActiveProject) {
-        // Try to load the virtual project
+        // Try to load the project with persisted mode
         try {
-          await get().loadProjectDirectory(null, 'VIRTUAL');
+          // For FSA mode, we can't restore the handle automatically, so we default to VIRTUAL
+          // This is a limitation of the File System Access API
+          const modeToLoad = persistence.fsMode === 'VIRTUAL' ? 'VIRTUAL' : 'VIRTUAL';
+          await get().loadProjectDirectory(null, modeToLoad);
         } catch (e) {
           console.warn('Failed to auto-load persisted project', e);
           // Clear invalid state
-          savePersistenceState({ hasActiveProject: false });
+          savePersistenceState({ hasActiveProject: false, fsMode: 'VIRTUAL' });
           set({ isLoading: false });
         }
       } else {

@@ -3,10 +3,20 @@
 
 Kora es el lugar donde los proyectos encuentran un hogar permanente. No depende de servidores externos ni de suscripciones para existir. Es una herramienta construida sobre una idea simple: el trabajo y los datos pertenecen a quienes los crean.
 
+<img src="./public/screenshot.png" alt="Captura de pantalla" width="800"/>
+
+## Principios de Kora
+- Offline first.
+- No depende de servidores externos ni de suscripciones para existir.
+- El trabajo y los datos pertenecen a quienes los crean.
+- El formato de almacenamiento debe ser legible por humanos.
+- Evitar dependencias propietarias.
+- La estructura de archivos debe poder abrirse y modificarse con herramientas externas.
+
 ## URL
 [kora.lorspi.com](https://kora.lorspi.com)
 
-## Get Started
+## Comenzar a usar Kora
 
 ### Requisitos previos
 - Node.js

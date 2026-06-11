@@ -12,18 +12,13 @@ import {
   SystemUser 
 } from '../types';
 import { 
-  FolderLock, 
   LogOut, 
   Plus, 
   Layers, 
   FileText, 
   Search, 
-  Users, 
   FileArchive, 
-  CheckSquare, 
   HelpCircle,
-  Database,
-  ChevronsUpDown,
   Laptop
 } from 'lucide-react';
 import JSZip from 'jszip';
@@ -36,8 +31,6 @@ export default function Sidebar() {
     lists, 
     docs, 
     activeUser, 
-    users, 
-    switchUserSimulated, 
     logoutUser,
     createList,
     createDoc,
@@ -55,8 +48,6 @@ export default function Sidebar() {
 
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
-
-  const [showUserDropdown, setShowUserDropdown] = useState(false);
 
   const LIST_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#db2777', '#06b6d4'];
 
@@ -186,40 +177,13 @@ export default function Sidebar() {
               </div>
               
               <button 
-                onClick={() => setShowUserDropdown(!showUserDropdown)}
+                onClick={() => logoutUser()}
                 className="p-1 text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
-                title="Cambiar Usuario / Simulador de Concurrencia"
+                title="Cerrar Sesión"
               >
-                <ChevronsUpDown className="w-3.5 h-3.5" />
+                <LogOut className="w-3.5 h-3.5" />
               </button>
             </div>
-
-            {showUserDropdown && (
-              <div className="absolute left-3 right-3 top-16 bg-popover border border-border rounded-xl shadow-card-hover p-2 z-30">
-                <p className="text-[9px] font-bold uppercase text-bento-blue tracking-wider mb-2 px-1">Simular cambio de sesión:</p>
-                <div className="space-y-1">
-                  {users.filter(u => u.id !== activeUser.id).map(u => (
-                    <button
-                      key={u.id}
-                      onClick={() => {
-                        switchUserSimulated(u.id);
-                        setShowUserDropdown(false);
-                      }}
-                      className="w-full text-left p-1.5 rounded hover:bg-accent flex items-center gap-2 transition-all group"
-                    >
-                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }}>
-                        {u.name.charAt(0)}
-                      </span>
-                      <span className="text-[11px] text-foreground group-hover:text-foreground truncate flex-1">{u.name}</span>
-                      <span className="text-[8px] font-mono bg-secondary group-hover:bg-bento-blue-light px-1 py-0.5 rounded text-muted-foreground group-hover:text-bento-blue">Simular</span>
-                    </button>
-                  ))}
-                  {users.length <= 1 && (
-                    <span className="text-muted-foreground text-[10px] block p-2 text-center">Registra más usuarios para testear el Bloqueo Multi-Usuario.</span>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -393,6 +357,8 @@ export default function Sidebar() {
           onClick={() => {
             if (confirm('¿Seguro que deseas salir del proyecto local actual? Se cerrará la sesión de la carpeta.')) {
               logoutUser();
+              // Clear persistence state
+              localStorage.removeItem('gestor-de-proyectos-state');
               window.location.reload();
             }
           }}
