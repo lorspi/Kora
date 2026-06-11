@@ -20,7 +20,8 @@ import {
   FileArchive, 
   HelpCircle,
   Laptop,
-  Github
+  Github,
+  RefreshCw
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { normalizePath, dbGetAllKeys, dbGet } from '../lib/fs';
@@ -36,6 +37,7 @@ export default function Sidebar() {
     closeProject,
     createList,
     createDoc,
+    scanDocuments,
     selectedListId,
     selectedDocId,
     setSelectedList,
@@ -75,6 +77,19 @@ export default function Sidebar() {
       setShowAddDoc(false);
     } catch (e) {
       alert('Error al crear el documento');
+    }
+  };
+  
+  const handleScanDocuments = async () => {
+    try {
+      const newDocs = await scanDocuments();
+      if (newDocs > 0) {
+        alert(`Se detectaron ${newDocs} documento(s) nuevo(s)`);
+      } else {
+        alert('No se encontraron documentos nuevos');
+      }
+    } catch (e) {
+      alert('Error al escanear documentos');
     }
   };
 
@@ -284,13 +299,22 @@ export default function Sidebar() {
               <FileText className="w-3.5 h-3.5" />
               Documentos MD
             </span>
-            <button 
-              onClick={() => setShowAddDoc(!showAddDoc)}
-              className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-bento-orange transition-colors"
-              title="Nuevo Doc"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-0.5">
+              <button 
+                onClick={handleScanDocuments}
+                className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-bento-blue transition-colors"
+                title="Escanear documentos"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+              <button 
+                onClick={() => setShowAddDoc(!showAddDoc)}
+                className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-bento-orange transition-colors"
+                title="Nuevo Doc"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {showAddDoc && (

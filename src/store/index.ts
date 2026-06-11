@@ -77,6 +77,7 @@ interface ProjectState {
   getDocContent: (docId: string) => Promise<string>;
   saveDocContent: (docId: string, title: string, content: string) => Promise<void>;
   deleteDoc: (docId: string) => Promise<void>;
+  scanDocuments: () => Promise<number>;
   
   // Lock mechanism
   lockTask: (taskId: string) => Promise<boolean>;
@@ -1136,7 +1137,28 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       if (!adapter) throw new Error('No open folder');
 
       const docId = crypto.randomUUID();
-      const filename = `doc-${docId}.md`;
+      
+      // Sanitize title to make it a valid filename
+      let baseFilename = title.trim()
+        .replace(/[<>:"/\\|?*]/g, '_')  // Replace invalid file chars with underscores
+        .toLowerCase()
+        .replace(/\s+/g, '-')          // Replace spaces with dashes
+        .replace(/-+/g, '-')           // Replace multiple dashes with single dash
+        .replace(/^-+|-+$/g, '');      // Remove leading/trailing dashes
+      
+      if (!baseFilename) {
+        baseFilename = 'untitled';
+      }
+      
+      // Check if filename already exists, append number if necessary
+      let filename = `${baseFilename}.md`;
+      let counter = 1;
+      const existingFilenames = new Set(docs.map(d => d.filename));
+      
+      while (existingFilenames.has(filename)) {
+        filename = `${baseFilename}-${counter}.md`;
+        counter++;
+      }
 
       const newDocMeta: DocMetadata = {
         id: docId,
@@ -1177,11 +1199,40 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       const { adapter, docs, activeUser } = get();
       if (!adapter) return;
 
+      const oldDoc = docs.find(d => d.id === docId);
+      if (!oldDoc) return;
+
+      // Sanitize new title to get new filename
+      let baseFilename = title.trim()
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      
+      if (!baseFilename) {
+        baseFilename = 'untitled';
+      }
+
+      // Check for existing filenames
+      let newFilename = `${baseFilename}.md`;
+      let counter = 1;
+      const existingFilenames = new Set(
+        docs.filter(d => d.id !== docId).map(d => d.filename)
+      );
+      
+      while (existingFilenames.has(newFilename)) {
+        newFilename = `${baseFilename}-${counter}.md`;
+        counter++;
+      }
+
+      // Update metadata
       const updatedDocs = docs.map(d => {
         if (d.id === docId) {
           return {
             ...d,
             title: title.trim(),
+            filename: newFilename,
             editedBy: activeUser?.id,
             editedAt: Date.now()
           };
@@ -1189,11 +1240,23 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
         return d;
       });
 
-      const found = updatedDocs.find(d => d.id === docId);
-      if (!found) return;
+      const newDoc = updatedDocs.find(d => d.id === docId);
+      if (!newDoc) return;
 
-      // Write MD raw file
-      await adapter.writeTextFile(`/docs/${found.filename}`, content);
+      // If filename changed, handle renaming the file
+      if (oldDoc.filename !== newFilename) {
+        // Write new file
+        await adapter.writeTextFile(`/docs/${newFilename}`, content);
+        // Delete old file
+        try {
+          await adapter.deleteFile(`/docs/${oldDoc.filename}`);
+        } catch (err) {
+          console.warn('Could not delete old file:', err);
+        }
+      } else {
+        // Just update the content without renaming
+        await adapter.writeTextFile(`/docs/${newDoc.filename}`, content);
+      }
       
       // Write Index file catalog
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
@@ -1217,6 +1280,62 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
 
       set({ docs: updatedDocs, selectedDocId: null });
+    },
+
+    scanDocuments: async () => {
+      const { adapter, docs, activeUser } = get();
+      if (!adapter) throw new Error('No open folder');
+      
+      let newDocCount = 0;
+
+      try {
+        const docFilenames = await adapter.listFiles('/docs');
+        
+        // Get existing filenames from catalog
+        const existingFilenames = new Set(docs.map(d => d.filename));
+        
+        // Iterate over files in docs folder
+        for (const filename of docFilenames) {
+          // Skip info.json and only process .md files
+          if (filename === 'info.json' || !filename.endsWith('.md')) {
+            continue;
+          }
+          
+          // Check if this file is already in the catalog
+          if (existingFilenames.has(filename)) {
+            continue;
+          }
+          
+          // Create a new document entry for this file
+          const docId = crypto.randomUUID();
+          const title = filename.replace(/\.md$/i, '').replace(/[-_]/g, ' '); // Use filename as title (without extension)
+          
+          const newDocMeta: DocMetadata = {
+            id: docId,
+            title: title,
+            filename: filename,
+            editedBy: activeUser?.id,
+            editedAt: Date.now(),
+            createdAt: Date.now()
+          };
+          
+          docs.push(newDocMeta);
+          newDocCount++;
+        }
+        
+        // Save updated catalog
+        if (newDocCount > 0) {
+          await adapter.writeTextFile('/docs/info.json', JSON.stringify(docs, null, 2));
+          set({ docs: [...docs] });
+        }
+        
+        return newDocCount;
+        
+      } catch (e) {
+        // If docs directory doesn't exist or any other error
+        console.warn('Error scanning documents:', e);
+        return 0;
+      }
     },
 
     // File locks system for single folder syncing multi-user environments
