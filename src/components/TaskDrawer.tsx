@@ -53,78 +53,68 @@ export default function TaskDrawer() {
   const task = tasks.find(t => t.id === selectedTaskId);
   const activeList = lists.find(l => l?.id === task?.listId);
 
-  // Lock status state
   const [isLockedByOther, setIsLockedByOther] = useState(false);
   const [lockingUser, setLockingUser] = useState<string | null>(null);
 
-  // Local inputs
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [newSub, setNewSub] = useState('');
   const [newTag, setNewTag] = useState('');
   const [newComment, setNewComment] = useState('');
   const [commentFiles, setCommentFiles] = useState<{ path: string; name: string }[]>([]);
-
-  // Local media blob url cache
   const [resolvedMedia, setResolvedMedia] = useState<Record<string, string>>({});
 
-  // Heartbeat timer referencer
   const heartbeatTimer = useRef<any>(null);
+  const locksRef = useRef(locks);
+  locksRef.current = locks;
 
-  // Monitor locks and refresh local state
+  // Update locked-by-other status reactively when locks change
   useEffect(() => {
     if (!selectedTaskId || !activeUser) return;
+    const activeLock = locks[selectedTaskId];
+    const now = Date.now();
+    if (activeLock && activeLock.userId !== activeUser.id && activeLock.expiresAt > now) {
+      setIsLockedByOther(true);
+      setLockingUser(activeLock.username);
+    } else {
+      setIsLockedByOther(false);
+      setLockingUser(null);
+    }
+  }, [selectedTaskId, activeUser?.id, locks]);
 
-    const checkAndAcquireLock = async () => {
-      const activeLock = locks[selectedTaskId];
+  // Acquire lock and set up heartbeat interval (only re-runs when task/user changes)
+  useEffect(() => {
+    if (!selectedTaskId || !activeUser) return;
+    const acquireLock = async () => {
+      const activeLock = locksRef.current[selectedTaskId];
       const now = Date.now();
-
-      if (activeLock && activeLock.userId !== activeUser.id && activeLock.expiresAt > now) {
-        setIsLockedByOther(true);
-        setLockingUser(activeLock.username);
-      } else {
-        setIsLockedByOther(false);
-        setLockingUser(null);
-        // We are able to lock it! Write lock
+      if (!activeLock || activeLock.userId === activeUser.id || activeLock.expiresAt <= now) {
         await lockTask(selectedTaskId);
       }
     };
-
-    checkAndAcquireLock();
-
-    // Setup periodic locking heatbeat check
-    heartbeatTimer.current = setInterval(() => {
-      checkAndAcquireLock();
-    }, 4500);
-
+    acquireLock();
+    heartbeatTimer.current = setInterval(acquireLock, 14000);
     return () => {
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
-      // Unlock task on exit
       unlockTask(selectedTaskId);
     };
+  }, [selectedTaskId, activeUser?.id]);
 
-  }, [selectedTaskId, activeUser?.id, locks]);
-
-  // Load Task Properties locally
   useEffect(() => {
     if (!task) return;
     setTitle(task.title);
     setDesc(task.description || '');
   }, [task?.id]);
 
-  // Scan and pre-resolve local comments & activity media
   useEffect(() => {
     if (!task) return;
     const taskLogs = logs.filter(l => l.taskId === task.id);
-    
     taskLogs.forEach(log => {
       if (log.comment?.attachments) {
         log.comment.attachments.forEach(async (path) => {
           if (resolvedMedia[path]) return;
           const url = await resolveAttachmentUrl(path);
-          if (url) {
-            setResolvedMedia(prev => ({ ...prev, [path]: url }));
-          }
+          if (url) setResolvedMedia(prev => ({ ...prev, [path]: url }));
         });
       }
     });
@@ -132,14 +122,11 @@ export default function TaskDrawer() {
 
   if (!task || !activeList) return null;
 
-  // Filter logs only belonging to this task
   const taskLogs = logs.filter(l => l.taskId === task.id);
 
-  // Submit comment
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim() && commentFiles.length === 0) return;
-    
     try {
       const filePaths = commentFiles.map(f => f.path);
       await addComment(task.id, newComment, filePaths);
@@ -150,11 +137,9 @@ export default function TaskDrawer() {
     }
   };
 
-  // Drag and drop attachment uploading helper
   const handleCommentAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       const { path, name } = await uploadAttachment(file);
       setCommentFiles(p => [...p, { path, name }]);
@@ -165,17 +150,13 @@ export default function TaskDrawer() {
     }
   };
 
-  // Helper to know if a dependency task is blocking our execution
   const getDependencyBlockerTask = () => {
     for (const depId of task.dependencies) {
       const depTask = tasks.find(t => t.id === depId);
       if (depTask) {
-        // Find if depTask status is NOT completed
         const depList = lists.find(l => l.id === depTask.listId);
         const depStatus = depList?.statuses.find(s => s.id === depTask.statusId);
-        if (depStatus && !depStatus.isCompleted) {
-          return depTask;
-        }
+        if (depStatus && !depStatus.isCompleted) return depTask;
       }
     }
     return null;
@@ -184,41 +165,28 @@ export default function TaskDrawer() {
   const blockerTask = getDependencyBlockerTask();
 
   const handleTitleBlur = () => {
-    if (title.trim() && title !== task.title) {
-      updateTask({ ...task, title: title.trim() });
-    }
+    if (title.trim() && title !== task.title) updateTask({ ...task, title: title.trim() });
   };
 
   const handleDescBlur = () => {
-    if (desc !== task.description) {
-      updateTask({ ...task, description: desc });
-    }
+    if (desc !== task.description) updateTask({ ...task, description: desc });
   };
 
-  // Toggle custom assignee user
   const handleToggleAssignee = (userId: string) => {
-    const assignees = task.assignees.includes(userId)
-      ? task.assignees.filter(id => id !== userId)
-      : [...task.assignees, userId];
+    const assignees = task.assignees.includes(userId) ? task.assignees.filter(id => id !== userId) : [...task.assignees, userId];
     updateTask({ ...task, assignees });
   };
 
-  // Toggle dependency task attachment
   const handleToggleDependency = (otherTaskId: string) => {
-    const dependencies = task.dependencies.includes(otherTaskId)
-      ? task.dependencies.filter(id => id !== otherTaskId)
-      : [...task.dependencies, otherTaskId];
+    const dependencies = task.dependencies.includes(otherTaskId) ? task.dependencies.filter(id => id !== otherTaskId) : [...task.dependencies, otherTaskId];
     updateTask({ ...task, dependencies });
   };
 
-  // Add tag to list
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTag.trim()) return;
     const cleaned = newTag.trim().toUpperCase();
-    if (!task.tags.includes(cleaned)) {
-      updateTask({ ...task, tags: [...task.tags, cleaned] });
-    }
+    if (!task.tags.includes(cleaned)) updateTask({ ...task, tags: [...task.tags, cleaned] });
     setNewTag('');
   };
 
@@ -227,55 +195,36 @@ export default function TaskDrawer() {
   };
 
   return (
-    <div id="task-drawer-overlay" className="fixed inset-0 bg-slate-900/40 backdrop-blur-[1px] z-40 flex justify-end font-sans">
+    <div id="task-drawer-overlay" className="fixed inset-0 bg-foreground/20 backdrop-blur-[1px] z-40 flex justify-end font-body">
       
-      {/* Drawer content sliding from the right side */}
-      <div 
-        id="task-drawer-panel"
-        className="w-full max-w-4xl bg-white border-l border-slate-200 h-full flex flex-col relative select-none shadow-2xl"
-      >
+      <div id="task-drawer-panel" className="w-full max-w-4xl bg-card border-l border-border h-full flex flex-col relative select-none shadow-card-hover animate-fade-in">
         
-        {/* Banner Alert if Locked by another user physically on drive */}
         {isLockedByOther && (
-          <div className="bg-amber-50 border-b border-amber-200 p-3 flex items-center gap-2.5 text-amber-800 text-xs shrink-0 select-none border-amber-100">
-            <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0" />
+          <div className="bg-bento-yellow-light border-b border-border p-3 flex items-center gap-2.5 text-bento-yellow text-xs shrink-0 select-none">
+            <ShieldAlert className="w-5 h-5 shrink-0" />
             <div className="flex-1 font-semibold">
-              🔒 Tarea de solo lectura: @{lockingUser} está editando este archivo desde otra terminal ahora mismo. Tus modificaciones se encuentran bloqueadas temporalmente para evitar corrupción.
+              🔒 Tarea de solo lectura: @{lockingUser} está editando este archivo desde otra terminal ahora mismo.
             </div>
           </div>
         )}
 
         {/* Task Header ribbon */}
-        <div className="p-4 border-b border-slate-200 flex items-center justify-between shrink-0 bg-white shadow-xs">
+        <div className="p-4 border-b border-border flex items-center justify-between shrink-0 bg-card">
           <div className="flex items-center gap-2 overflow-hidden">
-            <span className="text-[10px] bg-slate-50 border border-slate-200 font-bold font-mono text-slate-500 px-2 py-1 rounded truncate">
+            <span className="text-[10px] bg-secondary border border-border font-bold font-mono text-muted-foreground px-2 py-1 rounded truncate">
               {activeList.name} &gt; {task.taskCode}
             </span>
             {blockerTask && (
-              <span className="text-[9px] bg-red-50 text-red-655 border border-red-105 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
+              <span className="text-[9px] bg-destructive/10 text-destructive border border-destructive/20 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
                 ⚠️ BLOQUEADA POR {blockerTask.taskCode}
               </span>
             )}
           </div>
-
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                if (confirm('¿Eliminar definitivamente este archivo JSON de tarea?')) {
-                  deleteTask(task.id);
-                }
-              }}
-              disabled={isLockedByOther}
-              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-red-650 transition-colors disabled:opacity-30 disabled:pointer-events-none cursor-pointer"
-              title="Eliminar tarea física"
-            >
+            <button onClick={() => { if (confirm('¿Eliminar definitivamente este archivo JSON de tarea?')) deleteTask(task.id); }} disabled={isLockedByOther} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30 cursor-pointer" title="Eliminar tarea">
               <Trash2 className="w-4 h-4" />
             </button>
-            <button 
-              onClick={() => setSelectedTask(null)}
-              className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-              title="Cerrar detalles"
-            >
+            <button onClick={() => setSelectedTask(null)} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Cerrar detalles">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -284,316 +233,182 @@ export default function TaskDrawer() {
         {/* Dual Layout Main scroll body */}
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
           
-          {/* Column Left (Main inputs: Title, desc, subtaks, dependencies) */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 border-r border-slate-200 bg-white">
+          {/* Column Left */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 border-r border-border bg-card">
             
-            {/* Blocker details alert */}
             {blockerTask && (
-              <div className="p-3.5 bg-red-50 border border-red-100 rounded-xl text-red-700 text-xs">
-                ⚠️ <strong>Esta tarea está bloqueada:</strong> No puedes avanzar libremente hasta completar la tarea dependiente <strong className="underline font-mono text-xs text-red-700">{blockerTask.taskCode} ({blockerTask.title})</strong>.
+              <div className="p-3.5 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs">
+                ⚠️ <strong>Esta tarea está bloqueada:</strong> No puedes avanzar libremente hasta completar <strong className="underline font-mono">{blockerTask.taskCode} ({blockerTask.title})</strong>.
               </div>
             )}
 
-            {/* Title field */}
             <div className="space-y-1">
-              <span className="text-[10px] uppercase font-bold text-slate-450 tracking-wider">Nombre de la Tarea</span>
+              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Nombre de la Tarea</span>
               <input 
-                type="text"
-                disabled={isLockedByOther}
-                className="w-full bg-transparent border-0 text-lg font-bold text-slate-800 hover:bg-slate-50 focus:bg-white px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors border-b border-transparent focus:border-indigo-500"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onBlur={handleTitleBlur}
+                type="text" disabled={isLockedByOther}
+                className="w-full bg-transparent border-0 text-lg font-bold text-foreground hover:bg-accent focus:bg-card px-2 py-1 rounded-lg focus:outline-none focus:ring-1 focus:ring-ring transition-colors font-heading"
+                value={title} onChange={(e) => setTitle(e.target.value)} onBlur={handleTitleBlur}
               />
             </div>
 
-            {/* Description field */}
             <div className="space-y-1">
-              <div className="flex justify-between items-center text-[10px] uppercase font-bold text-slate-450 tracking-wider">
+              <div className="flex justify-between items-center text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
                 <span>Descripción</span>
-                <span className="text-[9px] text-slate-400 font-mono">Soporta texto plano / Markdown</span>
+                <span className="text-[9px] font-mono">Soporta texto plano / Markdown</span>
               </div>
               <textarea 
                 disabled={isLockedByOther}
-                className="w-full bg-white border border-slate-200 rounded-xl p-4 text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors h-44 font-sans leading-relaxed shadow-sm"
+                className="w-full bg-card border border-input rounded-xl p-4 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-colors h-44 font-body leading-relaxed shadow-card"
                 placeholder="Ingresa los requerimientos, detalles o adjuntos en formato libre..."
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-                onBlur={handleDescBlur}
+                value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={handleDescBlur}
               />
             </div>
 
             {/* Subtasks box */}
-            <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div className="space-y-3 bg-secondary p-4 rounded-xl border border-border">
               <div className="flex justify-between items-center">
-                <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Subtareas internas</span>
-                <span className="text-[10px] text-slate-500 font-mono font-semibold">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Subtareas internas</span>
+                <span className="text-[10px] text-muted-foreground font-mono font-semibold">
                   {task.subtasks.filter(s => s.isCompleted).length}/{task.subtasks.length} Completado
                 </span>
               </div>
-
-              {/* New subtask trigger form */}
               <div className="flex gap-2">
                 <input 
-                  type="text"
-                  disabled={isLockedByOther}
-                  placeholder="+ Agregar subtarea..."
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-indigo-500 text-xs w-full text-slate-700 placeholder-slate-400 shadow-sm"
-                  value={newSub}
-                  onChange={(e) => setNewSub(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      if (newSub.trim()) {
-                        addSubtask(task.id, newSub);
-                        setNewSub('');
-                      }
-                    }
-                  }}
+                  type="text" disabled={isLockedByOther} placeholder="+ Agregar subtarea..."
+                  className="bg-card border border-input rounded-lg px-3 py-1.5 focus:outline-none focus:border-ring text-xs w-full text-foreground placeholder-muted-foreground shadow-card"
+                  value={newSub} onChange={(e) => setNewSub(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (newSub.trim()) { addSubtask(task.id, newSub); setNewSub(''); } } }}
                 />
-                <button
-                  type="button"
-                  disabled={isLockedByOther || !newSub.trim()}
-                  onClick={() => {
-                    addSubtask(task.id, newSub);
-                    setNewSub('');
-                  }}
-                  className="px-3 bg-indigo-600 hover:bg-indigo-550 text-indigo-50 font-bold rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-40 animate-none shadow-sm shadow-indigo-600/10 border border-indigo-500 leading-none"
-                >
-                  Agregar
-                </button>
+                <button type="button" disabled={isLockedByOther || !newSub.trim()} onClick={() => { addSubtask(task.id, newSub); setNewSub(''); }}
+                  className="px-3 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-40 shadow-card leading-none"
+                >Agregar</button>
               </div>
-
-              {/* Subtask listing */}
               <div className="space-y-1.5 mt-2 font-medium">
                 {task.subtasks.map(sub => (
-                  <div key={sub.id} className="flex items-center justify-between gap-3 p-1.5 rounded bg-white border border-slate-200 hover:bg-slate-50 transition-colors shadow-sm">
+                  <div key={sub.id} className="flex items-center justify-between gap-3 p-1.5 rounded bg-card border border-border hover:bg-accent transition-colors shadow-card">
                     <label className="flex items-center gap-2 cursor-pointer select-none flex-1">
-                      <input 
-                        type="checkbox"
-                        disabled={isLockedByOther}
-                        checked={sub.isCompleted}
-                        onChange={() => toggleSubtask(task.id, sub.id)}
-                        className="rounded border-slate-300 accent-indigo-600 w-3.5 h-3.5 mr-1 text-xs"
-                      />
-                      <span className={`text-xs text-slate-700 truncate ${sub.isCompleted ? 'line-through text-slate-400' : ''}`}>
-                        {sub.title}
-                      </span>
+                      <input type="checkbox" disabled={isLockedByOther} checked={sub.isCompleted} onChange={() => toggleSubtask(task.id, sub.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
+                      <span className={`text-xs text-foreground truncate ${sub.isCompleted ? 'line-through text-muted-foreground' : ''}`}>{sub.title}</span>
                     </label>
-                    <button
-                      type="button"
-                      disabled={isLockedByOther}
-                      onClick={() => deleteSubtask(task.id, sub.id)}
-                      className="text-slate-400 hover:text-red-650 p-0.5 rounded transition-colors"
-                      title="Quitar subtarea"
-                    >
+                    <button type="button" disabled={isLockedByOther} onClick={() => deleteSubtask(task.id, sub.id)} className="text-muted-foreground hover:text-destructive p-0.5 rounded transition-colors">
                       <X className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 ))}
-                {task.subtasks.length === 0 && (
-                  <span className="text-[10px] text-slate-400 italic block text-center py-2">Sin subtareas agregadas.</span>
-                )}
+                {task.subtasks.length === 0 && <span className="text-[10px] text-muted-foreground italic block text-center py-2">Sin subtareas agregadas.</span>}
               </div>
             </div>
 
-            {/* Task dependencies choice list */}
-            <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block font-sans">Relaciones de Dependencia (Bloqueos)</span>
-              <p className="text-[10px] text-slate-450 leading-normal">Marca qué otras tareas deben completarse obligatoriamente antes de poder comenzar esta tarea.</p>
-              
-              <div className="max-h-36 overflow-y-auto space-y-1.5 border border-slate-200 rounded-lg p-2.5 bg-white shadow-sm font-medium">
+            {/* Dependencies */}
+            <div className="space-y-3 bg-secondary p-4 rounded-xl border border-border">
+              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Relaciones de Dependencia (Bloqueos)</span>
+              <p className="text-[10px] text-muted-foreground leading-normal">Marca qué otras tareas deben completarse antes de comenzar esta.</p>
+              <div className="max-h-36 overflow-y-auto space-y-1.5 border border-border rounded-lg p-2.5 bg-card shadow-card font-medium">
                 {tasks.filter(t => t.id !== task.id).map(other => {
                   const isChecked = task.dependencies.includes(other.id);
                   return (
-                    <label key={other.id} className="flex items-center justify-between p-1 hover:bg-slate-50 rounded cursor-pointer select-none">
+                    <label key={other.id} className="flex items-center justify-between p-1 hover:bg-accent rounded cursor-pointer select-none">
                       <span className="flex items-center gap-2 truncate">
-                        <input 
-                          type="checkbox"
-                          disabled={isLockedByOther}
-                          checked={isChecked}
-                          onChange={() => handleToggleDependency(other.id)}
-                          className="rounded border-slate-300 text-indigo-600 accent-indigo-600 text-xs w-3.5 h-3.5 mr-1"
-                        />
-                        <span className="font-mono text-[9px] font-bold text-slate-400">{other.taskCode}</span>
-                        <span className="text-xs text-slate-650 truncate max-w-sm group-hover:text-slate-800">{other.title}</span>
+                        <input type="checkbox" disabled={isLockedByOther} checked={isChecked} onChange={() => handleToggleDependency(other.id)} className="rounded border-border text-bento-blue accent-bento-blue w-3.5 h-3.5 mr-1" />
+                        <span className="font-mono text-[9px] font-bold text-muted-foreground">{other.taskCode}</span>
+                        <span className="text-xs text-foreground truncate max-w-sm">{other.title}</span>
                       </span>
                     </label>
                   );
                 })}
-                {tasks.length <= 1 && (
-                  <span className="text-[10px] text-slate-455 block text-center py-2 italic font-mono">No hay otras tareas en el proyecto para enlazar.</span>
-                )}
+                {tasks.length <= 1 && <span className="text-[10px] text-muted-foreground block text-center py-2 italic font-mono">No hay otras tareas para enlazar.</span>}
               </div>
             </div>
-
           </div>
 
-          {/* Column Right (Meta controls and activity updates log) */}
-          <div className="w-full md:w-80 shrink-0 overflow-y-auto p-6 bg-slate-50 flex flex-col gap-6">
+          {/* Column Right */}
+          <div className="w-full md:w-80 shrink-0 overflow-y-auto p-6 bg-secondary flex flex-col gap-6">
             
-            {/* Workflow state selector */}
             <div className="space-y-1.5">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Estado de Tarea</span>
-              <select
-                disabled={isLockedByOther}
-                className="w-full bg-white border border-slate-200 text-xs text-slate-700 py-2 rounded-xl focus:outline-none focus:border-indigo-500 px-3 cursor-pointer shadow-sm font-semibold"
-                value={task.statusId}
-                onChange={(e) => updateTask({ ...task, statusId: e.target.value })}
-              >
-                {activeList.statuses.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
+              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Estado de Tarea</span>
+              <select disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground py-2 rounded-xl focus:outline-none focus:border-ring px-3 cursor-pointer shadow-card font-semibold" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
+                {activeList.statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
 
-            {/* Priority Selector */}
             <div className="space-y-1.5">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Prioridad</span>
-              <select
-                disabled={isLockedByOther}
-                className="w-full bg-white border border-slate-200 text-xs text-slate-700 py-2 rounded-xl focus:outline-none focus:border-indigo-500 px-3 cursor-pointer font-semibold shadow-sm"
-                value={task.priority}
-                onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}
-              >
-                <option value="low">Low (Baja)</option>
-                <option value="medium">Medium (Media)</option>
-                <option value="high">High (Alta)</option>
-                <option value="urgent">Urgent (Urgente!)</option>
+              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Prioridad</span>
+              <select disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground py-2 rounded-xl focus:outline-none focus:border-ring px-3 cursor-pointer font-semibold shadow-card" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
+                <option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
               </select>
             </div>
 
-            {/* Due Date selector */}
             <div className="space-y-1.5">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Fecha Límite</span>
-              <div className="relative">
-                <input 
-                  type="date"
-                  disabled={isLockedByOther}
-                  className="w-full bg-white border border-slate-200 text-xs text-slate-700 p-2 rounded-xl focus:outline-none font-semibold focus:border-indigo-505 shadow-sm select-all"
-                  value={task.dueDate || ''}
-                  onChange={(e) => updateTask({ ...task, dueDate: e.target.value })}
-                />
-              </div>
+              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Fecha Límite</span>
+              <input type="date" disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground p-2 rounded-xl focus:outline-none focus:border-ring shadow-card" value={task.dueDate || ''} onChange={(e) => updateTask({ ...task, dueDate: e.target.value })} />
             </div>
 
-            {/* Assignees Selector checklist */}
             <div className="space-y-2">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">Equipo Responsable</span>
-              <div className="max-h-36 overflow-y-auto space-y-1.5 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm font-medium">
+              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Equipo Responsable</span>
+              <div className="max-h-36 overflow-y-auto space-y-1.5 bg-card p-2.5 rounded-xl border border-border shadow-card font-medium">
                 {users.map(u => {
                   const isAssigned = task.assignees.includes(u.id);
                   return (
                     <label key={u.id} className="flex items-center gap-2 cursor-pointer select-none group/u py-0.5">
-                      <input 
-                        type="checkbox"
-                        disabled={isLockedByOther}
-                        checked={isAssigned}
-                        onChange={() => handleToggleAssignee(u.id)}
-                        className="rounded border-slate-300 text-indigo-600 accent-indigo-600 text-xs w-3.5 h-3.5 mr-1"
-                      />
-                      <span className="w-4.5 h-4.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }}>
-                        {u.name.charAt(0)}
-                      </span>
-                      <span className="text-xs text-slate-600 group-hover/u:text-slate-800 truncate">{u.name}</span>
+                      <input type="checkbox" disabled={isLockedByOther} checked={isAssigned} onChange={() => handleToggleAssignee(u.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
+                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }}>{u.name.charAt(0)}</span>
+                      <span className="text-xs text-foreground group-hover/u:text-foreground truncate">{u.name}</span>
                     </label>
                   );
                 })}
-                {users.length === 0 && (
-                  <span className="text-[10px] text-slate-450 block text-center py-2">Registra miembros locales en la carpeta.</span>
-                )}
+                {users.length === 0 && <span className="text-[10px] text-muted-foreground block text-center py-2">Registra miembros locales.</span>}
               </div>
             </div>
 
-            {/* Custom tags/etiquetas input pills */}
+            {/* Tags */}
             <div className="space-y-2.5">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">Etiquetas / Tags</span>
-              
-              {/* Add tag form */}
+              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Etiquetas / Tags</span>
               <form onSubmit={handleAddTag} className="flex gap-1.5">
-                <input 
-                  type="text"
-                  disabled={isLockedByOther}
-                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-[11px] text-slate-700 placeholder-slate-400 focus:outline-none w-full uppercase shadow-sm"
-                  placeholder="Escribir TAG..."
-                  value={newTag}
-                  onChange={(e) => setNewTag(e.target.value)}
-                />
-                <button 
-                  type="submit" 
-                  disabled={isLockedByOther || !newTag.trim()}
-                  className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-550 transition-colors cursor-pointer disabled:opacity-40 shrink-0 border border-slate-200"
-                >
+                <input type="text" disabled={isLockedByOther} className="bg-card border border-input rounded-lg px-2.5 py-1 text-[11px] text-foreground placeholder-muted-foreground focus:outline-none w-full uppercase shadow-card" placeholder="Escribir TAG..." value={newTag} onChange={(e) => setNewTag(e.target.value)} />
+                <button type="submit" disabled={isLockedByOther || !newTag.trim()} className="p-1.5 bg-secondary hover:bg-accent rounded-lg text-muted-foreground transition-colors cursor-pointer disabled:opacity-40 shrink-0 border border-border">
                   <Plus className="w-3.5 h-3.5" />
                 </button>
               </form>
-
-              {/* Tags listing */}
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {task.tags.map(tag => (
-                  <span 
-                    key={tag}
-                    className="inline-flex items-center gap-1 text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-150 px-2 py-0.5 rounded-md font-mono shadow-sm"
-                  >
+                  <span key={tag} className="inline-flex items-center gap-1 text-[9px] font-bold bg-bento-blue-light text-bento-blue border border-border px-2 py-0.5 rounded-md font-mono shadow-card">
                     #{tag}
-                    <button
-                      type="button"
-                      disabled={isLockedByOther}
-                      onClick={() => handleRemoveTag(tag)}
-                      className="hover:text-red-650 focus:outline-none cursor-pointer disabled:pointer-events-none font-bold"
-                    >
-                      ×
-                    </button>
+                    <button type="button" disabled={isLockedByOther} onClick={() => handleRemoveTag(tag)} className="hover:text-destructive cursor-pointer disabled:pointer-events-none font-bold">×</button>
                   </span>
                 ))}
-                {task.tags.length === 0 && (
-                  <span className="text-[10px] text-slate-400 italic">Sin etiquetas.</span>
-                )}
+                {task.tags.length === 0 && <span className="text-[10px] text-muted-foreground italic">Sin etiquetas.</span>}
               </div>
             </div>
 
-            {/* Activity Comments Log registry (visual feed) */}
-            <div className="border-t border-slate-200 pt-5 space-y-3.5 flex-1 flex flex-col overflow-hidden min-h-[160px]">
-              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">Actividad & Notas</span>
-              
-              {/* Render activity feed */}
+            {/* Activity Comments */}
+            <div className="border-t border-border pt-5 space-y-3.5 flex-1 flex flex-col overflow-hidden min-h-[160px]">
+              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Actividad & Notas</span>
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                 {taskLogs.map(log => {
                   const logUser = users.find(u => u.id === log.userId);
-
                   return (
-                    <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-slate-150 pb-2">
-                      <div className="flex items-center gap-1.5 text-slate-500">
-                        <span 
-                          className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0"
-                          style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}
-                        >
-                          {log.username.charAt(0)}
-                        </span>
-                        <strong className="text-slate-700 font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
-                        <span className="text-[10px] font-sans text-slate-450">{log.action}</span>
+                    <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2">
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}>{log.username.charAt(0)}</span>
+                        <strong className="text-foreground font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
+                        <span className="text-[10px]">{log.action}</span>
                       </div>
-                      
-                      {/* Optional comment text inside */}
                       {log.comment && (
-                        <div className="mt-1.5 p-2 bg-white border border-slate-150 rounded-lg text-slate-650 font-sans break-words whitespace-pre-line leading-relaxed shadow-sm">
+                        <div className="mt-1.5 p-2 bg-card border border-border rounded-lg text-foreground font-body break-words whitespace-pre-line leading-relaxed shadow-card">
                           {log.comment.text}
-                          
-                          {/* Attachments rendering inside comment */}
                           {log.comment.attachments && log.comment.attachments.length > 0 && (
                             <div className="mt-2 space-y-1.5">
                               {log.comment.attachments.map(attPath => {
                                 const localUrl = resolvedMedia[attPath] || '';
                                 const isVideoFile = attPath.endsWith('.mp4') || attPath.endsWith('.mov') || attPath.includes('video');
-                                
                                 return (
-                                  <div key={attPath} className="rounded-lg overflow-hidden border border-slate-200 bg-slate-50 p-1 shadow-sm">
+                                  <div key={attPath} className="rounded-lg overflow-hidden border border-border bg-secondary p-1 shadow-card">
                                     {isVideoFile ? (
-                                      <video src={localUrl} controls className="max-w-full rounded h-28 mx-auto border border-white" />
+                                      <video src={localUrl} controls className="max-w-full rounded h-28 mx-auto" />
                                     ) : (
-                                      <img src={localUrl} alt="Attached" className="max-w-full rounded max-h-24 mx-auto border border-white" referrerPolicy="no-referrer" />
+                                      <img src={localUrl} alt="Attached" className="max-w-full rounded max-h-24 mx-auto" referrerPolicy="no-referrer" />
                                     )}
-                                    <span className="text-[8px] font-mono block text-center text-slate-400 py-0.5 truncate bg-white border-t border-slate-100">{attPath.split('/').pop()}</span>
+                                    <span className="text-[8px] font-mono block text-center text-muted-foreground py-0.5 truncate">{attPath.split('/').pop()}</span>
                                   </div>
                                 );
                               })}
@@ -601,70 +416,34 @@ export default function TaskDrawer() {
                           )}
                         </div>
                       )}
-
-                      <span className="text-[8px] font-mono text-slate-400 block text-right mt-1">
-                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
+                      <span className="text-[8px] font-mono text-muted-foreground block text-right mt-1">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                   );
                 })}
-
-                {taskLogs.length === 0 && (
-                  <span className="text-[10px] text-slate-400 italic text-center block pt-4">Historial de comentarios vacío.</span>
-                )}
+                {taskLogs.length === 0 && <span className="text-[10px] text-muted-foreground italic text-center block pt-4">Historial vacío.</span>}
               </div>
 
-              {/* Compose and send comments form */}
-              <form onSubmit={handleCommentSubmit} className="space-y-2 shrink-0 pt-2 border-t border-slate-200">
+              <form onSubmit={handleCommentSubmit} className="space-y-2 shrink-0 pt-2 border-t border-border">
                 <div className="flex gap-1">
-                  <textarea
-                    disabled={isLockedByOther}
-                    className="w-full bg-white border border-slate-200 text-slate-700 placeholder-slate-400 rounded-lg p-2.5 text-xs focus:outline-none focus:border-indigo-500 h-14 resize-none leading-relaxed font-sans shadow-sm"
-                    placeholder="Escribir una nota u opinión..."
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleCommentSubmit(e);
-                      }
-                    }}
-                  />
-                  <button 
-                    type="submit"
-                    disabled={isLockedByOther || (!newComment.trim() && commentFiles.length === 0)}
-                    className="p-3 bg-indigo-600 hover:bg-indigo-550 border border-indigo-500 text-indigo-50 font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-40 shadow-sm shadow-indigo-600/10 leading-none"
-                    title="Enviar nota"
-                  >
-                    <Send className="w-3.5 h-3.5 text-white" />
+                  <textarea disabled={isLockedByOther} className="w-full bg-card border border-input text-foreground placeholder-muted-foreground rounded-lg p-2.5 text-xs focus:outline-none focus:border-ring h-14 resize-none leading-relaxed font-body shadow-card" placeholder="Escribir una nota u opinión..." value={newComment} onChange={(e) => setNewComment(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommentSubmit(e); } }} />
+                  <button type="submit" disabled={isLockedByOther || (!newComment.trim() && commentFiles.length === 0)} className="p-3 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-40 shadow-card leading-none" title="Enviar nota">
+                    <Send className="w-3.5 h-3.5" />
                   </button>
                 </div>
-
-                {/* Upload attachment helper */}
                 <div className="flex items-center justify-between">
-                  <span className="text-[9px] text-slate-450 font-semibold truncate max-w-[150px]">
+                  <span className="text-[9px] text-muted-foreground font-semibold truncate max-w-[150px]">
                     {commentFiles.length > 0 ? `📎 ${commentFiles.length} archivo(s) listos` : 'Vacío'}
                   </span>
-                  <label className="cursor-pointer text-slate-500 hover:text-slate-800 transition-colors inline-block p-1 bg-white border border-slate-200 rounded-md shadow-sm">
-                    <Paperclip className="w-3.5 h-3.5 text-slate-450" />
-                    <input 
-                      type="file"
-                      accept="image/*,video/*"
-                      onChange={handleCommentAttachment}
-                      className="hidden"
-                    />
+                  <label className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors inline-block p-1 bg-card border border-border rounded-md shadow-card">
+                    <Paperclip className="w-3.5 h-3.5" />
+                    <input type="file" accept="image/*,video/*" onChange={handleCommentAttachment} className="hidden" />
                   </label>
                 </div>
               </form>
-
             </div>
-
           </div>
-
         </div>
-
       </div>
-
     </div>
   );
 }
