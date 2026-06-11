@@ -1,0 +1,1340 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import { create } from 'zustand';
+import { 
+  SystemUser, 
+  ProjectConfig, 
+  ProjectMetadata, 
+  TaskList, 
+  Task, 
+  TaskActivityLog, 
+  DocMetadata, 
+  ProjectLocks, 
+  TaskStatus, 
+  Subtask 
+} from '../types';
+import { FileSystemAdapter, FsMode, normalizePath } from '../lib/fs';
+import { hashPassword } from '../lib/crypto';
+
+interface ProjectState {
+  // Engines
+  adapter: FileSystemAdapter | null;
+  fsMode: FsMode;
+  isLoading: boolean;
+  isPolling: boolean;
+  
+  // Data State
+  projectMeta: ProjectMetadata | null;
+  users: SystemUser[];
+  activeUser: SystemUser | null;
+  lists: TaskList[];
+  tasks: Task[];
+  docs: DocMetadata[];
+  locks: ProjectLocks;
+  logs: TaskActivityLog[];
+  
+  // Selection / Navigation UI
+  selectedListId: string | null;
+  selectedTaskId: string | null;
+  selectedDocId: string | null;
+  searchQuery: string;
+  isSearchOpen: boolean;
+  
+  // Methods
+  setFsMode: (mode: FsMode) => void;
+  loadProjectDirectory: (handle: FileSystemDirectoryHandle | null, mode: FsMode) => Promise<void>;
+  initialize: () => Promise<void>;
+  createBlankProject: (name: string, desc: string) => Promise<void>;
+  seedSampleProject: () => Promise<void>;
+  backgroundReload: () => Promise<void>;
+  
+  // User Authentication
+  registerUser: (username: string, name: string, password: string, avatarColor: string) => Promise<SystemUser>;
+  loginUser: (username: string, password: string) => Promise<boolean>;
+  logoutUser: () => void;
+  switchUserSimulated: (userId: string) => void;
+  
+  // Lists Management
+  createList: (name: string, color: string) => Promise<TaskList>;
+  updateListConfig: (listId: string, name: string, color: string, statuses: TaskStatus[]) => Promise<void>;
+  deleteList: (listId: string) => Promise<void>;
+  
+  // Tasks Management
+  createTask: (title: string, listId: string, statusId: string, priority: Task['priority']) => Promise<Task>;
+  updateTask: (task: Task) => Promise<void>;
+  deleteTask: (taskId: string) => Promise<void>;
+  
+  // Subtasks
+  addSubtask: (taskId: string, title: string) => Promise<void>;
+  toggleSubtask: (taskId: string, subtaskId: string) => Promise<void>;
+  deleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
+  
+  // Markdown Documents
+  createDoc: (title: string, content: string) => Promise<DocMetadata>;
+  getDocContent: (docId: string) => Promise<string>;
+  saveDocContent: (docId: string, title: string, content: string) => Promise<void>;
+  deleteDoc: (docId: string) => Promise<void>;
+  
+  // Lock mechanism
+  lockTask: (taskId: string) => Promise<boolean>;
+  unlockTask: (taskId: string) => Promise<void>;
+  
+  // Activity logger & notes
+  addComment: (taskId: string, commentText: string, attachments?: string[]) => Promise<void>;
+  uploadAttachment: (file: File) => Promise<{ path: string; name: string }>;
+  resolveAttachmentUrl: (path: string) => Promise<string>;
+  
+  // General view toggle
+  setSelectedList: (listId: string | null) => void;
+  setSelectedTask: (taskId: string | null) => void;
+  setSelectedDoc: (docId: string | null) => void;
+  setSearchQuery: (query: string) => void;
+  setSearchOpen: (isOpen: boolean) => void;
+}
+
+// Helper to save/load persistence state
+const PERSISTENCE_KEY = 'gestor-de-proyectos-state';
+type PersistenceState = {
+  hasActiveProject: boolean;
+};
+
+function savePersistenceState(state: PersistenceState) {
+  try {
+    localStorage.setItem(PERSISTENCE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.warn('Could not save persistence state', e);
+  }
+}
+
+function loadPersistenceState(): PersistenceState {
+  try {
+    const stored = localStorage.getItem(PERSISTENCE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.warn('Could not load persistence state', e);
+  }
+  return { hasActiveProject: false };
+}
+
+export const useProjectStore = create<ProjectState>((set, get) => {
+  
+  // Save specific logs helper
+  const saveLogsAndRefresh = async (adapter: FileSystemAdapter, newLogs: TaskActivityLog[]) => {
+    await adapter.writeTextFile('/activity/logs.json', JSON.stringify(newLogs, null, 2));
+    set({ logs: newLogs });
+  };
+
+  // Write a single project activity note
+  const logActivityAction = async (taskId: string, action: string, commentText?: string, attachments?: string[]) => {
+    const { adapter, logs, activeUser } = get();
+    if (!adapter || !activeUser) return;
+    
+    let commentObj = undefined;
+    if (commentText) {
+      commentObj = {
+        id: crypto.randomUUID(),
+        userId: activeUser.id,
+        username: activeUser.name,
+        text: commentText,
+        createdAt: Date.now(),
+        attachments
+      };
+    }
+
+    const newLog: TaskActivityLog = {
+      id: crypto.randomUUID(),
+      taskId,
+      userId: activeUser.id,
+      username: activeUser.name,
+      action,
+      timestamp: Date.now(),
+      comment: commentObj
+    };
+
+    const updatedLogs = [newLog, ...logs];
+    await saveLogsAndRefresh(adapter, updatedLogs);
+  };
+
+  return {
+    // Engine State
+    adapter: null,
+    fsMode: 'VIRTUAL',
+    isLoading: true, // Start loading to check persistence
+    isPolling: false,
+    
+    // Data State
+    projectMeta: null,
+    users: [],
+    activeUser: null,
+    lists: [],
+    tasks: [],
+    docs: [],
+    locks: {},
+    logs: [],
+    
+    // Navigation/Search state
+    selectedListId: null,
+    selectedTaskId: null,
+    selectedDocId: null,
+    searchQuery: '',
+    isSearchOpen: false,
+
+    setFsMode: (mode) => set({ fsMode: mode }),
+
+    // Read full project contents on load
+    loadProjectDirectory: async (handle, mode) => {
+      set({ isLoading: true });
+      const adapter = new FileSystemAdapter(mode, handle);
+      
+      try {
+        const configExists = await adapter.fileExists('/config.json');
+        
+        if (!configExists) {
+          // New folder setup! Seed sample workspace.
+          set({ adapter });
+          await get().seedSampleProject();
+          // Save persistence state for virtual mode
+          if (mode === 'VIRTUAL') {
+            savePersistenceState({ hasActiveProject: true });
+          }
+          set({ isLoading: false });
+          return;
+        }
+
+        // Existing project folder! Load everything
+        const projectRaw = await adapter.readTextFile('/project.json');
+        const projectMeta: ProjectMetadata = JSON.parse(projectRaw);
+
+        // Load users
+        let users: SystemUser[] = [];
+        try {
+          const usersRaw = await adapter.readTextFile('/users/users.json');
+          users = JSON.parse(usersRaw);
+        } catch (e) {
+          console.warn('Error reading users list', e);
+        }
+
+        // Load lists
+        const listFiles = await adapter.listFiles('/lists');
+        const lists: TaskList[] = [];
+        for (const file of listFiles) {
+          if (file.endsWith('.json')) {
+            try {
+              const listRaw = await adapter.readTextFile(`/lists/${file}`);
+              lists.push(JSON.parse(listRaw));
+            } catch (e) {
+              console.warn(`Error reading list file: ${file}`, e);
+            }
+          }
+        }
+
+        // Load tasks
+        const taskFiles = await adapter.listFiles('/tasks');
+        const tasks: Task[] = [];
+        for (const file of taskFiles) {
+          if (file.endsWith('.json')) {
+            try {
+              const taskRaw = await adapter.readTextFile(`/tasks/${file}`);
+              tasks.push(JSON.parse(taskRaw));
+            } catch (e) {
+              console.warn(`Error reading task file: ${file}`, e);
+            }
+          }
+        }
+
+        // Load doc list from index file in /docs/info.json
+        let docs: DocMetadata[] = [];
+        try {
+          if (await adapter.fileExists('/docs/info.json')) {
+            const docsRaw = await adapter.readTextFile('/docs/info.json');
+            docs = JSON.parse(docsRaw);
+          }
+        } catch (e) {
+          console.warn('Error loading documents catalog', e);
+        }
+
+        // Load locks
+        let locks: ProjectLocks = {};
+        try {
+          if (await adapter.fileExists('/activity/locks.json')) {
+            const locksRaw = await adapter.readTextFile('/activity/locks.json');
+            locks = JSON.parse(locksRaw);
+          }
+        } catch (e) {
+          // Locks might not exist
+        }
+
+        // Load logs
+        let logs: TaskActivityLog[] = [];
+        try {
+          if (await adapter.fileExists('/activity/logs.json')) {
+            const logsRaw = await adapter.readTextFile('/activity/logs.json');
+            logs = JSON.parse(logsRaw);
+          }
+        } catch (e) {
+          // Logs empty or failure
+        }
+
+        // Sort structures
+        lists.sort((a, b) => a.createdAt - b.createdAt);
+        tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
+
+        // Restore active session user is saved in configuration is useful
+        let activeUser: SystemUser | null = null;
+        try {
+          const configRaw = await adapter.readTextFile('/config.json');
+          const config: ProjectConfig = JSON.parse(configRaw);
+          if (config.lastOpenedBy) {
+            activeUser = users.find(u => u.id === config.lastOpenedBy) || null;
+          }
+        } catch (e) {
+          // Don't auto-login, let user choose
+        }
+
+        set({
+          adapter,
+          projectMeta,
+          users,
+          activeUser,
+          lists,
+          tasks,
+          docs,
+          locks,
+          logs,
+          selectedListId: lists[0]?.id || null,
+          selectedTaskId: null,
+          selectedDocId: null,
+          isLoading: false
+        });
+
+        // Save persistence state for virtual mode
+        if (mode === 'VIRTUAL') {
+          savePersistenceState({ hasActiveProject: true });
+        }
+
+      } catch (err) {
+        console.error('Failed to load project from folder', err);
+        set({ isLoading: false });
+        throw err;
+      }
+    },
+
+    // Auto-initialize on app load
+    initialize: async () => {
+      const persistence = loadPersistenceState();
+      if (persistence.hasActiveProject) {
+        // Try to load the virtual project
+        try {
+          await get().loadProjectDirectory(null, 'VIRTUAL');
+        } catch (e) {
+          console.warn('Failed to auto-load persisted project', e);
+          // Clear invalid state
+          savePersistenceState({ hasActiveProject: false });
+          set({ isLoading: false });
+        }
+      } else {
+        set({ isLoading: false });
+      }
+    },
+
+    // Initialize an empty layout project
+    createBlankProject: async (name, desc) => {
+      const { adapter } = get();
+      if (!adapter) return;
+      
+      const projectId = crypto.randomUUID();
+      const meta: ProjectMetadata = {
+        id: projectId,
+        name,
+        description: desc,
+        created: Date.now(),
+        tags: ['MVP', 'Offline']
+      };
+
+      const config: ProjectConfig = {
+        projectId,
+        projectName: name,
+        lastModified: Date.now()
+      };
+
+      // Create folder schema
+      await adapter.writeTextFile('/config.json', JSON.stringify(config, null, 2));
+      await adapter.writeTextFile('/project.json', JSON.stringify(meta, null, 2));
+      await adapter.writeTextFile('/users/users.json', JSON.stringify([], null, 2));
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify([], null, 2));
+      await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
+      await adapter.writeTextFile('/activity/logs.json', JSON.stringify([], null, 2));
+
+      // Standard list creation
+      set({
+        projectMeta: meta,
+        users: [],
+        activeUser: null,
+        lists: [],
+        tasks: [],
+        docs: [],
+        locks: {},
+        logs: [],
+        selectedListId: null,
+        selectedTaskId: null,
+        selectedDocId: null
+      });
+
+      // Quick seed a initial list
+      await get().createList('Lista General 📋', '#3b82f6');
+    },
+
+    // Seed beautiful ClickUp mock project data for full interaction review out-of-the-box
+    seedSampleProject: async () => {
+      const { adapter } = get();
+      if (!adapter) return;
+
+      const projectId = crypto.randomUUID();
+      const projectMeta: ProjectMetadata = {
+        id: projectId,
+        name: 'Sprint de Integración 🚀',
+        description: 'Proyecto de demostración de nuestro gestor ClickUp totalmente offline-first con File System Access API.',
+        created: Date.now() - 3600000 * 24, // 1 day ago
+        tags: ['Lanzamiento', 'Frontend', 'Tauri']
+      };
+
+      const config: ProjectConfig = {
+        projectId,
+        projectName: projectMeta.name,
+        lastModified: Date.now()
+      };
+
+      // 1. Seed simulated users (Juan Pérez, Carlos Gómez, María López, Sofia Castro)
+      // Standard password is 'clickup123' for easy testing
+      const salt1 = '7a29e4b7c';
+      const salt2 = '9df231f82';
+      const salt3 = 'cbe32462e';
+      const pHash1 = await hashPassword('clickup123', salt1);
+      const pHash2 = await hashPassword('clickup123', salt2);
+      const pHash3 = await hashPassword('clickup123', salt3);
+
+      const users: SystemUser[] = [
+        {
+          id: 'user-juan-id',
+          username: 'juan',
+          name: 'Juan Pérez (Coordinador)',
+          avatarColor: '#ea580c', // Orange
+          passwordHash: pHash1,
+          salt: salt1,
+          createdAt: Date.now()
+        },
+        {
+          id: 'user-maria-id',
+          username: 'maria',
+          name: 'María López (Diseñadora)',
+          avatarColor: '#db2777', // Pink
+          passwordHash: pHash2,
+          salt: salt2,
+          createdAt: Date.now()
+        },
+        {
+          id: 'user-carlos-id',
+          username: 'carlos',
+          name: 'Carlos Gómez (Desarrollador)',
+          avatarColor: '#2563eb', // Blue
+          passwordHash: pHash3,
+          salt: salt3,
+          createdAt: Date.now()
+        }
+      ];
+
+      // 2. Seed default workflow list (Sprint Active & Product Backlog)
+      const listAId = 'list-sprint-id';
+      const listStatusesA: TaskStatus[] = [
+        { id: 'todo', name: 'Por Hacer 📅', color: '#d1d5db', isCompleted: false },
+        { id: 'inprogress', name: 'En Desarrollo ⚡', color: '#2563eb', isCompleted: false },
+        { id: 'review', name: 'Revisión / QA 🔍', color: '#eab308', isCompleted: false },
+        { id: 'done', name: 'Listo / Desplegado ✅', color: '#10b981', isCompleted: true }
+      ];
+      const listA: TaskList = {
+        id: listAId,
+        name: 'Sprint Core Active 🏃💨',
+        color: '#8b5cf6', // Indigo
+        statuses: listStatusesA,
+        createdAt: Date.now() - 3600000 * 50
+      };
+
+      const listBId = 'list-backlog-id';
+      const listStatusesB: TaskStatus[] = [
+        { id: 'backlog', name: 'Backlog Ideas 💡', color: '#6b7280', isCompleted: false },
+        { id: 'selected', name: 'Para Próximo Sprint 🚀', color: '#0ea5e9', isCompleted: false },
+        { id: 'closed', name: 'Archivado 📦', color: '#9ca3af', isCompleted: true }
+      ];
+      const listB: TaskList = {
+        id: listBId,
+        name: 'Product Backlog 💡',
+        color: '#f59e0b', // Amber
+        statuses: listStatusesB,
+        createdAt: Date.now() - 3600000 * 48
+      };
+
+      // 3. Seed mock tasks
+      const task1Id = 'task-001-id';
+      const task2Id = 'task-002-id';
+      const task3Id = 'task-003-id';
+      const task4Id = 'task-004-id';
+
+      const tasks: Task[] = [
+        {
+          id: task1Id,
+          taskCode: 'TSK-001',
+          listId: listAId,
+          title: 'Implementar Persistencia con File System Access API 💾',
+          description: `### Objetivo
+Desarrollar la capa de persistencia directa en el navegador para que lea y escriba directamente sobre la carpeta local seleccionada.
+
+### Requerimientos de formato
+Adherirse estricto al siguiente formato de JSON de almacenamiento:
+- \`config.json\` en la raíz.
+- Guardar tareas individuales en nombres secuenciales dentro de \`/tasks/\`.
+
+### Notas de implementación
+- La File System Access API requiere permisos de escritura del usuario.
+- Siempre tener un plan de escape virtual para navegadores embebidos como el iframe de AI Studio (usar IndexedDB).
+`,
+          statusId: 'inprogress',
+          dueDate: new Date(Date.now() + 3600000 * 24 * 3).toISOString().split('T')[0], // 3 days layout
+          assignees: ['user-carlos-id'],
+          priority: 'high',
+          tags: ['File System', 'TypeScript', 'Durable'],
+          dependencies: [],
+          subtasks: [
+            { id: 'subtask-1-1', title: 'Crear adapter con soporte FSA API', isCompleted: true, createdAt: Date.now() },
+            { id: 'subtask-1-2', title: 'Crear fallback transparente en IndexedDB', isCompleted: true, createdAt: Date.now() },
+            { id: 'subtask-1-3', title: 'Exportar/Importar estructura como archivo .zip', isCompleted: false, createdAt: Date.now() }
+          ],
+          lastEditedBy: 'user-carlos-id',
+          lastEditedAt: Date.now()
+        },
+        {
+          id: task2Id,
+          taskCode: 'TSK-002',
+          listId: listAId,
+          title: 'Diseñar Interfaz ClickUp Minimalista & Altamente Interactiva 🎨',
+          description: `### Concepto de diseño
+Queremos un aspecto ultra profesional, limpio, denso y responsivo con colores sobrios y elegantes.
+- **Lista agrupada por estados** con capacidad colapsable.
+- **Vista de tablero Kanban** completo con tarjetas arrastrables.
+- **Vista de tabla estructurada** con edición rápida de campos.
+
+### Tipografía recomendada
+- Encabezados modernos y limpios.
+- JetBrains Mono para códigos de tareas e indicadores.
+`,
+          statusId: 'done',
+          dueDate: new Date(Date.now() - 3600000 * 24).toISOString().split('T')[0], // yesterday
+          assignees: ['user-maria-id'],
+          priority: 'medium',
+          tags: ['UI/UX', 'Tailwind', 'Framer Motion'],
+          dependencies: [],
+          subtasks: [
+            { id: 'subtask-2-1', title: 'Definir paleta de colores de estados', isCompleted: true, createdAt: Date.now() },
+            { id: 'subtask-2-2', title: 'Crear componentes de lista reactivos', isCompleted: true, createdAt: Date.now() }
+          ],
+          lastEditedBy: 'user-maria-id',
+          lastEditedAt: Date.now()
+        },
+        {
+          id: task3Id,
+          taskCode: 'TSK-003',
+          listId: listAId,
+          title: 'Sistema de Locks (Bloqueos de Coflicto de Edición) 🔒',
+          description: `### Caso de uso
+Cuando el **Usuario A** está editando una tarea, el **Usuario B** que comparte la misma carpeta de Drive sincronizada no debe poder guardarle cambios ni editar esa tarea simultáneamente.
+
+### Implementación
+- Escribir en un archivo temporal o en \`/activity/locks.json\`.
+- Cada bloqueo expira automáticamente tras un período de inactividad (e.g. 10 segundos de latido offline).
+`,
+          statusId: 'todo',
+          dueDate: new Date(Date.now() + 3600000 * 24 * 7).toISOString().split('T')[0], // 7 days layout
+          assignees: ['user-juan-id', 'user-carlos-id'],
+          priority: 'urgent',
+          tags: ['Locks', 'Sincronización', 'Drive'],
+          dependencies: [task1Id], // Depends on Task 1!
+          subtasks: [
+            { id: 'subtask-3-1', title: 'Simulador multiusuario interactivo', isCompleted: false, createdAt: Date.now() },
+            { id: 'subtask-3-2', title: 'Escribir locks.json en el disco', isCompleted: false, createdAt: Date.now() }
+          ],
+          lastEditedBy: 'user-juan-id',
+          lastEditedAt: Date.now()
+        },
+        {
+          id: task4Id,
+          taskCode: 'TSK-004',
+          listId: listBId,
+          title: 'Compilar Ejecutable de Escritorio con Tauri 💻',
+          description: `### Escalar en el futuro
+Este MVP se diseña pensando en empaquetarse en el futuro usando **Tauri** para exportar ejecutables nativos sumamente livianos en Windows, macOS y Linux.
+`,
+          statusId: 'backlog',
+          dueDate: '',
+          assignees: [],
+          priority: 'low',
+          tags: ['Tauri', 'Desktop', 'Escalabilidad'],
+          dependencies: [],
+          subtasks: [],
+          lastEditedBy: 'user-juan-id',
+          lastEditedAt: Date.now()
+        }
+      ];
+
+      // 4. Docs catalog & contents
+      const docA: DocMetadata = {
+        id: 'doc-guia-id',
+        title: 'Guía de Arquitectura de Almacenamiento 📖',
+        filename: 'guia.md',
+        editedBy: 'user-juan-id',
+        editedAt: Date.now(),
+        createdAt: Date.now() - 3600000 * 2
+      };
+      
+      const docAContent = `# Guía - Almacenamiento de Datos del Proyecto
+
+Este proyecto está diseñado para funcionar de manera **totalmente local y privada**. No hay un servidor de base de datos intermedio.
+
+## ¿Cómo funciona la sincronización?
+Tú eres dueño de tus datos. El directorio elegido contiene archivos con formatos legibles por humanos:
+- Las tareas e información del proyecto se almacenan como archivos **JSON** (ej., \`tasks/task-001.json\`).
+- Los documentos son archivos **Markdown (.md)** estándar.
+
+## Sincronización en la Nube
+Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **Google Drive, Dropbox, OneDrive o repositorios Git** en tu computadora. La aplicación detectará los cambios de forma automática gracias al escaneo en segundo plano.
+
+> **Importante:** Al editar en paralelo, el sistema bloqueará archivos que estén siendo leídos y editados por otros compañeros utilizando la sincronización local en el archivo locks.json.
+`;
+
+      const docsCatalog = [docA];
+
+      // 5. Audit logs
+      const logs: TaskActivityLog[] = [
+        {
+          id: 'log-1',
+          taskId: task1Id,
+          userId: 'user-carlos-id',
+          username: 'Carlos Gómez',
+          action: 'creó la tarea de persistencia FSA',
+          timestamp: Date.now() - 3600000 * 4
+        },
+        {
+          id: 'log-2',
+          taskId: task2Id,
+          userId: 'user-maria-id',
+          username: 'María López',
+          action: 'completó el diseño de la interfaz Kanban y Lists',
+          timestamp: Date.now() - 3600000 * 3
+        },
+        {
+          id: 'log-3',
+          taskId: task3Id,
+          userId: 'user-juan-id',
+          username: 'Juan Pérez',
+          action: 'comentó sobre la lógica del archivo locks.json',
+          timestamp: Date.now() - 3600000 * 2,
+          comment: {
+            id: 'comment-1',
+            userId: 'user-juan-id',
+            username: 'Juan Pérez',
+            text: 'He revisado el flujo. Creo que escribir latidos en `/activity/locks.json` cada 5 a 10 segundos es la forma offline de simular sincronización en tiempo real sin sobrecargar el almacenamiento ni la red local.',
+            createdAt: Date.now() - 3600000 * 2
+          }
+        }
+      ];
+
+      // 6. Write ALL files to directory layout
+      await adapter.writeTextFile('/config.json', JSON.stringify(config, null, 2));
+      await adapter.writeTextFile('/project.json', JSON.stringify(projectMeta, null, 2));
+      await adapter.writeTextFile('/users/users.json', JSON.stringify(users, null, 2));
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify(docsCatalog, null, 2));
+      await adapter.writeTextFile(`/docs/${docA.filename}`, docAContent);
+      await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
+      await adapter.writeTextFile('/activity/logs.json', JSON.stringify(logs, null, 2));
+
+      // Individual task writes
+      for (const t of tasks) {
+        await adapter.writeTextFile(`/tasks/task-${t.id}.json`, JSON.stringify(t, null, 2));
+      }
+
+      // Individual lists writes
+      await adapter.writeTextFile(`/lists/${listA.id}.json`, JSON.stringify(listA, null, 2));
+      await adapter.writeTextFile(`/lists/${listB.id}.json`, JSON.stringify(listB, null, 2));
+
+      // Mock image attachment block for visuals
+      const mockSvgImg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="150" viewBox="0 0 300 150">
+        <rect width="100%" height="100%" fill="#eff6ff" />
+        <circle cx="150" cy="75" r="40" fill="#3b82f6" opacity="0.3" />
+        <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="'Inter', sans-serif" font-size="14" font-weight="600" fill="#1e40af">ClickUp Offline System</text>
+        <text x="50%" y="68%" dominant-baseline="middle" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10" fill="#2563eb">attachments/images/diagrama.png</text>
+      </svg>`;
+      const svgBlob = new Blob([mockSvgImg], { type: 'image/svg+xml' });
+      await adapter.writeBinaryFile('/attachments/images/diagrama.png', svgBlob);
+
+      // Now update the local react state!
+      set({
+        projectMeta,
+        users,
+        activeUser: null, // Don't auto-login, let user choose/register
+        lists: [listA, listB],
+        tasks,
+        docs: docsCatalog,
+        locks: {},
+        logs,
+        selectedListId: listAId,
+        selectedTaskId: null,
+        selectedDocId: null
+      });
+
+      // Save persistence state for virtual mode
+      savePersistenceState({ hasActiveProject: true });
+    },
+
+    // Background interval check to load recent updates from syncing folders
+    backgroundReload: async () => {
+      const { adapter, isPolling } = get();
+      if (!adapter || isPolling) return;
+      
+      set({ isPolling: true });
+      try {
+        // Read locks list
+        let locks: ProjectLocks = {};
+        if (await adapter.fileExists('/activity/locks.json')) {
+          const locksRaw = await adapter.readTextFile('/activity/locks.json');
+          locks = JSON.parse(locksRaw);
+        }
+
+        // Keep active locks only if they haven't expired
+        const now = Date.now();
+        const cleanedLocks: ProjectLocks = {};
+        let locksChanged = false;
+        
+        for (const [taskId, lockInfo] of Object.entries(locks)) {
+          if (lockInfo.expiresAt > now) {
+            cleanedLocks[taskId] = lockInfo;
+          } else {
+            locksChanged = true;
+          }
+        }
+        
+        // Rewrite locked statuses back to filesystem if they expired/cleaned
+        if (locksChanged) {
+          await adapter.writeTextFile('/activity/locks.json', JSON.stringify(cleanedLocks, null, 2));
+        }
+
+        // Re-read lists catalog
+        const listFiles = await adapter.listFiles('/lists');
+        const lists: TaskList[] = [];
+        for (const file of listFiles) {
+          if (file.endsWith('.json')) {
+            const listRaw = await adapter.readTextFile(`/lists/${file}`);
+            lists.push(JSON.parse(listRaw));
+          }
+        }
+        lists.sort((a, b) => a.createdAt - b.createdAt);
+
+        // Re-read tasks
+        const taskFiles = await adapter.listFiles('/tasks');
+        const tasks: Task[] = [];
+        for (const file of taskFiles) {
+          if (file.endsWith('.json')) {
+            const taskRaw = await adapter.readTextFile(`/tasks/${file}`);
+            tasks.push(JSON.parse(taskRaw));
+          }
+        }
+        tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
+
+        // Re-read doc info
+        let docs: DocMetadata[] = [];
+        if (await adapter.fileExists('/docs/info.json')) {
+          const docsRaw = await adapter.readTextFile('/docs/info.json');
+          docs = JSON.parse(docsRaw);
+        }
+
+        // Re-read logs
+        let logs: TaskActivityLog[] = [];
+        if (await adapter.fileExists('/activity/logs.json')) {
+          const logsRaw = await adapter.readTextFile('/activity/logs.json');
+          logs = JSON.parse(logsRaw);
+        }
+
+        // Read users list to see if new user got registered
+        let users = get().users;
+        if (await adapter.fileExists('/users/users.json')) {
+          const uRaw = await adapter.readTextFile('/users/users.json');
+          users = JSON.parse(uRaw);
+        }
+
+        // Check if current active user is still in the list
+        const currentActiveUser = get().activeUser;
+        let activeUser = currentActiveUser;
+        if (currentActiveUser && !users.find(u => u.id === currentActiveUser.id)) {
+          activeUser = null;
+        }
+
+        set({
+          lists,
+          tasks,
+          docs,
+          logs,
+          locks: cleanedLocks,
+          users,
+          activeUser,
+          isPolling: false
+        });
+      } catch (err) {
+        console.warn('Sync background check bypassed/idle', err);
+        set({ isPolling: false });
+      }
+    },
+
+    // Register active user
+    registerUser: async (username, name, password, avatarColor) => {
+      const { adapter, users } = get();
+      if (!adapter) throw new Error('No project folder active');
+
+      const normalizedUsername = username.toLowerCase().trim();
+      const userExists = users.some(u => u.username === normalizedUsername);
+      if (userExists) {
+        throw new Error('El nombre de usuario ya está registrado.');
+      }
+
+      const salt = crypto.randomUUID().slice(0, 8);
+      const passwordHash = await hashPassword(password, salt);
+
+      const newUser: SystemUser = {
+        id: crypto.randomUUID(),
+        username: normalizedUsername,
+        name,
+        avatarColor,
+        passwordHash,
+        salt,
+        createdAt: Date.now()
+      };
+
+      const updatedUsers = [...users, newUser];
+      await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
+
+      set({ users: updatedUsers, activeUser: newUser });
+      return newUser;
+    },
+
+    // Login user with salt calculation
+    loginUser: async (username, password) => {
+      const { users, adapter } = get();
+      if (!adapter) throw new Error('No folder loaded');
+      
+      const normalizedUsername = username.toLowerCase().trim();
+      const user = users.find(u => u.username === normalizedUsername);
+      if (!user) {
+        throw new Error('Nombre de usuario no encontrado.');
+      }
+
+      const hashToVerify = await hashPassword(password, user.salt);
+      if (hashToVerify === user.passwordHash) {
+        // Save last opended session in config
+        try {
+          const configRaw = await adapter.readTextFile('/config.json');
+          const config: ProjectConfig = JSON.parse(configRaw);
+          config.lastOpenedBy = user.id;
+          config.lastModified = Date.now();
+          await adapter.writeTextFile('/config.json', JSON.stringify(config, null, 2));
+        } catch (e) {}
+
+        set({ activeUser: user });
+        return true;
+      } else {
+        throw new Error('Contraseña incorrecta.');
+      }
+    },
+
+    logoutUser: () => {
+      set({ activeUser: null, selectedTaskId: null, selectedDocId: null });
+    },
+
+    switchUserSimulated: (userId) => {
+      const { users, selectedTaskId } = get();
+      const userObj = users.find(u => u.id === userId) || null;
+      if (userObj) {
+        // Unlock previous task immediately on local exit if appropriate
+        if (selectedTaskId) {
+          get().unlockTask(selectedTaskId);
+        }
+        set({ activeUser: userObj, selectedTaskId: null });
+      }
+    },
+
+    // Create standard task list
+    createList: async (name, color) => {
+      const { adapter, lists } = get();
+      if (!adapter) throw new Error('Cargar directorio primero');
+
+      const listId = crypto.randomUUID();
+      const defaultStatuses: TaskStatus[] = [
+        { id: 'todo', name: 'Por Hacer 📅', color: '#d1d5db', isCompleted: false },
+        { id: 'inprogress', name: 'En Desarrollo ⚡', color: '#3b82f6', isCompleted: false },
+        { id: 'review', name: 'Revisión 🔍', color: '#f59e0b', isCompleted: false },
+        { id: 'done', name: 'Listo / Completado ✅', color: '#10b981', isCompleted: true }
+      ];
+
+      const newList: TaskList = {
+        id: listId,
+        name,
+        color,
+        statuses: defaultStatuses,
+        createdAt: Date.now()
+      };
+
+      const updatedLists = [...lists, newList];
+      await adapter.writeTextFile(`/lists/${listId}.json`, JSON.stringify(newList, null, 2));
+      
+      set({ lists: updatedLists, selectedListId: listId });
+      return newList;
+    },
+
+    // Update list settings, names, and status flow
+    updateListConfig: async (listId, name, color, statuses) => {
+      const { adapter, lists } = get();
+      if (!adapter) return;
+
+      const updatedLists = lists.map(l => {
+        if (l.id === listId) {
+          return { ...l, name, color, statuses };
+        }
+        return l;
+      });
+
+      const listObj = updatedLists.find(l => l.id === listId);
+      if (listObj) {
+        await adapter.writeTextFile(`/lists/${listId}.json`, JSON.stringify(listObj, null, 2));
+      }
+
+      set({ lists: updatedLists });
+    },
+
+    // Delete full task list with all its tasks!
+    deleteList: async (listId) => {
+      const { adapter, lists, tasks } = get();
+      if (!adapter) return;
+
+      const updatedLists = lists.filter(l => l.id !== listId);
+      
+      // Delete task list config file
+      await adapter.deleteFile(`/lists/${listId}.json`);
+
+      // Delete tasks that belonged to this list
+      const tasksToKeep: Task[] = [];
+      for (const t of tasks) {
+        if (t.listId === listId) {
+          await adapter.deleteFile(`/tasks/task-${t.id}.json`);
+        } else {
+          tasksToKeep.push(t);
+        }
+      }
+
+      set({ 
+        lists: updatedLists, 
+        tasks: tasksToKeep, 
+        selectedListId: updatedLists[0]?.id || null,
+        selectedTaskId: null 
+      });
+    },
+
+    // Create individual task structure file
+    createTask: async (title, listId, statusId, priority) => {
+      const { adapter, tasks, activeUser } = get();
+      if (!adapter) throw new Error('Cargar directorio primero');
+
+      // Generate next numeric Code for visually pleasing tasks
+      const projectTasksLength = tasks.length;
+      const formattedCode = `TSK-${String(projectTasksLength + 1).padStart(3, '0')}`;
+      
+      const newTaskId = crypto.randomUUID();
+      const newTask: Task = {
+        id: newTaskId,
+        taskCode: formattedCode,
+        listId,
+        title: title.trim(),
+        description: '',
+        statusId,
+        dueDate: '',
+        assignees: [],
+        priority,
+        tags: [],
+        dependencies: [],
+        subtasks: [],
+        lastEditedBy: activeUser?.id,
+        lastEditedAt: Date.now()
+      };
+
+      const updatedTasks = [...tasks, newTask];
+      await adapter.writeTextFile(`/tasks/task-${newTaskId}.json`, JSON.stringify(newTask, null, 2));
+
+      set({ tasks: updatedTasks });
+      
+      // Log task action
+      await logActivityAction(newTaskId, 'creó esta tarea');
+      
+      return newTask;
+    },
+
+    // Update existing task file and refresh react state
+    updateTask: async (task) => {
+      const { adapter, tasks, activeUser } = get();
+      if (!adapter) return;
+
+      const originalTask = tasks.find(t => t.id === task.id);
+      
+      const updatedTask: Task = {
+        ...task,
+        lastEditedBy: activeUser?.id,
+        lastEditedAt: Date.now()
+      };
+
+      const updatedTasks = tasks.map(t => {
+        if (t.id === task.id) return updatedTask;
+        return t;
+      });
+
+      await adapter.writeTextFile(`/tasks/task-${task.id}.json`, JSON.stringify(updatedTask, null, 2));
+      set({ tasks: updatedTasks });
+
+      // Build nice contextual log
+      if (originalTask) {
+        let changeDesc = '';
+        if (originalTask.statusId !== task.statusId) {
+          const listObj = get().lists.find(l => l.id === task.listId);
+          const oldSt = listObj?.statuses.find(s => s.id === originalTask.statusId)?.name || originalTask.statusId;
+          const newSt = listObj?.statuses.find(s => s.id === task.statusId)?.name || task.statusId;
+          changeDesc = `cambió el estado de "${oldSt}" a "${newSt}"`;
+        } else if (originalTask.priority !== task.priority) {
+          changeDesc = `cambió la prioridad de "${originalTask.priority}" a "${task.priority}"`;
+        } else if (originalTask.title !== task.title) {
+          changeDesc = `cambió el título a "${task.title}"`;
+        } else if (originalTask.dueDate !== task.dueDate) {
+          changeDesc = `cambió la fecha límite a "${task.dueDate || 'Sin fecha'}"`;
+        } else if (originalTask.assignees.length !== task.assignees.length) {
+          changeDesc = `actualizó el equipo asignado`;
+        } else if (originalTask.description !== task.description) {
+          changeDesc = `actualizó la descripción de la tarea`;
+        } else {
+          changeDesc = `modificó campos de la tarea`;
+        }
+        await logActivityAction(task.id, changeDesc);
+      }
+    },
+
+    // Delete task file and associations
+    deleteTask: async (taskId) => {
+      const { adapter, tasks } = get();
+      if (!adapter) return;
+
+      // Delete file
+      await adapter.deleteFile(`/tasks/task-${taskId}.json`);
+
+      // Filter tasks state and remove dependencies mapping
+      const updatedTasks = tasks
+        .filter(t => t.id !== taskId)
+        .map(t => {
+          if (t.dependencies.includes(taskId)) {
+            const cleanDep = t.dependencies.filter(id => id !== taskId);
+            const revised = { ...t, dependencies: cleanDep };
+            // Save corrected file dependency
+            adapter.writeTextFile(`/tasks/task-${t.id}.json`, JSON.stringify(revised, null, 2));
+            return revised;
+          }
+          return t;
+        });
+
+      // Clear lock references
+      const { locks } = get();
+      if (locks[taskId]) {
+        const cleanedLocks = { ...locks };
+        delete cleanedLocks[taskId];
+        await adapter.writeTextFile('/activity/locks.json', JSON.stringify(cleanedLocks, null, 2));
+        set({ locks: cleanedLocks });
+      }
+
+      set({ tasks: updatedTasks, selectedTaskId: null });
+    },
+
+    // Subtask quick helpers
+    addSubtask: async (taskId, title) => {
+      const { tasks } = get();
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      const newSub: Subtask = {
+        id: crypto.randomUUID(),
+        title: title.trim(),
+        isCompleted: false,
+        createdAt: Date.now()
+      };
+
+      const updatedTask = {
+        ...task,
+        subtasks: [...task.subtasks, newSub]
+      };
+
+      await get().updateTask(updatedTask);
+      await logActivityAction(taskId, `creó la subtarea "${newSub.title}"`);
+    },
+
+    toggleSubtask: async (taskId, subtaskId) => {
+      const { tasks } = get();
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      let subTitle = '';
+      let isComp = false;
+
+      const updatedSubs = task.subtasks.map(s => {
+        if (s.id === subtaskId) {
+          subTitle = s.title;
+          isComp = !s.isCompleted;
+          return { ...s, isCompleted: isComp };
+        }
+        return s;
+      });
+
+      const updatedTask = {
+        ...task,
+        subtasks: updatedSubs
+      };
+
+      await get().updateTask(updatedTask);
+      await logActivityAction(taskId, `${isComp ? 'completó' : 'desmarcó'} la subtarea "${subTitle}"`);
+    },
+
+    deleteSubtask: async (taskId, subtaskId) => {
+      const { tasks } = get();
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
+
+      const subObj = task.subtasks.find(s => s.id === subtaskId);
+      const updatedSubs = task.subtasks.filter(s => s.id !== subtaskId);
+      const updatedTask = {
+        ...task,
+        subtasks: updatedSubs
+      };
+
+      await get().updateTask(updatedTask);
+      if (subObj) {
+        await logActivityAction(taskId, `eliminó la subtarea "${subObj.title}"`);
+      }
+    },
+
+    // Documents (Docs in Markdown format)
+    createDoc: async (title, content) => {
+      const { adapter, docs, activeUser } = get();
+      if (!adapter) throw new Error('No open folder');
+
+      const docId = crypto.randomUUID();
+      const filename = `doc-${docId}.md`;
+
+      const newDocMeta: DocMetadata = {
+        id: docId,
+        title: title.trim(),
+        filename,
+        editedBy: activeUser?.id,
+        editedAt: Date.now(),
+        createdAt: Date.now()
+      };
+
+      const updatedDocs = [...docs, newDocMeta];
+
+      // Save document md raw context
+      await adapter.writeTextFile(`/docs/${filename}`, content);
+      
+      // Save doc index file info
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
+
+      set({ docs: updatedDocs, selectedDocId: docId });
+      return newDocMeta;
+    },
+
+    getDocContent: async (docId) => {
+      const { adapter, docs } = get();
+      if (!adapter) return '';
+      const doc = docs.find(d => d.id === docId);
+      if (!doc) return '';
+
+      try {
+        return await adapter.readTextFile(`/docs/${doc.filename}`);
+      } catch (err) {
+        console.warn('Doc physical file missing, initializing empty template', err);
+        return '';
+      }
+    },
+
+    saveDocContent: async (docId, title, content) => {
+      const { adapter, docs, activeUser } = get();
+      if (!adapter) return;
+
+      const updatedDocs = docs.map(d => {
+        if (d.id === docId) {
+          return {
+            ...d,
+            title: title.trim(),
+            editedBy: activeUser?.id,
+            editedAt: Date.now()
+          };
+        }
+        return d;
+      });
+
+      const found = updatedDocs.find(d => d.id === docId);
+      if (!found) return;
+
+      // Write MD raw file
+      await adapter.writeTextFile(`/docs/${found.filename}`, content);
+      
+      // Write Index file catalog
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
+
+      set({ docs: updatedDocs });
+    },
+
+    deleteDoc: async (docId) => {
+      const { adapter, docs } = get();
+      if (!adapter) return;
+
+      const doc = docs.find(d => d.id === docId);
+      if (!doc) return;
+
+      const updatedDocs = docs.filter(d => d.id !== docId);
+
+      // Remove markdown file
+      await adapter.deleteFile(`/docs/${doc.filename}`);
+      
+      // Re-save index Catalog
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
+
+      set({ docs: updatedDocs, selectedDocId: null });
+    },
+
+    // File locks system for single folder syncing multi-user environments
+    lockTask: async (taskId) => {
+      const { adapter, activeUser } = get();
+      if (!adapter || !activeUser) return false;
+
+      // Periodically refresh the lock file
+      try {
+        let locks: ProjectLocks = {};
+        if (await adapter.fileExists('/activity/locks.json')) {
+          const locksRaw = await adapter.readTextFile('/activity/locks.json');
+          locks = JSON.parse(locksRaw);
+        }
+
+        const now = Date.now();
+        const activeLock = locks[taskId];
+
+        if (activeLock && activeLock.userId !== activeUser.id && activeLock.expiresAt > now) {
+          // Locked by someone else! Tell user they can't edit
+          // Sync state
+          set({ locks });
+          return false;
+        }
+
+        // We can safely acquire or renew the lock!
+        locks[taskId] = {
+          userId: activeUser.id,
+          username: activeUser.name,
+          expiresAt: now + 15000 // locked for next 15 seconds
+        };
+
+        await adapter.writeTextFile('/activity/locks.json', JSON.stringify(locks, null, 2));
+        set({ locks });
+        return true;
+      } catch (err) {
+        console.warn('Silent locking failure during sync write', err);
+        return true; // Bypass on transient issues to stay offline functional
+      }
+    },
+
+    unlockTask: async (taskId) => {
+      const { adapter, activeUser, locks } = get();
+      if (!adapter || !activeUser) return;
+
+      try {
+        if (!locks[taskId] || locks[taskId].userId !== activeUser.id) {
+          return; // Not locked by us
+        }
+
+        let freshLocks: ProjectLocks = {};
+        if (await adapter.fileExists('/activity/locks.json')) {
+          const locksRaw = await adapter.readTextFile('/activity/locks.json');
+          freshLocks = JSON.parse(locksRaw);
+        }
+
+        if (freshLocks[taskId] && freshLocks[taskId].userId === activeUser.id) {
+          delete freshLocks[taskId];
+          await adapter.writeTextFile('/activity/locks.json', JSON.stringify(freshLocks, null, 2));
+          set({ locks: freshLocks });
+        }
+      } catch (e) {
+        console.warn('Unlock bypass', e);
+      }
+    },
+
+    addComment: async (taskId, commentText, attachments) => {
+      await logActivityAction(taskId, 'comentó', commentText, attachments);
+    },
+
+    // Handle user attachment uploaded local files
+    // Saves them directly into attachments/images/ or attachments/videos/ inside their local project workspace!
+    uploadAttachment: async (file: File) => {
+      const { adapter } = get();
+      if (!adapter) throw new Error('Cargar directorio primero');
+
+      const isVideo = file.type.startsWith('video/');
+      const subFolder = isVideo ? '/attachments/videos/' : '/attachments/images/';
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const uniqueFileName = `${Date.now()}_${cleanFileName}`;
+      const relativePath = `${subFolder}${uniqueFileName}`;
+
+      // Write binary file blob content
+      await adapter.writeBinaryFile(relativePath, file);
+
+      return {
+        path: relativePath,
+        name: file.name
+      };
+    },
+
+    // Resolves attachment local paths (e.g. /attachments/images/foo.png) to a browser renderable URL
+    resolveAttachmentUrl: async (filePath: string) => {
+      const { adapter } = get();
+      if (!adapter) return '';
+      try {
+        const fileBlob = await adapter.readBinaryFile(filePath);
+        // Create client memory Object URL
+        return URL.createObjectURL(fileBlob);
+      } catch (e) {
+        console.warn(`Could not resolve binary file URL for: ${filePath}`, e);
+        return '';
+      }
+    },
+
+    // Navigation and quick search parameters
+    setSelectedList: (listId) => set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null }),
+    setSelectedTask: (taskId) => {
+      const prevTaskId = get().selectedTaskId;
+      if (prevTaskId && prevTaskId !== taskId) {
+        get().unlockTask(prevTaskId);
+      }
+      set({ selectedTaskId: taskId, selectedDocId: null });
+    },
+    setSelectedDoc: (docId) => set({ selectedDocId: docId, selectedTaskId: null }),
+    setSearchQuery: (query) => set({ searchQuery: query }),
+    setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen })
+  };
+});

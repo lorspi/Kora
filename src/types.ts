@@ -1,0 +1,115 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+export interface SystemUser {
+  id: string; // UUID
+  username: string;
+  name: string;
+  avatarColor: string; // Hex or tailwind class
+  passwordHash: string; // crypto.subtle hashed with salt
+  salt: string; // crypto.subtle salt
+  createdAt: number;
+}
+
+export interface ProjectConfig {
+  projectId: string;
+  projectName: string;
+  lastOpenedBy?: string;
+  lastModified: number;
+}
+
+export interface ProjectMetadata {
+  id: string;
+  name: string;
+  description: string;
+  created: number;
+  tags: string[];
+}
+
+export interface TaskStatus {
+  id: string;
+  name: string;
+  color: string; // Hex color
+  isCompleted: boolean;
+}
+
+export interface TaskList {
+  id: string; // UUID
+  name: string;
+  color: string;
+  statuses: TaskStatus[];
+  createdAt: number;
+}
+
+export interface Subtask {
+  id: string; // UUID
+  title: string;
+  isCompleted: boolean;
+  createdAt: number;
+}
+
+export interface Task {
+  id: string; // UUID
+  taskCode: string; // e.g. TASK-001
+  listId: string; // List UUID
+  title: string;
+  description: string; // Markdown / Plain text
+  statusId: string; // Status ID
+  dueDate: string; // YYYY-MM-DD
+  assignees: string[]; // List of User UUIDs
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  tags: string[];
+  dependencies: string[]; // List of Task UUIDs
+  subtasks: Subtask[];
+  lastEditedBy?: string; // User UUID
+  lastEditedAt?: number;
+}
+
+export interface ActivityComment {
+  id: string;
+  userId: string;
+  username: string;
+  text: string; // Markdown note/comment
+  createdAt: number;
+  attachments?: string[]; // list of attachment file paths
+}
+
+export interface TaskActivityLog {
+  id: string;
+  taskId: string;
+  userId: string;
+  username: string;
+  action: string; // e.g. "created the task", "changed status to Done"
+  timestamp: number;
+  comment?: ActivityComment;
+}
+
+export interface ProjectLog {
+  id: string;
+  userId: string;
+  username: string;
+  action: string;
+  details: string;
+  timestamp: number;
+}
+
+export interface DocMetadata {
+  id: string;
+  title: string;
+  filename: string; // e.g. "guia.md"
+  editedBy?: string;
+  editedAt?: number;
+  createdAt: number;
+}
+
+export interface TaskLock {
+  userId: string;
+  username: string;
+  expiresAt: number;
+}
+
+export interface ProjectLocks {
+  [taskId: string]: TaskLock;
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Gestor de Proyectos Offline",
+  "description": "Una herramienta para gestión de proyectos offline-first inspirada en ClickUp que guarda la información directamente en el disco duro local.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
