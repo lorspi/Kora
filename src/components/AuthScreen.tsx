@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useProjectStore } from '../store';
-import { KeyRound, UserPlus, LogIn, ChevronRight, User, Sparkles } from 'lucide-react';
+import { KeyRound, UserPlus, LogIn, ChevronRight, User, Sparkles, ArrowLeft } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
 const AVATAR_COLORS = [
@@ -14,7 +14,7 @@ const AVATAR_COLORS = [
 ];
 
 export default function AuthScreen() {
-  const { users, loginUser, registerUser, projectMeta, logoutUser } = useProjectStore();
+  const { users, loginUser, registerUser, projectMeta, closeProject } = useProjectStore();
   const [isRegister, setIsRegister] = useState(users.length === 0);
   
   const [username, setUsername] = useState('');
@@ -56,10 +56,7 @@ export default function AuthScreen() {
     }
   };
 
-  const handleQuickSelect = (uName: string) => {
-    setUsername(uName);
-    setPassword('clickup123');
-  };
+
 
   return (
     <div id="auth-screen" className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 font-body relative">
@@ -67,6 +64,14 @@ export default function AuthScreen() {
       <div className="absolute top-4 right-4">
         <ThemeToggle />
       </div>
+      
+      {/* Back button top-left */}
+      <button 
+        onClick={closeProject}
+        className="absolute top-4 left-4 p-2 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <ArrowLeft className="w-5 h-5" />
+      </button>
 
       <div className="max-w-md w-full bg-card backdrop-blur-md rounded-2xl p-8 border border-border shadow-card-hover animate-scale-in">
         
@@ -176,34 +181,7 @@ export default function AuthScreen() {
               Ingresar al Proyecto
             </h3>
 
-            {users.length > 0 && (
-              <div className="p-3 bg-secondary border border-border rounded-xl">
-                <span className="text-[10px] font-bold text-bento-blue uppercase tracking-wide block mb-2">Simular usuarios de la carpeta:</span>
-                <div className="space-y-1.5">
-                  {users.map(u => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => handleQuickSelect(u.username)}
-                      className="w-full flex items-center justify-between text-left p-2 rounded-lg bg-card hover:bg-accent border border-border hover:border-bento-blue/50 transition-all group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white uppercase" style={{ backgroundColor: u.avatarColor }}>
-                          {u.name.charAt(0)}
-                        </span>
-                        <div className="leading-tight">
-                          <span className="text-foreground text-xs font-semibold block">{u.name}</span>
-                          <span className="text-muted-foreground text-[10px] block font-mono">@{u.username}</span>
-                        </div>
-                      </div>
-                      <span className="text-[10px] bg-bento-blue-light text-bento-blue group-hover:bg-primary group-hover:text-primary-foreground px-2 py-0.5 rounded transition-colors font-mono">
-                        Seleccionar
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+
 
             <div className="space-y-1">
               <label className="text-xs font-semibold text-muted-foreground">Usuario</label>

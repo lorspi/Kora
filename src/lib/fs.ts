@@ -7,7 +7,7 @@
 export type FsMode = 'FSA_API' | 'VIRTUAL';
 
 // Simple IndexDB database wrapper for virtual file system
-const DB_NAME = 'ClickUpOfflineVirtualFS';
+const DB_NAME = 'KoraOfflineVirtualFS';
 const STORE_NAME = 'files';
 
 function initIndexedDB(): Promise<IDBDatabase> {

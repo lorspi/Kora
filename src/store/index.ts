@@ -55,7 +55,7 @@ interface ProjectState {
   registerUser: (username: string, name: string, password: string, avatarColor: string) => Promise<SystemUser>;
   loginUser: (username: string, password: string) => Promise<boolean>;
   logoutUser: () => void;
-  switchUserSimulated: (userId: string) => void;
+  closeProject: () => void;
   
   // Lists Management
   createList: (name: string, color: string) => Promise<TaskList>;
@@ -283,23 +283,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         lists.sort((a, b) => a.createdAt - b.createdAt);
         tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
 
-        // Restore active session user is saved in configuration is useful
-        let activeUser: SystemUser | null = null;
-        try {
-          const configRaw = await adapter.readTextFile('/config.json');
-          const config: ProjectConfig = JSON.parse(configRaw);
-          if (config.lastOpenedBy) {
-            activeUser = users.find(u => u.id === config.lastOpenedBy) || null;
-          }
-        } catch (e) {
-          // Don't auto-login, let user choose
-        }
-
         set({
           adapter,
           projectMeta,
           users,
-          activeUser,
+          activeUser: null, // Always require login
           lists,
           tasks,
           docs,
@@ -389,7 +377,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       await get().createList('Lista General 📋', '#3b82f6');
     },
 
-    // Seed beautiful ClickUp mock project data for full interaction review out-of-the-box
+    // Seed beautiful demo project data for full interaction review out-of-the-box
     seedSampleProject: async () => {
       const { adapter } = get();
       if (!adapter) return;
@@ -397,8 +385,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const projectId = crypto.randomUUID();
       const projectMeta: ProjectMetadata = {
         id: projectId,
-        name: 'Sprint de Integración 🚀',
-        description: 'Proyecto de demostración de nuestro gestor ClickUp totalmente offline-first con File System Access API.',
+        name: 'Sprint de Integración',
+        description: 'Proyecto de demostración de nuestro gestor de proyectos totalmente offline-first con File System Access API.',
         created: Date.now() - 3600000 * 24, // 1 day ago
         tags: ['Lanzamiento', 'Frontend', 'Tauri']
       };
@@ -410,13 +398,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       };
 
       // 1. Seed simulated users (Juan Pérez, Carlos Gómez, María López, Sofia Castro)
-      // Standard password is 'clickup123' for easy testing
+      // Standard password is 'demo123' for easy testing
       const salt1 = '7a29e4b7c';
       const salt2 = '9df231f82';
       const salt3 = 'cbe32462e';
-      const pHash1 = await hashPassword('clickup123', salt1);
-      const pHash2 = await hashPassword('clickup123', salt2);
-      const pHash3 = await hashPassword('clickup123', salt3);
+      const pHash1 = await hashPassword('demo123', salt1);
+      const pHash2 = await hashPassword('demo123', salt2);
+      const pHash3 = await hashPassword('demo123', salt3);
 
       const users: SystemUser[] = [
         {
@@ -451,14 +439,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       // 2. Seed default workflow list (Sprint Active & Product Backlog)
       const listAId = 'list-sprint-id';
       const listStatusesA: TaskStatus[] = [
-        { id: 'todo', name: 'Por Hacer 📅', color: '#d1d5db', isCompleted: false },
-        { id: 'inprogress', name: 'En Desarrollo ⚡', color: '#2563eb', isCompleted: false },
-        { id: 'review', name: 'Revisión / QA 🔍', color: '#eab308', isCompleted: false },
-        { id: 'done', name: 'Listo / Desplegado ✅', color: '#10b981', isCompleted: true }
+        { id: 'todo', name: 'Por Hacer', color: '#d1d5db', isCompleted: false },
+        { id: 'inprogress', name: 'En Desarrollo', color: '#2563eb', isCompleted: false },
+        { id: 'review', name: 'Revisión / QA', color: '#eab308', isCompleted: false },
+        { id: 'done', name: 'Listo / Desplegado', color: '#10b981', isCompleted: true }
       ];
       const listA: TaskList = {
         id: listAId,
-        name: 'Sprint Core Active 🏃💨',
+        name: 'Sprint Core Active',
         color: '#8b5cf6', // Indigo
         statuses: listStatusesA,
         createdAt: Date.now() - 3600000 * 50
@@ -466,13 +454,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
       const listBId = 'list-backlog-id';
       const listStatusesB: TaskStatus[] = [
-        { id: 'backlog', name: 'Backlog Ideas 💡', color: '#6b7280', isCompleted: false },
-        { id: 'selected', name: 'Para Próximo Sprint 🚀', color: '#0ea5e9', isCompleted: false },
-        { id: 'closed', name: 'Archivado 📦', color: '#9ca3af', isCompleted: true }
+        { id: 'backlog', name: 'Backlog Ideas', color: '#6b7280', isCompleted: false },
+        { id: 'selected', name: 'Para Próximo Sprint', color: '#0ea5e9', isCompleted: false },
+        { id: 'closed', name: 'Archivado', color: '#9ca3af', isCompleted: true }
       ];
       const listB: TaskList = {
         id: listBId,
-        name: 'Product Backlog 💡',
+        name: 'Product Backlog',
         color: '#f59e0b', // Amber
         statuses: listStatusesB,
         createdAt: Date.now() - 3600000 * 48
@@ -489,7 +477,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           id: task1Id,
           taskCode: 'TSK-001',
           listId: listAId,
-          title: 'Implementar Persistencia con File System Access API 💾',
+          title: 'Implementar Persistencia con File System Access API',
           description: `### Objetivo
 Desarrollar la capa de persistencia directa en el navegador para que lea y escriba directamente sobre la carpeta local seleccionada.
 
@@ -520,7 +508,7 @@ Adherirse estricto al siguiente formato de JSON de almacenamiento:
           id: task2Id,
           taskCode: 'TSK-002',
           listId: listAId,
-          title: 'Diseñar Interfaz ClickUp Minimalista & Altamente Interactiva 🎨',
+          title: 'Diseñar Interfaz Minimalista & Altamente Interactiva',
           description: `### Concepto de diseño
 Queremos un aspecto ultra profesional, limpio, denso y responsivo con colores sobrios y elegantes.
 - **Lista agrupada por estados** con capacidad colapsable.
@@ -548,7 +536,7 @@ Queremos un aspecto ultra profesional, limpio, denso y responsivo con colores so
           id: task3Id,
           taskCode: 'TSK-003',
           listId: listAId,
-          title: 'Sistema de Locks (Bloqueos de Coflicto de Edición) 🔒',
+          title: 'Sistema de Locks (Bloqueos de Coflicto de Edición)',
           description: `### Caso de uso
 Cuando el **Usuario A** está editando una tarea, el **Usuario B** que comparte la misma carpeta de Drive sincronizada no debe poder guardarle cambios ni editar esa tarea simultáneamente.
 
@@ -573,7 +561,7 @@ Cuando el **Usuario A** está editando una tarea, el **Usuario B** que comparte 
           id: task4Id,
           taskCode: 'TSK-004',
           listId: listBId,
-          title: 'Compilar Ejecutable de Escritorio con Tauri 💻',
+          title: 'Compilar Ejecutable de Escritorio con Tauri',
           description: `### Escalar en el futuro
 Este MVP se diseña pensando en empaquetarse en el futuro usando **Tauri** para exportar ejecutables nativos sumamente livianos en Windows, macOS y Linux.
 `,
@@ -592,7 +580,7 @@ Este MVP se diseña pensando en empaquetarse en el futuro usando **Tauri** para 
       // 4. Docs catalog & contents
       const docA: DocMetadata = {
         id: 'doc-guia-id',
-        title: 'Guía de Arquitectura de Almacenamiento 📖',
+        title: 'Guía de Arquitectura de Almacenamiento',
         filename: 'guia.md',
         editedBy: 'user-juan-id',
         editedAt: Date.now(),
@@ -673,7 +661,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       const mockSvgImg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="150" viewBox="0 0 300 150">
         <rect width="100%" height="100%" fill="#eff6ff" />
         <circle cx="150" cy="75" r="40" fill="#3b82f6" opacity="0.3" />
-        <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="'Inter', sans-serif" font-size="14" font-weight="600" fill="#1e40af">ClickUp Offline System</text>
+        <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="'Inter', sans-serif" font-size="14" font-weight="600" fill="#1e40af">Kora Offline System</text>
         <text x="50%" y="68%" dominant-baseline="middle" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10" fill="#2563eb">attachments/images/diagrama.png</text>
       </svg>`;
       const svgBlob = new Blob([mockSvgImg], { type: 'image/svg+xml' });
@@ -860,16 +848,26 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       set({ activeUser: null, selectedTaskId: null, selectedDocId: null });
     },
 
-    switchUserSimulated: (userId) => {
-      const { users, selectedTaskId } = get();
-      const userObj = users.find(u => u.id === userId) || null;
-      if (userObj) {
-        // Unlock previous task immediately on local exit if appropriate
-        if (selectedTaskId) {
-          get().unlockTask(selectedTaskId);
-        }
-        set({ activeUser: userObj, selectedTaskId: null });
-      }
+    closeProject: () => {
+      // Clear persistence state
+      localStorage.removeItem(PERSISTENCE_KEY);
+      // Reset all state
+      set({
+        adapter: null,
+        fsMode: 'VIRTUAL',
+        projectMeta: null,
+        users: [],
+        activeUser: null,
+        lists: [],
+        tasks: [],
+        docs: [],
+        locks: {},
+        logs: [],
+        selectedListId: null,
+        selectedTaskId: null,
+        selectedDocId: null,
+        isLoading: false
+      });
     },
 
     // Create standard task list
@@ -879,10 +877,10 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
 
       const listId = crypto.randomUUID();
       const defaultStatuses: TaskStatus[] = [
-        { id: 'todo', name: 'Por Hacer 📅', color: '#d1d5db', isCompleted: false },
-        { id: 'inprogress', name: 'En Desarrollo ⚡', color: '#3b82f6', isCompleted: false },
-        { id: 'review', name: 'Revisión 🔍', color: '#f59e0b', isCompleted: false },
-        { id: 'done', name: 'Listo / Completado ✅', color: '#10b981', isCompleted: true }
+        { id: 'todo', name: 'Por Hacer', color: '#d1d5db', isCompleted: false },
+        { id: 'inprogress', name: 'En Desarrollo', color: '#3b82f6', isCompleted: false },
+        { id: 'review', name: 'Revisión', color: '#f59e0b', isCompleted: false },
+        { id: 'done', name: 'Listo / Completado', color: '#10b981', isCompleted: true }
       ];
 
       const newList: TaskList = {

@@ -33,6 +33,7 @@ export default function Sidebar() {
     docs, 
     activeUser, 
     logoutUser,
+    closeProject,
     createList,
     createDoc,
     selectedListId,
@@ -368,10 +369,7 @@ export default function Sidebar() {
         <button 
           onClick={() => {
             if (confirm('¿Seguro que deseas salir del proyecto local actual? Se cerrará la sesión de la carpeta.')) {
-              logoutUser();
-              // Clear persistence state
-              localStorage.removeItem('gestor-de-proyectos-state');
-              window.location.reload();
+              closeProject();
             }
           }}
           className="w-full px-3 py-2 bg-card hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-border hover:border-destructive/30 rounded-xl text-[11px] transition-all flex items-center justify-center gap-1 mt-1 cursor-pointer"
