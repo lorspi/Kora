@@ -85,6 +85,8 @@ interface ProjectState {
   
   // Activity logger & notes
   addComment: (taskId: string, commentText: string, attachments?: string[]) => Promise<void>;
+  editComment: (logId: string, newText: string) => Promise<void>;
+  deleteComment: (logId: string) => Promise<void>;
   uploadAttachment: (file: File) => Promise<{ path: string; name: string }>;
   resolveAttachmentUrl: (path: string) => Promise<string>;
   
@@ -139,12 +141,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     if (!adapter || !activeUser) return;
     
     let commentObj = undefined;
-    if (commentText) {
+    if (commentText || (attachments && attachments.length > 0)) {
       commentObj = {
         id: crypto.randomUUID(),
         userId: activeUser.id,
         username: activeUser.name,
-        text: commentText,
+        text: commentText || '',
         createdAt: Date.now(),
         attachments
       };
@@ -1409,6 +1411,25 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
 
     addComment: async (taskId, commentText, attachments) => {
       await logActivityAction(taskId, 'comentó', commentText, attachments);
+    },
+
+    editComment: async (logId, newText) => {
+      const { adapter, logs } = get();
+      if (!adapter) return;
+      const updatedLogs = logs.map(log => {
+        if (log.id === logId && log.comment) {
+          return { ...log, comment: { ...log.comment, text: newText } };
+        }
+        return log;
+      });
+      await saveLogsAndRefresh(adapter, updatedLogs);
+    },
+
+    deleteComment: async (logId) => {
+      const { adapter, logs } = get();
+      if (!adapter) return;
+      const updatedLogs = logs.filter(log => log.id !== logId);
+      await saveLogsAndRefresh(adapter, updatedLogs);
     },
 
     // Handle user attachment uploaded local files

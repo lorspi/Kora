@@ -25,7 +25,9 @@ import {
   FileImage,
   Clock,
   Unlock,
-  ShieldAlert
+  ShieldAlert,
+  Pencil,
+  Check
 } from 'lucide-react';
 
 export default function TaskDrawer() {
@@ -42,6 +44,8 @@ export default function TaskDrawer() {
     toggleSubtask, 
     deleteSubtask, 
     addComment, 
+    editComment,
+    deleteComment,
     uploadAttachment, 
     resolveAttachmentUrl,
     lockTask,
@@ -63,6 +67,10 @@ export default function TaskDrawer() {
   const [newComment, setNewComment] = useState('');
   const [commentFiles, setCommentFiles] = useState<{ path: string; name: string }[]>([]);
   const [resolvedMedia, setResolvedMedia] = useState<Record<string, string>>({});
+  const [previewMediaUrl, setPreviewMediaUrl] = useState<string | null>(null);
+  const [previewMediaType, setPreviewMediaType] = useState<'image' | 'video'>('image');
+  const [editingLogId, setEditingLogId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
 
   const heartbeatTimer = useRef<any>(null);
   const locksRef = useRef(locks);
@@ -388,18 +396,65 @@ export default function TaskDrawer() {
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                 {taskLogs.map(log => {
                   const logUser = users.find(u => u.id === log.userId);
+                  const isOwnComment = log.userId === activeUser?.id;
+                  const isEditing = editingLogId === log.id;
                   return (
-                    <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2">
+                    <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2 group/log">
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}>{log.username.charAt(0)}</span>
                         <strong className="text-foreground font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
                         <span className="text-[10px]">{log.action}</span>
+                        {/* Edit/Delete controls for own comments */}
+                        {isOwnComment && log.comment && !isLockedByOther && (
+                          <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/log:opacity-100 transition-opacity">
+                            {isEditing ? (
+                              <>
+                                <button
+                                  onClick={async () => { await editComment(log.id, editingText); setEditingLogId(null); setEditingText(''); }}
+                                  className="p-0.5 rounded hover:bg-accent text-bento-green transition-colors cursor-pointer" title="Guardar"
+                                >
+                                  <Check className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => { setEditingLogId(null); setEditingText(''); }}
+                                  className="p-0.5 rounded hover:bg-accent text-muted-foreground transition-colors cursor-pointer" title="Cancelar"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => { setEditingLogId(log.id); setEditingText(log.comment?.text || ''); }}
+                                  className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Editar"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => { if (confirm('¿Eliminar este comentario?')) deleteComment(log.id); }}
+                                  className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" title="Eliminar"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
                       </div>
                       {log.comment && (
                         <div className="mt-1.5 p-2 bg-card border border-border rounded-lg text-foreground font-body break-words whitespace-pre-line leading-relaxed shadow-card">
-                          {log.comment.text}
+                          {isEditing ? (
+                            <textarea
+                              className="w-full bg-secondary border border-input rounded-lg p-2 text-xs text-foreground focus:outline-none focus:border-ring resize-none h-16 font-body"
+                              value={editingText}
+                              onChange={(e) => setEditingText(e.target.value)}
+                              autoFocus
+                            />
+                          ) : (
+                            log.comment.text && <span>{log.comment.text}</span>
+                          )}
                           {log.comment.attachments && log.comment.attachments.length > 0 && (
-                            <div className="mt-2 space-y-1.5">
+                            <div className={`space-y-1.5 ${log.comment.text ? 'mt-2' : ''}`}>
                               {log.comment.attachments.map(attPath => {
                                 const localUrl = resolvedMedia[attPath];
                                 const isVideoFile = attPath.endsWith('.mp4') || attPath.endsWith('.mov') || attPath.includes('video');
@@ -409,7 +464,13 @@ export default function TaskDrawer() {
                                       isVideoFile ? (
                                         <video src={localUrl} controls className="max-w-full rounded h-28 mx-auto" />
                                       ) : (
-                                        <img src={localUrl} alt="Attached" className="max-w-full rounded max-h-24 mx-auto" referrerPolicy="no-referrer" />
+                                        <img 
+                                          src={localUrl} 
+                                          alt="Attached" 
+                                          className="max-w-full rounded max-h-24 mx-auto cursor-pointer hover:opacity-80 transition-opacity" 
+                                          referrerPolicy="no-referrer"
+                                          onClick={() => { setPreviewMediaUrl(localUrl); setPreviewMediaType('image'); }}
+                                        />
                                       )
                                     ) : null}
                                     <span className="text-[8px] font-mono block text-center text-muted-foreground py-0.5 truncate">{attPath.split('/').pop()}</span>
@@ -447,6 +508,27 @@ export default function TaskDrawer() {
             </div>
           </div>
         </div>
+
+        {/* Image Preview Modal */}
+        {previewMediaUrl && (
+          <div className="fixed inset-0 bg-foreground/40 backdrop-blur-sm z-50 flex items-center justify-center p-8" onClick={() => setPreviewMediaUrl(null)}>
+            <div className="relative max-w-3xl max-h-[80vh] bg-card border border-border rounded-2xl overflow-hidden shadow-card-hover" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-3 border-b border-border bg-secondary">
+                <span className="text-xs font-mono text-muted-foreground">Vista previa</span>
+                <button onClick={() => setPreviewMediaUrl(null)} className="p-1 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-4 flex items-center justify-center bg-secondary/50 max-h-[70vh] overflow-auto">
+                {previewMediaType === 'video' ? (
+                  <video src={previewMediaUrl} controls className="max-w-full max-h-[60vh] rounded-lg" />
+                ) : (
+                  <img src={previewMediaUrl} alt="Preview" className="max-w-full max-h-[60vh] rounded-lg object-contain" />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
