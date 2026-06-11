@@ -10,6 +10,7 @@ import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
 import ListViews from './components/ListViews';
 import DocView from './components/DocView';
+import MediaExplorer from './components/MediaExplorer';
 import TaskDrawer from './components/TaskDrawer';
 import SearchDialog from './components/SearchDialog';
 import { 
@@ -37,6 +38,7 @@ export default function App() {
     docs, 
     selectedListId, 
     selectedDocId, 
+    showMediaExplorer,
     backgroundReload,
     logs,
     initialize,
@@ -105,7 +107,9 @@ export default function App() {
       {/* Main Work Area Container */}
       <main id="main-content-flow" className="flex-1 flex flex-col h-full bg-background overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden">
-          {selectedDocId ? (
+          {showMediaExplorer ? (
+            <MediaExplorer />
+          ) : selectedDocId ? (
             <DocView />
           ) : selectedListId ? (
             <ListViews />

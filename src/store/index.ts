@@ -89,6 +89,8 @@ interface ProjectState {
   resolveAttachmentUrl: (path: string) => Promise<string>;
   
   // General view toggle
+  showMediaExplorer: boolean;
+  setShowMediaExplorer: (show: boolean) => void;
   setSelectedList: (listId: string | null) => void;
   setSelectedTask: (taskId: string | null) => void;
   setSelectedDoc: (docId: string | null) => void;
@@ -183,6 +185,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     selectedListId: null,
     selectedTaskId: null,
     selectedDocId: null,
+    showMediaExplorer: false,
     searchQuery: '',
     isSearchOpen: false,
 
@@ -371,7 +374,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         logs: [],
         selectedListId: null,
         selectedTaskId: null,
-        selectedDocId: null
+        selectedDocId: null,
+        showMediaExplorer: false
       });
 
       // Quick seed a initial list
@@ -867,6 +871,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
         selectedListId: null,
         selectedTaskId: null,
         selectedDocId: null,
+        showMediaExplorer: false,
         isLoading: false
       });
     },
@@ -1442,7 +1447,8 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
     },
 
     // Navigation and quick search parameters
-    setSelectedList: (listId) => set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null }),
+    setShowMediaExplorer: (show) => set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null }),
+    setSelectedList: (listId) => set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false }),
     setSelectedTask: (taskId) => {
       const prevTaskId = get().selectedTaskId;
       if (prevTaskId && prevTaskId !== taskId) {
@@ -1450,7 +1456,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       }
       set({ selectedTaskId: taskId, selectedDocId: null });
     },
-    setSelectedDoc: (docId) => set({ selectedDocId: docId, selectedTaskId: null }),
+    setSelectedDoc: (docId) => set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false }),
     setSearchQuery: (query) => set({ searchQuery: query }),
     setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen })
   };
