@@ -1,9 +1,6 @@
 <img src="./public/logo-dark.svg#gh-dark-mode-only" alt="Kora Logo" width="400"/>
 <img src="./public/logo-light.svg#gh-light-mode-only" alt="Kora Logo" width="400"/>
 
- ****
----
-
 
 
 > ⚠️ **IMPORTANTE: PROYECTO EN ETAPA MUY TEMPRANA DE DESARROLLO** ⚠️ Este proyecto está en una fase inicial y **muchas funcionalidades aún no están implementadas o no funcionan correctamente**. Por favor, ten en cuenta esto al usar Kora.
