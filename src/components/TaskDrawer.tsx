@@ -264,6 +264,64 @@ export default function TaskDrawer() {
               />
             </div>
 
+            {/* Configuration fields */}
+            <div className="grid grid-cols-2 gap-4 bg-secondary p-4 rounded-xl border border-border">
+              <div className="space-y-1.5">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Estado de Tarea</span>
+                <select disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground py-2 rounded-xl focus:outline-none focus:border-ring px-3 cursor-pointer shadow-card font-semibold" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
+                  {activeList.statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Prioridad</span>
+                <select disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground py-2 rounded-xl focus:outline-none focus:border-ring px-3 cursor-pointer font-semibold shadow-card" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
+                  <option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Fecha Límite</span>
+                <input type="date" disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground p-2 rounded-xl focus:outline-none focus:border-ring shadow-card" value={task.dueDate || ''} onChange={(e) => updateTask({ ...task, dueDate: e.target.value })} />
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Equipo Responsable</span>
+                <div className="max-h-28 overflow-y-auto space-y-1.5 bg-card p-2.5 rounded-xl border border-border shadow-card font-medium">
+                  {users.map(u => {
+                    const isAssigned = task.assignees.includes(u.id);
+                    return (
+                      <label key={u.id} className="flex items-center gap-2 cursor-pointer select-none group/u py-0.5">
+                        <input type="checkbox" disabled={isLockedByOther} checked={isAssigned} onChange={() => handleToggleAssignee(u.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
+                        <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }}>{u.name.charAt(0)}</span>
+                        <span className="text-xs text-foreground group-hover/u:text-foreground truncate">{u.name}</span>
+                      </label>
+                    );
+                  })}
+                  {users.length === 0 && <span className="text-[10px] text-muted-foreground block text-center py-2">Registra miembros locales.</span>}
+                </div>
+              </div>
+
+              <div className="space-y-2.5 col-span-2">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Etiquetas / Tags</span>
+                <form onSubmit={handleAddTag} className="flex gap-1.5">
+                  <input type="text" disabled={isLockedByOther} className="bg-card border border-input rounded-lg px-2.5 py-1 text-[11px] text-foreground placeholder-muted-foreground focus:outline-none w-full uppercase shadow-card" placeholder="Escribir TAG..." value={newTag} onChange={(e) => setNewTag(e.target.value)} />
+                  <button type="submit" disabled={isLockedByOther || !newTag.trim()} className="p-1.5 bg-secondary hover:bg-accent rounded-lg text-muted-foreground transition-colors cursor-pointer disabled:opacity-40 shrink-0 border border-border">
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {task.tags.map(tag => (
+                    <span key={tag} className="inline-flex items-center gap-1 text-[9px] font-bold bg-bento-blue-light text-bento-blue border border-border px-2 py-0.5 rounded-md font-mono shadow-card">
+                      #{tag}
+                      <button type="button" disabled={isLockedByOther} onClick={() => handleRemoveTag(tag)} className="hover:text-destructive cursor-pointer disabled:pointer-events-none font-bold">×</button>
+                    </span>
+                  ))}
+                  {task.tags.length === 0 && <span className="text-[10px] text-muted-foreground italic">Sin etiquetas.</span>}
+                </div>
+              </div>
+            </div>
+
             {/* Subtasks box */}
             <div className="space-y-3 bg-secondary p-4 rounded-xl border border-border">
               <div className="flex justify-between items-center">
@@ -321,67 +379,11 @@ export default function TaskDrawer() {
             </div>
           </div>
 
-          {/* Column Right */}
-          <div className="w-full md:w-80 shrink-0 overflow-y-auto p-6 bg-secondary flex flex-col gap-6">
+          {/* Column Right - Activity & Notes */}
+          <div className="w-full md:w-96 shrink-0 overflow-y-auto p-6 bg-secondary flex flex-col gap-4">
             
-            <div className="space-y-1.5">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Estado de Tarea</span>
-              <select disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground py-2 rounded-xl focus:outline-none focus:border-ring px-3 cursor-pointer shadow-card font-semibold" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
-                {activeList.statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Prioridad</span>
-              <select disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground py-2 rounded-xl focus:outline-none focus:border-ring px-3 cursor-pointer font-semibold shadow-card" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
-                <option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
-              </select>
-            </div>
-
-            <div className="space-y-1.5">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Fecha Límite</span>
-              <input type="date" disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground p-2 rounded-xl focus:outline-none focus:border-ring shadow-card" value={task.dueDate || ''} onChange={(e) => updateTask({ ...task, dueDate: e.target.value })} />
-            </div>
-
-            <div className="space-y-2">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Equipo Responsable</span>
-              <div className="max-h-36 overflow-y-auto space-y-1.5 bg-card p-2.5 rounded-xl border border-border shadow-card font-medium">
-                {users.map(u => {
-                  const isAssigned = task.assignees.includes(u.id);
-                  return (
-                    <label key={u.id} className="flex items-center gap-2 cursor-pointer select-none group/u py-0.5">
-                      <input type="checkbox" disabled={isLockedByOther} checked={isAssigned} onChange={() => handleToggleAssignee(u.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
-                      <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }}>{u.name.charAt(0)}</span>
-                      <span className="text-xs text-foreground group-hover/u:text-foreground truncate">{u.name}</span>
-                    </label>
-                  );
-                })}
-                {users.length === 0 && <span className="text-[10px] text-muted-foreground block text-center py-2">Registra miembros locales.</span>}
-              </div>
-            </div>
-
-            {/* Tags */}
-            <div className="space-y-2.5">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Etiquetas / Tags</span>
-              <form onSubmit={handleAddTag} className="flex gap-1.5">
-                <input type="text" disabled={isLockedByOther} className="bg-card border border-input rounded-lg px-2.5 py-1 text-[11px] text-foreground placeholder-muted-foreground focus:outline-none w-full uppercase shadow-card" placeholder="Escribir TAG..." value={newTag} onChange={(e) => setNewTag(e.target.value)} />
-                <button type="submit" disabled={isLockedByOther || !newTag.trim()} className="p-1.5 bg-secondary hover:bg-accent rounded-lg text-muted-foreground transition-colors cursor-pointer disabled:opacity-40 shrink-0 border border-border">
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </form>
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {task.tags.map(tag => (
-                  <span key={tag} className="inline-flex items-center gap-1 text-[9px] font-bold bg-bento-blue-light text-bento-blue border border-border px-2 py-0.5 rounded-md font-mono shadow-card">
-                    #{tag}
-                    <button type="button" disabled={isLockedByOther} onClick={() => handleRemoveTag(tag)} className="hover:text-destructive cursor-pointer disabled:pointer-events-none font-bold">×</button>
-                  </span>
-                ))}
-                {task.tags.length === 0 && <span className="text-[10px] text-muted-foreground italic">Sin etiquetas.</span>}
-              </div>
-            </div>
-
             {/* Activity Comments */}
-            <div className="border-t border-border pt-5 space-y-3.5 flex-1 flex flex-col overflow-hidden min-h-[160px]">
+            <div className="space-y-3.5 flex-1 flex flex-col overflow-hidden">
               <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Actividad & Notas</span>
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                 {taskLogs.map(log => {

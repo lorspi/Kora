@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useProjectStore } from '../store';
-import { FolderOpen, HardDrive, HelpCircle, AlertTriangle, FileArchive, ArrowRight, Cpu } from 'lucide-react';
+import { FolderOpen, HardDrive, HelpCircle, AlertTriangle, FileArchive, ArrowRight, Cpu, Github } from 'lucide-react';
 import { FsMode, FileSystemAdapter, dbClear, dbSet, normalizePath } from '../lib/fs';
 import JSZip from 'jszip';
 import ThemeToggle from './ThemeToggle';
@@ -231,7 +231,7 @@ export default function LoadFolderScreen() {
                   Disco Virtual en Navegador
                 </h3>
                 <p className="mt-1.5 text-muted-foreground text-xs leading-normal flex-1">
-                  Guarda tus cambios localmente en <strong>IndexedDB</strong>. Ideal para sistemas en iFrames cerrados como este entorno de previsualización.
+                  Todo lo que hagas se almacenará en el <strong>almacenamiento local</strong> de tu navegador. Tus datos no salen de tu dispositivo.
                 </p>
                 <span className="mt-4 text-[11px] text-bento-orange font-medium group-hover:underline flex items-center gap-1">
                   Entrar con Demo Precargado <ArrowRight className="w-3 h-3" />
@@ -264,9 +264,21 @@ export default function LoadFolderScreen() {
         )}
 
         {/* Informative Footer */}
-        <div className="mt-8 pt-5 border-t border-border text-center flex items-center justify-center gap-2 text-xs text-muted-foreground font-mono">
-          <HelpCircle className="w-4 h-4 text-bento-blue/70" />
-          <span>Es 100% privado. Ningún dato viaja a servidores externos.</span>
+        <div className="mt-8 pt-5 border-t border-border text-center flex items-center justify-center gap-4 text-xs text-muted-foreground font-mono">
+          <span className="flex items-center gap-2">
+            <HelpCircle className="w-4 h-4 text-bento-blue/70" />
+            Es 100% privado. Ningún dato viaja a servidores externos.
+          </span>
+          <a 
+            href="https://github.com/lorspi/Kora" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 hover:text-foreground transition-colors"
+            title="Ver repositorio en GitHub"
+          >
+            <Github className="w-4 h-4" />
+            GitHub
+          </a>
         </div>
       </div>
     </div>

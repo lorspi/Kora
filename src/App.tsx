@@ -258,22 +258,6 @@ export default function App() {
             </div>
           )}
         </div>
-
-        {/* Footer Status Bar */}
-        <footer className="h-6 bg-primary text-primary-foreground flex items-center px-4 justify-between text-[10px] flex-none">
-          <div className="flex items-center gap-4">
-            <span className="flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary-foreground animate-pulse"></span>
-              Syncing Local Storage
-            </span>
-            <span>Real-time Active Client</span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span>Sesión: Activa</span>
-            <span className="font-mono">v0.1.0-alpha</span>
-          </div>
-        </footer>
-
       </main>
 
       {/* Task detail context panel drawer */}

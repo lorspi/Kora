@@ -19,7 +19,8 @@ import {
   Search, 
   FileArchive, 
   HelpCircle,
-  Laptop
+  Laptop,
+  Github
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { normalizePath, dbGetAllKeys, dbGet } from '../lib/fs';
@@ -352,6 +353,17 @@ export default function Sidebar() {
           <FileArchive className="w-4 h-4 text-bento-blue" />
           Respaldar como ZIP
         </button>
+
+        <a
+          href="https://github.com/lorspi/Kora"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="w-full px-3 py-2 bg-card hover:bg-accent border border-border rounded-xl text-foreground text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer font-semibold leading-none shadow-card"
+          title="Ver repositorio en GitHub"
+        >
+          <Github className="w-4 h-4 text-muted-foreground" />
+          Repositorio en GitHub
+        </a>
 
         <button 
           onClick={() => {
