@@ -71,7 +71,7 @@ export default function TaskDrawer() {
   const [newSub, setNewSub] = useState('');
   const [newTag, setNewTag] = useState('');
   const [newComment, setNewComment] = useState('');
-  const [commentFiles, setCommentFiles] = useState<{ path: string; name: string }[]>([]);
+  const [commentFiles, setCommentFiles] = useState<{ path: string; name: string; url: string; type: 'image' | 'video' }[]>([]);
   const [resolvedMedia, setResolvedMedia] = useState<Record<string, string>>({});
   const [previewMediaUrl, setPreviewMediaUrl] = useState<string | null>(null);
   const [previewMediaType, setPreviewMediaType] = useState<'image' | 'video'>('image');
@@ -80,6 +80,7 @@ export default function TaskDrawer() {
   const [detailTab, setDetailTab] = useState<TaskDetailTab>('details');
   const [activityTab, setActivityTab] = useState<'activity' | 'notes'>('notes');
   const [isEditingDesc, setIsEditingDesc] = useState(false);
+  const commentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const heartbeatTimer = useRef<any>(null);
   const locksRef = useRef(locks);
@@ -167,22 +168,72 @@ export default function TaskDrawer() {
       const filePaths = commentFiles.map(f => f.path);
       await addComment(task.id, newComment, filePaths);
       setNewComment('');
-      setCommentFiles([]);
+      cleanupCommentFiles();
     } catch (e) {
       toast('Error al publicar comentario', 'error');
     }
   };
 
+  const cleanupCommentFiles = () => {
+    commentFiles.forEach((file) => {
+      try {
+        URL.revokeObjectURL(file.url);
+      } catch {
+        // ignore
+      }
+    });
+    setCommentFiles([]);
+  };
+
+  const removeCommentFile = (path: string) => {
+    setCommentFiles((prev) => {
+      const next = prev.filter((file) => file.path !== path);
+      const removed = prev.find((file) => file.path === path);
+      if (removed) {
+        try {
+          URL.revokeObjectURL(removed.url);
+        } catch {
+          // ignore
+        }
+      }
+      return next;
+    });
+  };
+
+  const addCommentFilesFromFile = async (file: File) => {
+    const { path, name } = await uploadAttachment(file);
+    const url = URL.createObjectURL(file);
+    const type = file.type.startsWith('video/') ? 'video' : 'image';
+    setCommentFiles((prev) => [...prev, { path, name, url, type }]);
+  };
+
   const handleCommentAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
     try {
-      const { path, name } = await uploadAttachment(file);
-      setCommentFiles(p => [...p, { path, name }]);
+      await Promise.all(files.map(addCommentFilesFromFile));
     } catch (err: any) {
       toast('No se pudo subir archivo: ' + err.message, 'error');
     } finally {
       e.target.value = '';
+    }
+  };
+
+  const handleCommentPaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboardItems = Array.from(e.clipboardData.items || []);
+    const imageItems = clipboardItems.filter((item) => item.type.startsWith('image/'));
+    if (imageItems.length === 0) return;
+
+    e.preventDefault();
+
+    try {
+      const files = imageItems
+        .map((item) => item.getAsFile())
+        .filter((file): file is File => !!file);
+      await Promise.all(files.map(addCommentFilesFromFile));
+      commentTextareaRef.current?.focus();
+    } catch (err: any) {
+      toast('No se pudo pegar la imagen: ' + err.message, 'error');
     }
   };
 
@@ -576,19 +627,59 @@ export default function TaskDrawer() {
 
                 <form onSubmit={handleCommentSubmit} className="space-y-2 shrink-0 pt-2 border-t border-border">
                   <div className="flex gap-1">
-                    <textarea disabled={isLockedByOther} className="w-full bg-card border border-input text-foreground placeholder-muted-foreground rounded-lg p-2.5 text-xs focus:outline-none focus:border-ring h-14 resize-none leading-relaxed font-body shadow-card" placeholder="Escribir una nota u opinión..." value={newComment} onChange={(e) => setNewComment(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommentSubmit(e); } }} />
+                    <div className="w-full">
+                      <textarea
+                        ref={commentTextareaRef}
+                        disabled={isLockedByOther}
+                        className="w-full bg-card border border-input text-foreground placeholder-muted-foreground rounded-lg p-2.5 text-xs focus:outline-none focus:border-ring min-h-[6rem] resize-none leading-relaxed font-body shadow-card"
+                        placeholder="Escribir una nota u opinión..."
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        onPaste={handleCommentPaste}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommentSubmit(e); } }}
+                      />
+                      {commentFiles.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {commentFiles.map(file => (
+                            <div key={file.path} className="relative w-16 h-16 bg-background border border-border rounded-2xl overflow-hidden shadow-card">
+                              {file.type === 'image' ? (
+                                <img src={file.url} alt={file.name} className="object-cover w-full h-full" />
+                              ) : (
+                                <video src={file.url} className="object-cover w-full h-full" muted />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeCommentFile(file.path)}
+                                className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center text-[10px] hover:bg-black"
+                                title="Eliminar imagen"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                     <button type="submit" disabled={isLockedByOther || (!newComment.trim() && commentFiles.length === 0)} className="p-3 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-40 shadow-card leading-none" title="Enviar nota">
                       <Send className="w-3.5 h-3.5" />
                     </button>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[9px] text-muted-foreground font-semibold truncate max-w-[150px]">
+                    <span className="text-[9px] text-muted-foreground font-semibold truncate max-w-full sm:max-w-[150px]">
                       {commentFiles.length > 0 ? `📎 ${commentFiles.length} archivo(s) listos` : 'Vacío'}
                     </span>
-                    <label className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors inline-block p-1 bg-card border border-border rounded-md shadow-card">
-                      <Paperclip className="w-3.5 h-3.5" />
-                      <input type="file" accept="image/*,video/*" onChange={handleCommentAttachment} className="hidden" />
-                    </label>
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1 p-1 bg-card border border-border rounded-md shadow-card">
+                        <Paperclip className="w-3.5 h-3.5" />
+                        <span className="text-[10px]">Adjuntar</span>
+                        <input type="file" accept="image/*,video/*" multiple onChange={handleCommentAttachment} className="hidden" />
+                      </label>
+                      {commentFiles.length > 0 && (
+                        <button type="button" onClick={cleanupCommentFiles} className="text-[10px] text-destructive hover:text-destructive/90 transition-colors">
+                          Borrar todo
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </form>
               </div>
