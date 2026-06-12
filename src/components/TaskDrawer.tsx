@@ -567,13 +567,15 @@ export default function TaskDrawer() {
                   {taskLogs.filter(l => !!l.comment).map(log => {
                     const logUser = users.find(u => u.id === log.userId);
                     const isOwnComment = log.userId === activeUser?.id;
+                    const canDeleteComment = isOwnComment || activeUser?.isSuperAdmin;
+                    const canEditComment = isOwnComment && !isLockedByOther;
                     const isEditing = editingLogId === log.id;
                     return (
                       <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2 group/log">
                         <div className="flex items-center gap-1.5 text-muted-foreground">
                           <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}>{log.username.charAt(0)}</span>
                           <strong className="text-foreground font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
-                          {isOwnComment && !isLockedByOther && (
+                          {(canEditComment || canDeleteComment) && (
                             <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/log:opacity-100 transition-opacity">
                               {isEditing ? (
                                 <>
@@ -582,8 +584,12 @@ export default function TaskDrawer() {
                                 </>
                               ) : (
                                 <>
-                                  <button onClick={() => { setEditingLogId(log.id); setEditingText(log.comment?.text || ''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Editar"><Pencil className="w-3 h-3" /></button>
-                                  <button onClick={async () => { const ok = await confirm({ title: 'Eliminar nota', message: '\u00bfEliminar este comentario? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" title="Eliminar"><Trash2 className="w-3 h-3" /></button>
+                                  {canEditComment && (
+                                    <button onClick={() => { setEditingLogId(log.id); setEditingText(log.comment?.text || ''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Editar"><Pencil className="w-3 h-3" /></button>
+                                  )}
+                                  {canDeleteComment && (
+                                    <button onClick={async () => { const ok = await confirm({ title: 'Eliminar nota', message: '\u00bfEliminar este comentario? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" title="Eliminar"><Trash2 className="w-3 h-3" /></button>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -690,13 +696,17 @@ export default function TaskDrawer() {
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                 {taskLogs.filter(l => !l.comment).map(log => {
                   const logUser = users.find(u => u.id === log.userId);
+                  const canDeleteActivity = activeUser?.isSuperAdmin;
                   return (
-                    <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2">
+                    <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2 group/activity">
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}>{log.username.charAt(0)}</span>
                         <strong className="text-foreground font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
                         <span className="text-[10px]">{log.action}</span>
                         <span className="text-[8px] font-mono text-muted-foreground ml-auto shrink-0">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        {canDeleteActivity && (
+                          <button onClick={async () => { const ok = await confirm({ title: 'Eliminar actividad', message: '\u00bfEliminar este registro de actividad? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer opacity-0 group-hover/activity:opacity-100" title="Eliminar actividad"><Trash2 className="w-3 h-3" /></button>
+                        )}
                       </div>
                     </div>
                   );
