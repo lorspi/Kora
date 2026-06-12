@@ -9,6 +9,9 @@ export type FsMode = 'FSA_API' | 'VIRTUAL';
 // Simple IndexDB database wrapper for virtual file system
 const DB_NAME = 'KoraOfflineVirtualFS';
 const STORE_NAME = 'files';
+const HANDLE_DB_NAME = 'KoraOfflineFSHandles';
+const HANDLE_STORE_NAME = 'handles';
+const FSA_HANDLE_KEY = 'lastDirectoryHandle';
 
 function initIndexedDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -20,6 +23,53 @@ function initIndexedDB(): Promise<IDBDatabase> {
       }
     };
     request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function initHandleDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(HANDLE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(HANDLE_STORE_NAME)) {
+        db.createObjectStore(HANDLE_STORE_NAME);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function saveDirectoryHandle(handle: FileSystemDirectoryHandle | null): Promise<void> {
+  const db = await initHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(HANDLE_STORE_NAME);
+    const request = handle ? store.put(handle, FSA_HANDLE_KEY) : store.delete(FSA_HANDLE_KEY);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function loadDirectoryHandle(): Promise<FileSystemDirectoryHandle | null> {
+  const db = await initHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE_NAME, 'readonly');
+    const store = tx.objectStore(HANDLE_STORE_NAME);
+    const request = store.get(FSA_HANDLE_KEY);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function clearDirectoryHandle(): Promise<void> {
+  const db = await initHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(HANDLE_STORE_NAME);
+    const request = store.delete(FSA_HANDLE_KEY);
+    request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
 }

@@ -16,7 +16,7 @@ import {
   TaskStatus, 
   Subtask 
 } from '../types';
-import { FileSystemAdapter, FsMode, normalizePath } from '../lib/fs';
+import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDirectoryHandle, clearDirectoryHandle } from '../lib/fs';
 import { hashPassword } from '../lib/crypto';
 
 interface ProjectState {
@@ -330,7 +330,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           isLoading: false
         });
 
-        // Save persistence state with mode
+        if (mode === 'FSA_API') {
+          await saveDirectoryHandle(handle);
+        } else {
+          await clearDirectoryHandle();
+        }
         savePersistenceState({ hasActiveProject: true, fsMode: mode });
 
       } catch (err) {
@@ -346,10 +350,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       if (persistence.hasActiveProject) {
         // Try to load the project with persisted mode
         try {
-          // For FSA mode, we can't restore the handle automatically, so we default to VIRTUAL
-          // This is a limitation of the File System Access API
-          const modeToLoad = persistence.fsMode === 'VIRTUAL' ? 'VIRTUAL' : 'VIRTUAL';
-          await get().loadProjectDirectory(null, modeToLoad);
+          if (persistence.fsMode === 'FSA_API') {
+            const savedHandle = await loadDirectoryHandle();
+            if (!savedHandle) {
+              throw new Error('No stored File System Access handle disponible.');
+            }
+            await get().loadProjectDirectory(savedHandle, 'FSA_API');
+          } else {
+            await get().loadProjectDirectory(null, 'VIRTUAL');
+          }
         } catch (e) {
           console.warn('Failed to auto-load persisted project', e);
           // Clear invalid state
@@ -750,7 +759,8 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       });
 
       // Save persistence state for virtual mode
-      savePersistenceState({ hasActiveProject: true });
+      await clearDirectoryHandle();
+      savePersistenceState({ hasActiveProject: true, fsMode: 'VIRTUAL' });
     },
 
     // Background interval check to load recent updates from syncing folders
@@ -916,9 +926,10 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       set({ activeUser: null, selectedTaskId: null, selectedDocId: null });
     },
 
-    closeProject: () => {
-      // Clear persistence state
+    closeProject: async () => {
+      // Clear persistence state and stored FSA handle
       localStorage.removeItem(PERSISTENCE_KEY);
+      await clearDirectoryHandle();
       // Reset all state
       set({
         adapter: null,
