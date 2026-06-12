@@ -300,7 +300,7 @@ export default function Sidebar() {
           <div className="flex items-center justify-between px-2 mb-2">
             <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground flex items-center gap-1">
               <FileText className="w-3.5 h-3.5" />
-              Documentos MD
+              Documentos
             </span>
             <div className="flex items-center gap-0.5">
               <button 

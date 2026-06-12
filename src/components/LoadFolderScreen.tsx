@@ -117,8 +117,8 @@ export default function LoadFolderScreen() {
         {/* Product Heading */}
         <div className="text-center mb-8 relative">
           <div className="inline-flex items-center justify-center mb-4">
-            <img src="/logo-light.svg" alt="Kora" className="h-12 dark:hidden" />
-            <img src="/logo-dark.svg" alt="Kora" className="h-12 hidden dark:block" />
+            <img src="/logo-light.svg?v=2" alt="Kora" className="h-12 dark:hidden" />
+            <img src="/logo-dark.svg?v=2" alt="Kora" className="h-12 hidden dark:block" />
           </div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground font-heading">
             Gestor de Proyectos Offline-First
