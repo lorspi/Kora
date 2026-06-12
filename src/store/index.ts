@@ -28,6 +28,7 @@ interface ProjectState {
   
   // Data State
   projectMeta: ProjectMetadata | null;
+  projectConfig: ProjectConfig | null;
   users: SystemUser[];
   activeUser: SystemUser | null;
   lists: TaskList[];
@@ -98,6 +99,9 @@ interface ProjectState {
   setSelectedDoc: (docId: string | null) => void;
   setSearchQuery: (query: string) => void;
   setSearchOpen: (isOpen: boolean) => void;
+  getDocViewMode: (docId: string | null) => 'edit' | 'preview' | 'split';
+  setDocViewMode: (docId: string, mode: 'edit' | 'preview' | 'split') => Promise<void>;
+  saveProjectConfig: (config?: ProjectConfig) => Promise<void>;
 }
 
 // Helper to save/load persistence state
@@ -175,6 +179,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     
     // Data State
     projectMeta: null,
+    projectConfig: null,
     users: [],
     activeUser: null,
     lists: [],
@@ -214,6 +219,25 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         // Existing project folder! Load everything
         const projectRaw = await adapter.readTextFile('/project.json');
         const projectMeta: ProjectMetadata = JSON.parse(projectRaw);
+
+        let projectConfig: ProjectConfig = {
+          projectId: projectMeta.id,
+          projectName: projectMeta.name,
+          lastModified: Date.now()
+        };
+
+        try {
+          if (await adapter.fileExists('/config.json')) {
+            const configRaw = await adapter.readTextFile('/config.json');
+            const loadedConfig = JSON.parse(configRaw) as ProjectConfig;
+            projectConfig = {
+              ...projectConfig,
+              ...loadedConfig
+            };
+          }
+        } catch (e) {
+          console.warn('Error loading project config', e);
+        }
 
         // Load users
         let users: SystemUser[] = [];
@@ -292,6 +316,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         set({
           adapter,
           projectMeta,
+          projectConfig,
           users,
           activeUser: null, // Always require login
           lists,
@@ -336,6 +361,39 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
+    saveProjectConfig: async (config) => {
+      const { adapter, projectConfig } = get();
+      if (!adapter) return;
+      const configToSave = config || projectConfig;
+      if (!configToSave) return;
+
+      await adapter.writeTextFile('/config.json', JSON.stringify(configToSave, null, 2));
+      set({ projectConfig: configToSave });
+    },
+
+    getDocViewMode: (docId) => {
+      const { activeUser } = get();
+      if (!docId || !activeUser) return 'split';
+      return activeUser.docViewModes?.[docId] || 'split';
+    },
+
+    setDocViewMode: async (docId, mode) => {
+      const { activeUser, adapter, users } = get();
+      if (!activeUser || !adapter) return;
+
+      const updatedUser: SystemUser = {
+        ...activeUser,
+        docViewModes: {
+          ...activeUser.docViewModes,
+          [docId]: mode
+        }
+      };
+
+      const updatedUsers = users.map(user => user.id === updatedUser.id ? updatedUser : user);
+      await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
+      set({ activeUser: updatedUser, users: updatedUsers });
+    },
+
     // Initialize an empty layout project
     createBlankProject: async (name, desc) => {
       const { adapter } = get();
@@ -367,6 +425,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       // Standard list creation
       set({
         projectMeta: meta,
+        projectConfig: config,
         users: [],
         activeUser: null,
         lists: [],
@@ -677,6 +736,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       // Now update the local react state!
       set({
         projectMeta,
+        projectConfig: config,
         users,
         activeUser: null, // Don't auto-login, let user choose/register
         lists: [listA, listB],
@@ -812,7 +872,8 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
         avatarColor,
         passwordHash,
         salt,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        docViewModes: {}
       };
 
       const updatedUsers = [...users, newUser];
@@ -1272,7 +1333,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
     },
 
     deleteDoc: async (docId) => {
-      const { adapter, docs } = get();
+      const { adapter, docs, projectConfig } = get();
       if (!adapter) return;
 
       const doc = docs.find(d => d.id === docId);
@@ -1285,6 +1346,19 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       
       // Re-save index Catalog
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
+
+      const updatedUsers = users.map(user => {
+        if (!user.docViewModes || !user.docViewModes[docId]) return user;
+        const updatedDocViewModes = { ...user.docViewModes };
+        delete updatedDocViewModes[docId];
+        return { ...user, docViewModes: updatedDocViewModes };
+      });
+
+      if (JSON.stringify(updatedUsers) !== JSON.stringify(users)) {
+        await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
+        const activeUser = updatedUsers.find(u => u.id === get().activeUser?.id) || null;
+        set({ users: updatedUsers, activeUser });
+      }
 
       set({ docs: updatedDocs, selectedDocId: null });
     },

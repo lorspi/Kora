@@ -30,7 +30,9 @@ export default function DocView() {
     saveDocContent, 
     deleteDoc, 
     uploadAttachment, 
-    resolveAttachmentUrl 
+    resolveAttachmentUrl,
+    getDocViewMode,
+    setDocViewMode
   } = useProjectStore();
   const { toast, confirm } = useUI();
 
@@ -61,6 +63,17 @@ export default function DocView() {
   useEffect(() => {
     setHasChanges(content !== originalContent || title !== (docMeta?.title || ''));
   }, [content, title, originalContent, docMeta?.title]);
+
+  useEffect(() => {
+    if (!selectedDocId) return;
+    const lastMode = getDocViewMode(selectedDocId);
+    setMode(lastMode);
+  }, [selectedDocId, getDocViewMode]);
+
+  useEffect(() => {
+    if (!selectedDocId) return;
+    setDocViewMode(selectedDocId, mode);
+  }, [selectedDocId, mode, setDocViewMode]);
 
   useEffect(() => {
     if (!content) return;

@@ -11,6 +11,7 @@ export interface SystemUser {
   passwordHash: string; // crypto.subtle hashed with salt
   salt: string; // crypto.subtle salt
   createdAt: number;
+  docViewModes?: Record<string, 'edit' | 'preview' | 'split'>;
 }
 
 export interface ProjectConfig {

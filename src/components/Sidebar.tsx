@@ -409,7 +409,7 @@ export default function Sidebar() {
           title="Ver repositorio en GitHub"
         >
           <Github className="w-4 h-4 text-muted-foreground" />
-          Repositorio en GitHub
+          Kora en GitHub
         </a>
 
         <button 
