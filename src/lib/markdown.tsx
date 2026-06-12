@@ -30,9 +30,9 @@ export function markdownToHtml(
   html = html.replace(/^### (.*?)$/gm, '<h3 class="text-sm font-bold text-foreground mt-4 mb-2">$1</h3>');
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  html = html.replace(/`(.*?)`/g, '<code class="bg-secondary text-bento-orange font-mono px-1.5 py-0.5 rounded text-[11px]">$1</code>');
+  html = html.replace(/`(.*?)`/g, '<code class="bg-secondary text-bento-orange font-mono px-1.5 py-0.5 rounded text-[0.85em]">$1</code>');
   html = html.replace(/^> (.*?)$/gm, '<blockquote class="border-l-4 border-bento-blue bg-bento-blue-light pl-4 py-2 text-foreground rounded-r-lg my-3 font-medium">$1</blockquote>');
-  html = html.replace(/^- (.*?)$/gm, '<li class="list-disc ml-5 text-muted-foreground py-0.5">$1</li>');
+  html = html.replace(/^- (.*?)$/gm, '<li class="list-disc ml-5 text-muted-foreground py-0.5 text-xs leading-relaxed">$1</li>');
 
   const lines = html.split('\n');
   return lines.map(line => {

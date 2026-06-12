@@ -76,6 +76,7 @@ export default function TaskDrawer() {
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
   const [detailTab, setDetailTab] = useState<TaskDetailTab>('details');
+  const [activityTab, setActivityTab] = useState<'activity' | 'notes'>('notes');
   const [isEditingDesc, setIsEditingDesc] = useState(false);
 
   const heartbeatTimer = useRef<any>(null);
@@ -228,7 +229,7 @@ export default function TaskDrawer() {
   const handleAddTag = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTag.trim()) return;
-    const cleaned = newTag.trim().toUpperCase();
+    const cleaned = newTag.trim();
     if (!task.tags.includes(cleaned)) updateTask({ ...task, tags: [...task.tags, cleaned] });
     setNewTag('');
   };
@@ -405,7 +406,7 @@ export default function TaskDrawer() {
                     <div className="space-y-2.5 col-span-2">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Etiquetas / Tags</span>
                       <form onSubmit={handleAddTag} className="flex gap-1.5">
-                        <input type="text" disabled={isLockedByOther} className="bg-card border border-input rounded-lg px-2.5 py-1 text-[11px] text-foreground placeholder-muted-foreground focus:outline-none w-full uppercase shadow-card" placeholder="Escribir TAG..." value={newTag} onChange={(e) => setNewTag(e.target.value)} />
+                        <input type="text" disabled={isLockedByOther} className="bg-card border border-input rounded-lg px-2.5 py-1 text-[11px] text-foreground placeholder-muted-foreground focus:outline-none w-full shadow-card" placeholder="Escribir TAG..." value={newTag} onChange={(e) => setNewTag(e.target.value)} />
                         <button type="submit" disabled={isLockedByOther || !newTag.trim()} className="p-1.5 bg-secondary hover:bg-accent rounded-lg text-muted-foreground transition-colors cursor-pointer disabled:opacity-40 shrink-0 border border-border">
                           <Plus className="w-3.5 h-3.5" />
                         </button>
@@ -485,124 +486,131 @@ export default function TaskDrawer() {
           </div>
 
           {/* Column Right - Activity & Notes */}
-          <div className="w-full md:w-96 shrink-0 overflow-y-auto p-6 bg-secondary flex flex-col gap-4">
-            
-            {/* Activity Comments */}
-            <div className="space-y-3.5 flex-1 flex flex-col overflow-hidden">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Actividad & Notas</span>
+          <div className="w-full md:w-96 shrink-0 overflow-hidden p-6 bg-secondary flex flex-col gap-3">
+
+            {/* Tabs */}
+            <div className="flex gap-4 text-xs font-semibold text-muted-foreground border-b border-border shrink-0">
+              {([  
+                { id: 'notes' as const, label: 'Notas' },
+                { id: 'activity' as const, label: 'Actividad' },
+              ]).map(({ id, label }) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setActivityTab(id)}
+                  className={`py-2 transition-colors border-b-2 -mb-px cursor-pointer ${
+                    activityTab === id ? 'border-primary text-foreground font-bold' : 'border-transparent hover:text-foreground'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Notes tab */}
+            {activityTab === 'notes' && (
+              <div className="flex-1 overflow-hidden flex flex-col gap-3">
+                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                  {taskLogs.filter(l => !!l.comment).map(log => {
+                    const logUser = users.find(u => u.id === log.userId);
+                    const isOwnComment = log.userId === activeUser?.id;
+                    const isEditing = editingLogId === log.id;
+                    return (
+                      <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2 group/log">
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}>{log.username.charAt(0)}</span>
+                          <strong className="text-foreground font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
+                          {isOwnComment && !isLockedByOther && (
+                            <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/log:opacity-100 transition-opacity">
+                              {isEditing ? (
+                                <>
+                                  <button onClick={async () => { await editComment(log.id, editingText); setEditingLogId(null); setEditingText(''); }} className="p-0.5 rounded hover:bg-accent text-bento-green transition-colors cursor-pointer" title="Guardar"><Check className="w-3 h-3" /></button>
+                                  <button onClick={() => { setEditingLogId(null); setEditingText(''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground transition-colors cursor-pointer" title="Cancelar"><X className="w-3 h-3" /></button>
+                                </>
+                              ) : (
+                                <>
+                                  <button onClick={() => { setEditingLogId(log.id); setEditingText(log.comment?.text || ''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Editar"><Pencil className="w-3 h-3" /></button>
+                                  <button onClick={() => { if (confirm('¿Eliminar este comentario?')) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" title="Eliminar"><Trash2 className="w-3 h-3" /></button>
+                                </>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {log.comment && (
+                          <div className="mt-1.5 p-2 bg-card border border-border rounded-lg text-foreground font-body break-words whitespace-pre-line leading-relaxed shadow-card">
+                            {isEditing ? (
+                              <textarea className="w-full bg-secondary border border-input rounded-lg p-2 text-xs text-foreground focus:outline-none focus:border-ring resize-none h-16 font-body" value={editingText} onChange={(e) => setEditingText(e.target.value)} autoFocus />
+                            ) : (
+                              log.comment.text && <span>{log.comment.text}</span>
+                            )}
+                            {log.comment.attachments && log.comment.attachments.length > 0 && (
+                              <div className={`space-y-1.5 ${log.comment.text ? 'mt-2' : ''}`}>
+                                {log.comment.attachments.map(attPath => {
+                                  const localUrl = resolvedMedia[attPath];
+                                  const isVideoFile = attPath.endsWith('.mp4') || attPath.endsWith('.mov') || attPath.includes('video');
+                                  return (
+                                    <div key={attPath} className="rounded-lg overflow-hidden border border-border bg-secondary p-1 shadow-card">
+                                      {localUrl ? (
+                                        isVideoFile ? (
+                                          <video src={localUrl} controls className="max-w-full rounded h-28 mx-auto" />
+                                        ) : (
+                                          <img src={localUrl} alt="Attached" className="max-w-full rounded max-h-24 mx-auto cursor-pointer hover:opacity-80 transition-opacity" referrerPolicy="no-referrer" onClick={() => { setPreviewMediaUrl(localUrl); setPreviewMediaType('image'); }} />
+                                        )
+                                      ) : null}
+                                      <span className="text-[8px] font-mono block text-center text-muted-foreground py-0.5 truncate">{attPath.split('/').pop()}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <span className="text-[8px] font-mono text-muted-foreground block text-right mt-1">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </div>
+                    );
+                  })}
+                  {taskLogs.filter(l => !!l.comment).length === 0 && <span className="text-[10px] text-muted-foreground italic text-center block pt-4">Sin notas aún.</span>}
+                </div>
+
+                <form onSubmit={handleCommentSubmit} className="space-y-2 shrink-0 pt-2 border-t border-border">
+                  <div className="flex gap-1">
+                    <textarea disabled={isLockedByOther} className="w-full bg-card border border-input text-foreground placeholder-muted-foreground rounded-lg p-2.5 text-xs focus:outline-none focus:border-ring h-14 resize-none leading-relaxed font-body shadow-card" placeholder="Escribir una nota u opinión..." value={newComment} onChange={(e) => setNewComment(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommentSubmit(e); } }} />
+                    <button type="submit" disabled={isLockedByOther || (!newComment.trim() && commentFiles.length === 0)} className="p-3 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-40 shadow-card leading-none" title="Enviar nota">
+                      <Send className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] text-muted-foreground font-semibold truncate max-w-[150px]">
+                      {commentFiles.length > 0 ? `📎 ${commentFiles.length} archivo(s) listos` : 'Vacío'}
+                    </span>
+                    <label className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors inline-block p-1 bg-card border border-border rounded-md shadow-card">
+                      <Paperclip className="w-3.5 h-3.5" />
+                      <input type="file" accept="image/*,video/*" onChange={handleCommentAttachment} className="hidden" />
+                    </label>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Activity tab */}
+            {activityTab === 'activity' && (
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                {taskLogs.map(log => {
+                {taskLogs.filter(l => !l.comment).map(log => {
                   const logUser = users.find(u => u.id === log.userId);
-                  const isOwnComment = log.userId === activeUser?.id;
-                  const isEditing = editingLogId === log.id;
                   return (
-                    <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2 group/log">
+                    <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2">
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}>{log.username.charAt(0)}</span>
                         <strong className="text-foreground font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
                         <span className="text-[10px]">{log.action}</span>
-                        {/* Edit/Delete controls for own comments */}
-                        {isOwnComment && log.comment && !isLockedByOther && (
-                          <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/log:opacity-100 transition-opacity">
-                            {isEditing ? (
-                              <>
-                                <button
-                                  onClick={async () => { await editComment(log.id, editingText); setEditingLogId(null); setEditingText(''); }}
-                                  className="p-0.5 rounded hover:bg-accent text-bento-green transition-colors cursor-pointer" title="Guardar"
-                                >
-                                  <Check className="w-3 h-3" />
-                                </button>
-                                <button
-                                  onClick={() => { setEditingLogId(null); setEditingText(''); }}
-                                  className="p-0.5 rounded hover:bg-accent text-muted-foreground transition-colors cursor-pointer" title="Cancelar"
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => { setEditingLogId(log.id); setEditingText(log.comment?.text || ''); }}
-                                  className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Editar"
-                                >
-                                  <Pencil className="w-3 h-3" />
-                                </button>
-                                <button
-                                  onClick={() => { if (confirm('¿Eliminar este comentario?')) deleteComment(log.id); }}
-                                  className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" title="Eliminar"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        )}
+                        <span className="text-[8px] font-mono text-muted-foreground ml-auto shrink-0">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
-                      {log.comment && (
-                        <div className="mt-1.5 p-2 bg-card border border-border rounded-lg text-foreground font-body break-words whitespace-pre-line leading-relaxed shadow-card">
-                          {isEditing ? (
-                            <textarea
-                              className="w-full bg-secondary border border-input rounded-lg p-2 text-xs text-foreground focus:outline-none focus:border-ring resize-none h-16 font-body"
-                              value={editingText}
-                              onChange={(e) => setEditingText(e.target.value)}
-                              autoFocus
-                            />
-                          ) : (
-                            log.comment.text && <span>{log.comment.text}</span>
-                          )}
-                          {log.comment.attachments && log.comment.attachments.length > 0 && (
-                            <div className={`space-y-1.5 ${log.comment.text ? 'mt-2' : ''}`}>
-                              {log.comment.attachments.map(attPath => {
-                                const localUrl = resolvedMedia[attPath];
-                                const isVideoFile = attPath.endsWith('.mp4') || attPath.endsWith('.mov') || attPath.includes('video');
-                                return (
-                                  <div key={attPath} className="rounded-lg overflow-hidden border border-border bg-secondary p-1 shadow-card">
-                                    {localUrl ? (
-                                      isVideoFile ? (
-                                        <video src={localUrl} controls className="max-w-full rounded h-28 mx-auto" />
-                                      ) : (
-                                        <img 
-                                          src={localUrl} 
-                                          alt="Attached" 
-                                          className="max-w-full rounded max-h-24 mx-auto cursor-pointer hover:opacity-80 transition-opacity" 
-                                          referrerPolicy="no-referrer"
-                                          onClick={() => { setPreviewMediaUrl(localUrl); setPreviewMediaType('image'); }}
-                                        />
-                                      )
-                                    ) : null}
-                                    <span className="text-[8px] font-mono block text-center text-muted-foreground py-0.5 truncate">{attPath.split('/').pop()}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      <span className="text-[8px] font-mono text-muted-foreground block text-right mt-1">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                   );
                 })}
-                {taskLogs.length === 0 && <span className="text-[10px] text-muted-foreground italic text-center block pt-4">Historial vacío.</span>}
+                {taskLogs.filter(l => !l.comment).length === 0 && <span className="text-[10px] text-muted-foreground italic text-center block pt-4">Sin actividad registrada.</span>}
               </div>
-
-              <form onSubmit={handleCommentSubmit} className="space-y-2 shrink-0 pt-2 border-t border-border">
-                <div className="flex gap-1">
-                  <textarea disabled={isLockedByOther} className="w-full bg-card border border-input text-foreground placeholder-muted-foreground rounded-lg p-2.5 text-xs focus:outline-none focus:border-ring h-14 resize-none leading-relaxed font-body shadow-card" placeholder="Escribir una nota u opinión..." value={newComment} onChange={(e) => setNewComment(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommentSubmit(e); } }} />
-                  <button type="submit" disabled={isLockedByOther || (!newComment.trim() && commentFiles.length === 0)} className="p-3 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-40 shadow-card leading-none" title="Enviar nota">
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[9px] text-muted-foreground font-semibold truncate max-w-[150px]">
-                    {commentFiles.length > 0 ? `📎 ${commentFiles.length} archivo(s) listos` : 'Vacío'}
-                  </span>
-                  <label className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors inline-block p-1 bg-card border border-border rounded-md shadow-card">
-                    <Paperclip className="w-3.5 h-3.5" />
-                    <input type="file" accept="image/*,video/*" onChange={handleCommentAttachment} className="hidden" />
-                  </label>
-                </div>
-              </form>
-            </div>
+            )}
           </div>
         </div>
 
