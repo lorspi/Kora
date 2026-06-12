@@ -64,6 +64,26 @@ export default function MediaExplorer() {
         }
       });
 
+      // Scan document content for attachment references as well
+      const docAttachmentRegex = /(?:\/?attachments\/(?:images|videos)\/[a-zA-Z0-9_\-.]+)/g;
+      for (const doc of docs) {
+        try {
+          const docText = await adapter.readTextFile(`/docs/${doc.filename}`);
+          const matches = Array.from(new Set(docText.match(docAttachmentRegex) || []));
+          matches.forEach((rawPath) => {
+            const fullPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+            const label = `DOC: ${doc.title || doc.filename}`;
+            const existing = pathToReferences.get(fullPath) || [];
+            if (!existing.includes(label)) {
+              existing.push(label);
+              pathToReferences.set(fullPath, existing);
+            }
+          });
+        } catch (err) {
+          // Ignore missing doc files or read issues
+        }
+      }
+
       // List actual files in attachments directories
       const imageFiles = await adapter.listFiles('/attachments/images');
       const videoFiles = await adapter.listFiles('/attachments/videos');
