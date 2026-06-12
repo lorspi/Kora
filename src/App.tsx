@@ -6,6 +6,7 @@
 import React, { useEffect } from 'react';
 import { useProjectStore } from './store';
 import LoadFolderScreen from './components/LoadFolderScreen';
+import ProjectOnboarding from './components/ProjectOnboarding';
 import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
 import ListViews from './components/ListViews';
@@ -42,12 +43,22 @@ export default function App() {
     backgroundReload,
     logs,
     initialize,
-    isLoading
+    isLoading,
+    isOnboarding,
+    closeProject
   } = useProjectStore();
 
   // Initialize the app on load
   useEffect(() => {
-    initialize();
+    // Check for reset parameter
+    const params = new URLSearchParams(window.location.search);
+    if (params.has('reset')) {
+      closeProject();
+      // Remove the reset parameter from URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else {
+      initialize();
+    }
   }, []);
 
   // Polling interval loop to detect directory/IDB modifications during other simulations
@@ -79,7 +90,12 @@ export default function App() {
     return <LoadFolderScreen />;
   }
 
-  // Stage 2: Register/Authenticate Local User inside selected folder
+  // Stage 2: Onboarding for new project
+  if (isOnboarding) {
+    return <ProjectOnboarding />;
+  }
+
+  // Stage 3: Register/Authenticate Local User inside selected folder
   if (!activeUser) {
     return <AuthScreen />;
   }

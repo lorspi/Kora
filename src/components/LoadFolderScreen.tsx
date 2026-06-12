@@ -234,7 +234,7 @@ export default function LoadFolderScreen() {
                   Todo lo que hagas se almacenará en el <strong>almacenamiento local</strong> de tu navegador. Tus datos no salen de tu dispositivo.
                 </p>
                 <span className="mt-4 text-[11px] text-bento-orange font-medium group-hover:underline flex items-center gap-1">
-                  Entrar con Demo Precargado <ArrowRight className="w-3 h-3" />
+                  Crear Disco Virtual <ArrowRight className="w-3 h-3" />
                 </span>
               </div>
 

@@ -11,6 +11,7 @@ export interface SystemUser {
   passwordHash: string; // crypto.subtle hashed with salt
   salt: string; // crypto.subtle salt
   createdAt: number;
+  isSuperAdmin?: boolean; // First user of a new project is marked as superadmin
   docViewModes?: Record<string, 'edit' | 'preview' | 'split'>;
 }
 
