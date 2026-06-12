@@ -115,6 +115,22 @@ export default function TaskDrawer() {
   }, [task?.id]);
 
   useEffect(() => {
+    if (!selectedTaskId) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (previewMediaUrl) {
+        setPreviewMediaUrl(null);
+        return;
+      }
+      setSelectedTask(null);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedTaskId, previewMediaUrl, setSelectedTask]);
+
+  useEffect(() => {
     if (!task) return;
     const taskLogs = logs.filter(l => l.taskId === task.id);
     taskLogs.forEach(log => {
@@ -202,10 +218,19 @@ export default function TaskDrawer() {
     updateTask({ ...task, tags: task.tags.filter(t => t !== tagName) });
   };
 
+  const closeDrawer = () => setSelectedTask(null);
+
   return (
-    <div id="task-drawer-overlay" className="fixed inset-0 bg-foreground/20 backdrop-blur-[1px] z-40 flex justify-end font-body">
-      
-      <div id="task-drawer-panel" className="w-full max-w-4xl bg-card border-l border-border h-full flex flex-col relative select-none shadow-card-hover animate-fade-in">
+    <div
+      id="task-drawer-overlay"
+      className="fixed inset-0 bg-foreground/20 backdrop-blur-[1px] z-40 flex justify-end font-body cursor-pointer"
+      onClick={closeDrawer}
+    >
+      <div
+        id="task-drawer-panel"
+        className="w-full max-w-4xl bg-card border-l border-border h-full flex flex-col relative select-none shadow-card-hover animate-fade-in cursor-default"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {isLockedByOther && (
           <div className="bg-bento-yellow-light border-b border-border p-3 flex items-center gap-2.5 text-bento-yellow text-xs shrink-0 select-none">
@@ -232,7 +257,7 @@ export default function TaskDrawer() {
             <button onClick={() => { if (confirm('¿Eliminar definitivamente este archivo JSON de tarea?')) deleteTask(task.id); }} disabled={isLockedByOther} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30 cursor-pointer" title="Eliminar tarea">
               <Trash2 className="w-4 h-4" />
             </button>
-            <button onClick={() => setSelectedTask(null)} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Cerrar detalles">
+            <button onClick={closeDrawer} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Cerrar detalles">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -276,21 +301,21 @@ export default function TaskDrawer() {
             <div className="grid grid-cols-2 gap-4 bg-secondary p-4 rounded-xl border border-border">
               <div className="space-y-1.5">
                 <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Estado de Tarea</span>
-                <select disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground py-2 rounded-xl focus:outline-none focus:border-ring px-3 cursor-pointer shadow-card font-semibold" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
+                <select disabled={isLockedByOther} className="form-select w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring cursor-pointer shadow-card font-semibold" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
                   {activeList.statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
               </div>
 
               <div className="space-y-1.5">
                 <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Prioridad</span>
-                <select disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground py-2 rounded-xl focus:outline-none focus:border-ring px-3 cursor-pointer font-semibold shadow-card" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
+                <select disabled={isLockedByOther} className="form-select w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring cursor-pointer font-semibold shadow-card" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
                   <option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
                 </select>
               </div>
 
               <div className="space-y-1.5">
                 <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Fecha Límite</span>
-                <input type="date" disabled={isLockedByOther} className="w-full bg-card border border-input text-xs text-foreground p-2 rounded-xl focus:outline-none focus:border-ring shadow-card" value={task.dueDate || ''} onChange={(e) => updateTask({ ...task, dueDate: e.target.value })} />
+                <input type="date" disabled={isLockedByOther} className="form-date w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring shadow-card" value={task.dueDate || ''} onChange={(e) => updateTask({ ...task, dueDate: e.target.value })} />
               </div>
 
               <div className="space-y-1.5">
