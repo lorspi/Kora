@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useProjectStore } from '../store';
 import { Task, SystemUser } from '../types';
+import { MarkdownPreview } from '../lib/markdown';
 import { 
   X, 
   Trash2, 
@@ -27,8 +28,11 @@ import {
   Unlock,
   ShieldAlert,
   Pencil,
-  Check
+  Check,
+  Settings2
 } from 'lucide-react';
+
+type TaskDetailTab = 'details' | 'subtasks' | 'dependencies';
 
 export default function TaskDrawer() {
   const { 
@@ -71,9 +75,12 @@ export default function TaskDrawer() {
   const [previewMediaType, setPreviewMediaType] = useState<'image' | 'video'>('image');
   const [editingLogId, setEditingLogId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const [detailTab, setDetailTab] = useState<TaskDetailTab>('details');
+  const [isEditingDesc, setIsEditingDesc] = useState(false);
 
   const heartbeatTimer = useRef<any>(null);
   const locksRef = useRef(locks);
+  const descTextareaRef = useRef<HTMLTextAreaElement>(null);
   locksRef.current = locks;
 
   // Update locked-by-other status reactively when locks change
@@ -112,6 +119,8 @@ export default function TaskDrawer() {
     if (!task) return;
     setTitle(task.title);
     setDesc(task.description || '');
+    setDetailTab('details');
+    setIsEditingDesc(false);
   }, [task?.id]);
 
   useEffect(() => {
@@ -194,6 +203,16 @@ export default function TaskDrawer() {
 
   const handleDescBlur = () => {
     if (desc !== task.description) updateTask({ ...task, description: desc });
+    setIsEditingDesc(false);
+  };
+
+  const handleDescPreviewClick = () => {
+    if (isLockedByOther) return;
+    setIsEditingDesc(true);
+    requestAnimationFrame(() => {
+      descTextareaRef.current?.focus();
+      descTextareaRef.current?.setSelectionRange(desc.length, desc.length);
+    });
   };
 
   const handleToggleAssignee = (userId: string) => {
@@ -289,125 +308,178 @@ export default function TaskDrawer() {
                 <span>Descripción</span>
                 <span className="text-[9px] font-mono">Soporta texto plano / Markdown</span>
               </div>
-              <textarea 
-                disabled={isLockedByOther}
-                className="w-full bg-card border border-input rounded-xl p-4 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-colors h-44 font-body leading-relaxed shadow-card"
-                placeholder="Ingresa los requerimientos, detalles o adjuntos en formato libre..."
-                value={desc} onChange={(e) => setDesc(e.target.value)} onBlur={handleDescBlur}
-              />
-            </div>
-
-            {/* Configuration fields */}
-            <div className="grid grid-cols-2 gap-4 bg-secondary p-4 rounded-xl border border-border">
-              <div className="space-y-1.5">
-                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Estado de Tarea</span>
-                <select disabled={isLockedByOther} className="form-select w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring cursor-pointer shadow-card font-semibold" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
-                  {activeList.statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Prioridad</span>
-                <select disabled={isLockedByOther} className="form-select w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring cursor-pointer font-semibold shadow-card" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
-                  <option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Fecha Límite</span>
-                <input type="date" disabled={isLockedByOther} className="form-date w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring shadow-card" value={task.dueDate || ''} onChange={(e) => updateTask({ ...task, dueDate: e.target.value })} />
-              </div>
-
-              <div className="space-y-1.5">
-                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Equipo Responsable</span>
-                <div className="max-h-28 overflow-y-auto space-y-1.5 bg-card p-2.5 rounded-xl border border-border shadow-card font-medium">
-                  {users.map(u => {
-                    const isAssigned = task.assignees.includes(u.id);
-                    return (
-                      <label key={u.id} className="flex items-center gap-2 cursor-pointer select-none group/u py-0.5">
-                        <input type="checkbox" disabled={isLockedByOther} checked={isAssigned} onChange={() => handleToggleAssignee(u.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
-                        <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }}>{u.name.charAt(0)}</span>
-                        <span className="text-xs text-foreground group-hover/u:text-foreground truncate">{u.name}</span>
-                      </label>
-                    );
-                  })}
-                  {users.length === 0 && <span className="text-[10px] text-muted-foreground block text-center py-2">Registra miembros locales.</span>}
-                </div>
-              </div>
-
-              <div className="space-y-2.5 col-span-2">
-                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Etiquetas / Tags</span>
-                <form onSubmit={handleAddTag} className="flex gap-1.5">
-                  <input type="text" disabled={isLockedByOther} className="bg-card border border-input rounded-lg px-2.5 py-1 text-[11px] text-foreground placeholder-muted-foreground focus:outline-none w-full uppercase shadow-card" placeholder="Escribir TAG..." value={newTag} onChange={(e) => setNewTag(e.target.value)} />
-                  <button type="submit" disabled={isLockedByOther || !newTag.trim()} className="p-1.5 bg-secondary hover:bg-accent rounded-lg text-muted-foreground transition-colors cursor-pointer disabled:opacity-40 shrink-0 border border-border">
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                </form>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {task.tags.map(tag => (
-                    <span key={tag} className="inline-flex items-center gap-1 text-[9px] font-bold bg-bento-blue-light text-bento-blue border border-border px-2 py-0.5 rounded-md font-mono shadow-card">
-                      #{tag}
-                      <button type="button" disabled={isLockedByOther} onClick={() => handleRemoveTag(tag)} className="hover:text-destructive cursor-pointer disabled:pointer-events-none font-bold">×</button>
-                    </span>
-                  ))}
-                  {task.tags.length === 0 && <span className="text-[10px] text-muted-foreground italic">Sin etiquetas.</span>}
-                </div>
-              </div>
-            </div>
-
-            {/* Subtasks box */}
-            <div className="space-y-3 bg-secondary p-4 rounded-xl border border-border">
-              <div className="flex justify-between items-center">
-                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Subtareas internas</span>
-                <span className="text-[10px] text-muted-foreground font-mono font-semibold">
-                  {task.subtasks.filter(s => s.isCompleted).length}/{task.subtasks.length} Completado
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <input 
-                  type="text" disabled={isLockedByOther} placeholder="+ Agregar subtarea..."
-                  className="bg-card border border-input rounded-lg px-3 py-1.5 focus:outline-none focus:border-ring text-xs w-full text-foreground placeholder-muted-foreground shadow-card"
-                  value={newSub} onChange={(e) => setNewSub(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (newSub.trim()) { addSubtask(task.id, newSub); setNewSub(''); } } }}
+              {isEditingDesc && !isLockedByOther ? (
+                <textarea
+                  ref={descTextareaRef}
+                  disabled={isLockedByOther}
+                  className="w-full bg-card border border-input rounded-xl p-4 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-colors h-44 font-body leading-relaxed shadow-card resize-y"
+                  placeholder="Ingresa los requerimientos, detalles o adjuntos en formato libre..."
+                  value={desc}
+                  onChange={(e) => setDesc(e.target.value)}
+                  onBlur={handleDescBlur}
                 />
-                <button type="button" disabled={isLockedByOther || !newSub.trim()} onClick={() => { addSubtask(task.id, newSub); setNewSub(''); }}
-                  className="px-3 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-40 shadow-card leading-none"
-                >Agregar</button>
-              </div>
-              <div className="space-y-1.5 mt-2 font-medium">
-                {task.subtasks.map(sub => (
-                  <div key={sub.id} className="flex items-center justify-between gap-3 p-1.5 rounded bg-card border border-border hover:bg-accent transition-colors shadow-card">
-                    <label className="flex items-center gap-2 cursor-pointer select-none flex-1">
-                      <input type="checkbox" disabled={isLockedByOther} checked={sub.isCompleted} onChange={() => toggleSubtask(task.id, sub.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
-                      <span className={`text-xs text-foreground truncate ${sub.isCompleted ? 'line-through text-muted-foreground' : ''}`}>{sub.title}</span>
-                    </label>
-                    <button type="button" disabled={isLockedByOther} onClick={() => deleteSubtask(task.id, sub.id)} className="text-muted-foreground hover:text-destructive p-0.5 rounded transition-colors">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                ))}
-                {task.subtasks.length === 0 && <span className="text-[10px] text-muted-foreground italic block text-center py-2">Sin subtareas agregadas.</span>}
-              </div>
+              ) : (
+                <div
+                  role="button"
+                  tabIndex={isLockedByOther ? -1 : 0}
+                  onClick={handleDescPreviewClick}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleDescPreviewClick();
+                    }
+                  }}
+                  className={`w-full bg-card border border-input rounded-xl p-4 min-h-44 shadow-card overflow-y-auto ${
+                    isLockedByOther ? 'cursor-default' : 'cursor-text hover:border-ring/60'
+                  }`}
+                >
+                  <MarkdownPreview
+                    content={desc}
+                    emptyMessage="Ingresa los requerimientos, detalles o adjuntos en formato libre..."
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Dependencies */}
-            <div className="space-y-3 bg-secondary p-4 rounded-xl border border-border">
-              <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Relaciones de Dependencia (Bloqueos)</span>
-              <p className="text-[10px] text-muted-foreground leading-normal">Marca qué otras tareas deben completarse antes de comenzar esta.</p>
-              <div className="max-h-36 overflow-y-auto space-y-1.5 border border-border rounded-lg p-2.5 bg-card shadow-card font-medium">
-                {tasks.filter(t => t.id !== task.id).map(other => {
-                  const isChecked = task.dependencies.includes(other.id);
-                  return (
-                    <label key={other.id} className="flex items-center justify-between p-1 hover:bg-accent rounded cursor-pointer select-none">
-                      <span className="flex items-center gap-2 truncate">
-                        <input type="checkbox" disabled={isLockedByOther} checked={isChecked} onChange={() => handleToggleDependency(other.id)} className="rounded border-border text-bento-blue accent-bento-blue w-3.5 h-3.5 mr-1" />
-                        <span className="font-mono text-[9px] font-bold text-muted-foreground">{other.taskCode}</span>
-                        <span className="text-xs text-foreground truncate max-w-sm">{other.title}</span>
+            {/* Task detail tabs */}
+            <div className="bg-secondary rounded-xl border border-border overflow-hidden">
+              <div className="flex gap-4 px-4 text-xs font-semibold text-muted-foreground border-b border-border">
+                {([
+                  { id: 'details' as const, label: 'Detalles', icon: Settings2 },
+                  { id: 'subtasks' as const, label: 'Subtareas', icon: CheckSquare },
+                  { id: 'dependencies' as const, label: 'Dependencias', icon: Link },
+                ]).map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setDetailTab(id)}
+                    className={`py-3 flex items-center gap-1.5 cursor-pointer transition-colors border-b-2 -mb-px ${
+                      detailTab === id ? 'border-primary text-foreground font-bold' : 'border-transparent hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-4">
+                {detailTab === 'details' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Estado de Tarea</span>
+                      <select disabled={isLockedByOther} className="form-select w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring cursor-pointer shadow-card font-semibold" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
+                        {activeList.statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Prioridad</span>
+                      <select disabled={isLockedByOther} className="form-select w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring cursor-pointer font-semibold shadow-card" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
+                        <option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Fecha Límite</span>
+                      <input type="date" disabled={isLockedByOther} className="form-date w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring shadow-card" value={task.dueDate || ''} onChange={(e) => updateTask({ ...task, dueDate: e.target.value })} />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Equipo Responsable</span>
+                      <div className="max-h-28 overflow-y-auto space-y-1.5 bg-card p-2.5 rounded-xl border border-border shadow-card font-medium">
+                        {users.map(u => {
+                          const isAssigned = task.assignees.includes(u.id);
+                          return (
+                            <label key={u.id} className="flex items-center gap-2 cursor-pointer select-none group/u py-0.5">
+                              <input type="checkbox" disabled={isLockedByOther} checked={isAssigned} onChange={() => handleToggleAssignee(u.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
+                              <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }}>{u.name.charAt(0)}</span>
+                              <span className="text-xs text-foreground group-hover/u:text-foreground truncate">{u.name}</span>
+                            </label>
+                          );
+                        })}
+                        {users.length === 0 && <span className="text-[10px] text-muted-foreground block text-center py-2">Registra miembros locales.</span>}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2.5 col-span-2">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Etiquetas / Tags</span>
+                      <form onSubmit={handleAddTag} className="flex gap-1.5">
+                        <input type="text" disabled={isLockedByOther} className="bg-card border border-input rounded-lg px-2.5 py-1 text-[11px] text-foreground placeholder-muted-foreground focus:outline-none w-full uppercase shadow-card" placeholder="Escribir TAG..." value={newTag} onChange={(e) => setNewTag(e.target.value)} />
+                        <button type="submit" disabled={isLockedByOther || !newTag.trim()} className="p-1.5 bg-secondary hover:bg-accent rounded-lg text-muted-foreground transition-colors cursor-pointer disabled:opacity-40 shrink-0 border border-border">
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </form>
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {task.tags.map(tag => (
+                          <span key={tag} className="inline-flex items-center gap-1 text-[9px] font-bold bg-bento-blue-light text-bento-blue border border-border px-2 py-0.5 rounded-md font-mono shadow-card">
+                            #{tag}
+                            <button type="button" disabled={isLockedByOther} onClick={() => handleRemoveTag(tag)} className="hover:text-destructive cursor-pointer disabled:pointer-events-none font-bold">×</button>
+                          </span>
+                        ))}
+                        {task.tags.length === 0 && <span className="text-[10px] text-muted-foreground italic">Sin etiquetas.</span>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {detailTab === 'subtasks' && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Subtareas internas</span>
+                      <span className="text-[10px] text-muted-foreground font-mono font-semibold">
+                        {task.subtasks.filter(s => s.isCompleted).length}/{task.subtasks.length} Completado
                       </span>
-                    </label>
-                  );
-                })}
-                {tasks.length <= 1 && <span className="text-[10px] text-muted-foreground block text-center py-2 italic font-mono">No hay otras tareas para enlazar.</span>}
+                    </div>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" disabled={isLockedByOther} placeholder="+ Agregar subtarea..."
+                        className="bg-card border border-input rounded-lg px-3 py-1.5 focus:outline-none focus:border-ring text-xs w-full text-foreground placeholder-muted-foreground shadow-card"
+                        value={newSub} onChange={(e) => setNewSub(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (newSub.trim()) { addSubtask(task.id, newSub); setNewSub(''); } } }}
+                      />
+                      <button type="button" disabled={isLockedByOther || !newSub.trim()} onClick={() => { addSubtask(task.id, newSub); setNewSub(''); }}
+                        className="px-3 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-40 shadow-card leading-none"
+                      >Agregar</button>
+                    </div>
+                    <div className="space-y-1.5 mt-2 font-medium">
+                      {task.subtasks.map(sub => (
+                        <div key={sub.id} className="flex items-center justify-between gap-3 p-1.5 rounded bg-card border border-border hover:bg-accent transition-colors shadow-card">
+                          <label className="flex items-center gap-2 cursor-pointer select-none flex-1">
+                            <input type="checkbox" disabled={isLockedByOther} checked={sub.isCompleted} onChange={() => toggleSubtask(task.id, sub.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
+                            <span className={`text-xs text-foreground truncate ${sub.isCompleted ? 'line-through text-muted-foreground' : ''}`}>{sub.title}</span>
+                          </label>
+                          <button type="button" disabled={isLockedByOther} onClick={() => deleteSubtask(task.id, sub.id)} className="text-muted-foreground hover:text-destructive p-0.5 rounded transition-colors">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                      {task.subtasks.length === 0 && <span className="text-[10px] text-muted-foreground italic block text-center py-2">Sin subtareas agregadas.</span>}
+                    </div>
+                  </div>
+                )}
+
+                {detailTab === 'dependencies' && (
+                  <div className="space-y-3">
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Relaciones de Dependencia (Bloqueos)</span>
+                    <p className="text-[10px] text-muted-foreground leading-normal">Marca qué otras tareas deben completarse antes de comenzar esta.</p>
+                    <div className="max-h-36 overflow-y-auto space-y-1.5 border border-border rounded-lg p-2.5 bg-card shadow-card font-medium">
+                      {tasks.filter(t => t.id !== task.id).map(other => {
+                        const isChecked = task.dependencies.includes(other.id);
+                        return (
+                          <label key={other.id} className="flex items-center justify-between p-1 hover:bg-accent rounded cursor-pointer select-none">
+                            <span className="flex items-center gap-2 truncate">
+                              <input type="checkbox" disabled={isLockedByOther} checked={isChecked} onChange={() => handleToggleDependency(other.id)} className="rounded border-border text-bento-blue accent-bento-blue w-3.5 h-3.5 mr-1" />
+                              <span className="font-mono text-[9px] font-bold text-muted-foreground">{other.taskCode}</span>
+                              <span className="text-xs text-foreground truncate max-w-sm">{other.title}</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                      {tasks.length <= 1 && <span className="text-[10px] text-muted-foreground block text-center py-2 italic font-mono">No hay otras tareas para enlazar.</span>}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
