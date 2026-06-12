@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from 'react';
+import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { 
   ProjectMetadata, 
@@ -48,6 +49,7 @@ export default function Sidebar() {
     setShowMediaExplorer,
     adapter
   } = useProjectStore();
+  const { toast, confirm } = useUI();
 
   const [showAddList, setShowAddList] = useState(false);
   const [newListName, setNewListName] = useState('');
@@ -66,7 +68,7 @@ export default function Sidebar() {
       setNewListName('');
       setShowAddList(false);
     } catch (e) {
-      alert('Error al crear la lista');
+      toast('Error al crear la lista', 'error');
     }
   };
 
@@ -79,7 +81,7 @@ export default function Sidebar() {
       setNewDocTitle('');
       setShowAddDoc(false);
     } catch (e) {
-      alert('Error al crear el documento');
+      toast('Error al crear el documento', 'error');
     }
   };
   
@@ -87,12 +89,12 @@ export default function Sidebar() {
     try {
       const newDocs = await scanDocuments();
       if (newDocs > 0) {
-        alert(`Se detectaron ${newDocs} documento(s) nuevo(s)`);
+        toast(`Se detectaron ${newDocs} documento(s) nuevo(s)`, 'success');
       } else {
-        alert('No se encontraron documentos nuevos');
+        toast('No se encontraron documentos nuevos', 'info');
       }
     } catch (e) {
-      alert('Error al escanear documentos');
+      toast('Error al escanear documentos', 'error');
     }
   };
 
@@ -147,7 +149,7 @@ export default function Sidebar() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      alert('No se pudo generar el ZIP: ' + err.message);
+      toast('No se pudo generar el ZIP: ' + err.message, 'error');
     }
   };
 
@@ -411,10 +413,9 @@ export default function Sidebar() {
         </a>
 
         <button 
-          onClick={() => {
-            if (confirm('¿Seguro que deseas salir del proyecto local actual? Se cerrará la sesión de la carpeta.')) {
-              closeProject();
-            }
+          onClick={async () => {
+            const ok = await confirm({ title: 'Cambiar de carpeta', message: '¿Seguro que deseas salir del proyecto local actual? Se cerrará la sesión de la carpeta.', confirmLabel: 'Salir', variant: 'danger' });
+            if (ok) closeProject();
           }}
           className="w-full px-3 py-2 bg-card hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-border hover:border-destructive/30 rounded-xl text-[11px] transition-all flex items-center justify-center gap-1 mt-1 cursor-pointer"
         >

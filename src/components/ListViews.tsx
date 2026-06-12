@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { Task, TaskStatus, TaskList } from '../types';
 import { 
@@ -46,6 +47,7 @@ export default function ListViews() {
     setSelectedTask,
     locks
   } = useProjectStore();
+  const { toast, confirm } = useUI();
 
   const [activeTab, setActiveTab] = useState<ActiveViewTab>('list');
   const [quickTitle, setQuickTitle] = useState('');
@@ -73,7 +75,7 @@ export default function ListViews() {
       await createTask(titleVal, activeList.id, statusId, quickPriority);
       if (!customTitle) setQuickTitle('');
     } catch (e) {
-      alert('Error al crear tarea');
+      toast('Error al crear tarea', 'error');
     }
   };
 
@@ -459,7 +461,7 @@ export default function ListViews() {
                         </td>
                         <td className="p-3 text-center">
                           <button 
-                            onClick={() => { if (confirm('¿Eliminar esta tarea de forma permanente?')) deleteTask(task.id); }}
+                            onClick={async () => { const ok = await confirm({ title: 'Eliminar tarea', message: '¿Eliminar esta tarea de forma permanente? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteTask(task.id); }}
                             className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors cursor-pointer"
                             title="Eliminar"
                           >
@@ -495,6 +497,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
   updateListConfig: (listId: string, name: string, color: string, statuses: TaskStatus[]) => Promise<void>;
   deleteList: (listId: string) => Promise<void>;
 }) {
+  const { toast, confirm } = useUI();
   const [listName, setListName] = useState(activeList.name);
   const [listColor, setListColor] = useState(activeList.color);
   const [statuses, setStatuses] = useState<TaskStatus[]>(activeList.statuses);
@@ -517,7 +520,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
     try {
       await updateListConfig(activeList.id, listName, listColor, statuses);
     } catch (e) {
-      alert('Error al guardar configuración');
+      toast('Error al guardar configuración', 'error');
     } finally {
       setSaving(false);
     }
@@ -537,7 +540,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
 
   const handleRemoveStatus = (statusId: string) => {
     if (statuses.length <= 1) {
-      alert('Debe haber al menos un estado en la lista.');
+      toast('Debe haber al menos un estado en la lista.', 'warning');
       return;
     }
     setStatuses(prev => prev.filter(s => s.id !== statusId));
@@ -684,7 +687,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
 
         {/* Delete list */}
         <button
-          onClick={() => { if (confirm('¿Eliminar esta lista y todas sus tareas asociadas? Esta acción es irreversible.')) deleteList(activeList.id); }}
+          onClick={async () => { const ok = await confirm({ title: 'Eliminar lista', message: '¿Eliminar esta lista y todas sus tareas asociadas? Esta acción es irreversible.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteList(activeList.id); }}
           className="w-full bg-destructive/10 hover:bg-destructive/20 text-destructive border border-destructive/30 rounded-xl py-2 text-xs font-semibold transition-colors cursor-pointer"
         >
           Eliminar lista completa

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { Task, SystemUser } from '../types';
 import { MarkdownPreview } from '../lib/markdown';
@@ -35,6 +36,7 @@ import {
 type TaskDetailTab = 'details' | 'subtasks' | 'dependencies';
 
 export default function TaskDrawer() {
+  const { toast, confirm } = useUI();
   const { 
     tasks, 
     selectedTaskId, 
@@ -167,7 +169,7 @@ export default function TaskDrawer() {
       setNewComment('');
       setCommentFiles([]);
     } catch (e) {
-      alert('Error al publicar comentario');
+      toast('Error al publicar comentario', 'error');
     }
   };
 
@@ -178,7 +180,7 @@ export default function TaskDrawer() {
       const { path, name } = await uploadAttachment(file);
       setCommentFiles(p => [...p, { path, name }]);
     } catch (err: any) {
-      alert('No se pudo subir archivo: ' + err.message);
+      toast('No se pudo subir archivo: ' + err.message, 'error');
     } finally {
       e.target.value = '';
     }
@@ -274,7 +276,7 @@ export default function TaskDrawer() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => { if (confirm('¿Eliminar definitivamente este archivo JSON de tarea?')) deleteTask(task.id); }} disabled={isLockedByOther} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30 cursor-pointer" title="Eliminar tarea">
+            <button onClick={async () => { const ok = await confirm({ title: 'Eliminar tarea', message: '¿Eliminar definitivamente este archivo JSON de tarea? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteTask(task.id); }} disabled={isLockedByOther} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30 cursor-pointer" title="Eliminar tarea">
               <Trash2 className="w-4 h-4" />
             </button>
             <button onClick={closeDrawer} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Cerrar detalles">
@@ -530,7 +532,7 @@ export default function TaskDrawer() {
                               ) : (
                                 <>
                                   <button onClick={() => { setEditingLogId(log.id); setEditingText(log.comment?.text || ''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Editar"><Pencil className="w-3 h-3" /></button>
-                                  <button onClick={() => { if (confirm('¿Eliminar este comentario?')) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" title="Eliminar"><Trash2 className="w-3 h-3" /></button>
+                                  <button onClick={async () => { const ok = await confirm({ title: 'Eliminar nota', message: '\u00bfEliminar este comentario? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" title="Eliminar"><Trash2 className="w-3 h-3" /></button>
                                 </>
                               )}
                             </div>

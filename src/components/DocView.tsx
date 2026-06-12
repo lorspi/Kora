@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { MarkdownPreview } from '../lib/markdown';
 import { 
@@ -31,6 +32,7 @@ export default function DocView() {
     uploadAttachment, 
     resolveAttachmentUrl 
   } = useProjectStore();
+  const { toast, confirm } = useUI();
 
   const docMeta = docs.find(d => d.id === selectedDocId);
   
@@ -82,7 +84,7 @@ export default function DocView() {
       setOriginalContent(content);
       setHasChanges(false);
     } catch (e) {
-      alert('Error al guardar documento');
+      toast('Error al guardar documento', 'error');
     } finally {
       setLoading(false);
     }
@@ -118,7 +120,7 @@ export default function DocView() {
         injectSyntax(`\n![${file.name}](${relativePath})\n`);
       }
     } catch (err: any) {
-      alert('No se pudo adjuntar el archivo: ' + err.message);
+      toast('No se pudo adjuntar el archivo: ' + err.message, 'error');
     } finally {
       e.target.value = '';
     }
@@ -192,8 +194,9 @@ export default function DocView() {
           </button>
 
           <button
-            onClick={() => {
-              if (confirm('¿Eliminar de forma permanente este archivo Markdown?')) deleteDoc(docMeta.id);
+            onClick={async () => {
+              const ok = await confirm({ title: 'Eliminar documento', message: '¿Eliminar de forma permanente este archivo Markdown? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' });
+              if (ok) deleteDoc(docMeta.id);
             }}
             className="p-2 bg-card border border-border text-muted-foreground hover:text-destructive rounded-xl hover:bg-destructive/10 transition-colors cursor-pointer"
             title="Eliminar documento (.md)"

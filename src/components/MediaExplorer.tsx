@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { 
   Image, 
@@ -28,6 +29,7 @@ interface MediaItem {
 
 export default function MediaExplorer() {
   const { adapter, logs, tasks, docs, lists } = useProjectStore();
+  const { toast, confirm } = useUI();
 
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,14 +132,20 @@ export default function MediaExplorer() {
 
   const handleDelete = async (item: MediaItem) => {
     if (!item.isOrphan) return;
-    if (!confirm(`¿Eliminar definitivamente "${item.name}"? Esta acción no se puede deshacer.`)) return;
+    const ok = await confirm({
+      title: 'Eliminar archivo',
+      message: `¿Eliminar definitivamente "${item.name}"? Esta acción no se puede deshacer.`,
+      confirmLabel: 'Eliminar',
+      variant: 'danger'
+    });
+    if (!ok) return;
     
     setDeleting(item.path);
     try {
       await adapter!.deleteFile(item.path);
       setMediaItems(prev => prev.filter(m => m.path !== item.path));
     } catch (e) {
-      alert('Error al eliminar el archivo.');
+      toast('Error al eliminar el archivo.', 'error');
     } finally {
       setDeleting(null);
     }
