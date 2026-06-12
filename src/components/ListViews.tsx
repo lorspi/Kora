@@ -53,6 +53,8 @@ export default function ListViews() {
   const [quickTitle, setQuickTitle] = useState('');
   const [quickPriority, setQuickPriority] = useState<Task['priority']>('medium');
   const [collapsedStatuses, setCollapsedStatuses] = useState<Record<string, boolean>>({});
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverStatusId, setDragOverStatusId] = useState<string | null>(null);
 
   const activeList = lists.find(l => l.id === selectedListId);
 
@@ -98,6 +100,48 @@ export default function ListViews() {
       case 'medium': return 'Media';
       case 'high': return 'Alta';
       case 'urgent': return 'Urgente';
+    }
+  };
+
+  const handleTaskDragStart = (e: React.DragEvent<HTMLDivElement>, taskId: string) => {
+    e.dataTransfer.setData('text/plain', taskId);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedTaskId(taskId);
+  };
+
+  const handleTaskDragEnd = () => {
+    setDraggedTaskId(null);
+    setDragOverStatusId(null);
+  };
+
+  const handleStatusDragOver = (e: React.DragEvent<HTMLDivElement>, statusId: string) => {
+    e.preventDefault();
+    setDragOverStatusId(statusId);
+  };
+
+  const handleStatusDragLeave = (statusId: string) => {
+    if (dragOverStatusId === statusId) {
+      setDragOverStatusId(null);
+    }
+  };
+
+  const handleStatusDrop = async (e: React.DragEvent<HTMLDivElement>, statusId: string) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain') || draggedTaskId;
+    if (!taskId) return;
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || task.statusId === statusId) {
+      setDraggedTaskId(null);
+      setDragOverStatusId(null);
+      return;
+    }
+    try {
+      await updateTask({ ...task, statusId });
+    } catch (error) {
+      toast('No se pudo mover la tarea', 'error');
+    } finally {
+      setDraggedTaskId(null);
+      setDragOverStatusId(null);
     }
   };
 
@@ -199,7 +243,12 @@ export default function ListViews() {
                   </div>
 
                   {!isCollapsed && (
-                    <div className="divide-y divide-border bg-card">
+                    <div
+                      className={`divide-y divide-border bg-card ${dragOverStatusId === status.id ? 'border-2 border-dashed border-primary bg-primary/5' : ''}`}
+                      onDragOver={(e) => handleStatusDragOver(e, status.id)}
+                      onDragLeave={() => handleStatusDragLeave(status.id)}
+                      onDrop={(e) => handleStatusDrop(e, status.id)}
+                    >
                       {statusTasks.map(task => {
                         const isLocked = locks[task.id] && Date.now() < locks[task.id].expiresAt;
                         const completeCount = task.subtasks.filter(s => s.isCompleted).length;
@@ -209,7 +258,10 @@ export default function ListViews() {
                         return (
                           <div 
                             key={task.id}
-                            className="p-3.5 hover:bg-accent/50 flex items-center justify-between gap-4 transition-colors group"
+                            draggable={!locks[task.id] || Date.now() >= locks[task.id].expiresAt}
+                            onDragStart={(e) => handleTaskDragStart(e, task.id)}
+                            onDragEnd={handleTaskDragEnd}
+                            className={`p-3.5 hover:bg-accent/50 flex items-center justify-between gap-4 transition-colors group ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'}`}
                           >
                             <div className="flex items-center gap-3 min-w-0 flex-1">
                               <button 
@@ -306,7 +358,13 @@ export default function ListViews() {
             {activeList.statuses.map(status => {
               const statusTasks = listTasks.filter(t => t.statusId === status.id);
               return (
-                <div key={status.id} className="w-72 bg-card border border-border rounded-xl p-3 shrink-0 flex flex-col max-h-[85vh] shadow-card">
+                <div
+                  key={status.id}
+                  className={`w-72 bg-card border border-border rounded-xl p-3 shrink-0 flex flex-col max-h-[85vh] shadow-card ${dragOverStatusId === status.id ? 'border-primary border-2 bg-primary/5' : ''}`}
+                  onDragOver={(e) => handleStatusDragOver(e, status.id)}
+                  onDragLeave={() => handleStatusDragLeave(status.id)}
+                  onDrop={(e) => handleStatusDrop(e, status.id)}
+                >
                   <div className="flex items-center justify-between pb-3 border-b border-border mb-3 shrink-0">
                     <div className="flex items-center gap-2 truncate">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: status.color }}></span>
@@ -321,8 +379,11 @@ export default function ListViews() {
                       return (
                         <div 
                           key={task.id}
+                          draggable={!isLocked}
+                          onDragStart={(e) => handleTaskDragStart(e, task.id)}
+                          onDragEnd={handleTaskDragEnd}
                           onClick={() => setSelectedTask(task.id)}
-                          className="bg-card hover:bg-accent/50 p-3 rounded-lg border border-border hover:border-bento-blue/40 transition-all cursor-pointer group shadow-card flex flex-col gap-2.5"
+                          className={`bg-card hover:bg-accent/50 p-3 rounded-lg border border-border hover:border-bento-blue/40 transition-all ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'} group shadow-card flex flex-col gap-2.5`}
                         >
                           <div className="flex items-center justify-between gap-2.5">
                             <span className="text-[9px] font-mono text-muted-foreground font-bold">{task.taskCode}</span>
