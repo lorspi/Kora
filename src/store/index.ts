@@ -202,6 +202,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     logs: [],
   isOnboarding: false,
 
+    // Selection / Navigation UI
+    selectedListId: null,
+    selectedTaskId: null,
+    selectedDocId: null,
+    searchQuery: '',
+    isSearchOpen: false,
+    showMediaExplorer: false,
+
     // Read full project contents on load
     loadProjectDirectory: async (handle, mode) => {
       set({ isLoading: true });

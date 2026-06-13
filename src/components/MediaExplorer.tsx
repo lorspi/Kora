@@ -38,9 +38,9 @@ export default function MediaExplorer() {
   const [filter, setFilter] = useState<'all' | 'linked' | 'orphan'>('all');
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  const scanMedia = useCallback(async () => {
+  const scanMedia = useCallback(async (showLoading = false) => {
     if (!adapter) return;
-    setLoading(true);
+    if (showLoading) setLoading(true);
 
     try {
       // Get all attachment file paths referenced in activity logs
@@ -126,11 +126,20 @@ export default function MediaExplorer() {
     } finally {
       setLoading(false);
     }
-  }, [adapter, logs, tasks, lists]);
+  }, [adapter, logs, tasks, lists, docs]);
 
+  // Initial load with spinner
   useEffect(() => {
-    scanMedia();
-  }, [scanMedia]);
+    scanMedia(true);
+  }, [adapter]);
+
+  // Silent re-scan when data changes (no spinner)
+  const hasLoadedOnce = mediaItems.length > 0 || !loading;
+  useEffect(() => {
+    if (hasLoadedOnce) {
+      scanMedia(false);
+    }
+  }, [logs, tasks, lists, docs]);
 
   const handlePreview = async (item: MediaItem) => {
     if (!adapter) return;
@@ -197,7 +206,7 @@ export default function MediaExplorer() {
             </p>
           </div>
           <button 
-            onClick={scanMedia}
+            onClick={() => scanMedia(true)}
             disabled={loading}
             className="p-2 bg-secondary hover:bg-accent border border-border rounded-xl text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:opacity-40"
             title="Reescanear medios"

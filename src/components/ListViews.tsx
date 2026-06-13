@@ -175,7 +175,7 @@ export default function ListViews() {
                 }}
               />
               <select
-                className="bg-card border border-input rounded-xl px-2 py-1.5 text-xs text-foreground font-body focus:outline-none"
+                className="form-select bg-card border border-input rounded-xl px-3 py-1.5 text-xs text-foreground font-body focus:outline-none"
                 value={quickPriority}
                 onChange={(e) => setQuickPriority(e.target.value as Task['priority'])}
               >
