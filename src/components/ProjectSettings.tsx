@@ -7,6 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../store';
 import { useUI } from '../lib/ui';
 import { SystemUser } from '../types';
+import { dbGetAllKeys, dbGet } from '../lib/fs';
+import JSZip from 'jszip';
 import { 
   Settings, 
   Save, 
@@ -16,7 +18,8 @@ import {
   User, 
   Pencil,
   X,
-  Crown
+  Crown,
+  FileArchive
 } from 'lucide-react';
 
 export default function ProjectSettings() {
@@ -126,6 +129,62 @@ export default function ProjectSettings() {
       toast(`Usuario "${user.name}" eliminado`, 'success');
     } catch (e: any) {
       toast('Error: ' + e.message, 'error');
+    }
+  };
+
+  const handleExportZip = async () => {
+    try {
+      const zip = new JSZip();
+      const state = useProjectStore.getState();
+      if (!state.adapter) return;
+      const fileAdapter = state.adapter;
+      
+      if (fileAdapter.getMode() === 'VIRTUAL') {
+        const keys = await dbGetAllKeys();
+        for (const key of keys) {
+          const entry = await dbGet(key);
+          if (entry) {
+            const cleanPath = key.replace(/^\//, '');
+            if (entry.isBinary) {
+              zip.file(cleanPath, entry.content as Blob);
+            } else {
+              zip.file(cleanPath, entry.content as string);
+            }
+          }
+        }
+      } else {
+        zip.file('config.json', JSON.stringify({ projectId: state.projectMeta?.id, projectName: state.projectMeta?.name, lastOpenedBy: state.activeUser?.id, lastModified: Date.now() }, null, 2));
+        zip.file('project.json', JSON.stringify(state.projectMeta, null, 2));
+        zip.file('users/users.json', JSON.stringify(state.users, null, 2));
+        zip.file('activity/logs.json', JSON.stringify(state.logs, null, 2));
+        zip.file('activity/locks.json', JSON.stringify({}, null, 2));
+        for (const list of state.lists) {
+          zip.file(`lists/${list.id}.json`, JSON.stringify(list, null, 2));
+        }
+        for (const task of state.tasks) {
+          zip.file(`tasks/task-${task.id}.json`, JSON.stringify(task, null, 2));
+        }
+        zip.file('docs/info.json', JSON.stringify(state.docs, null, 2));
+        for (const doc of state.docs) {
+          try {
+            const md = await fileAdapter.readTextFile(`/docs/${doc.filename}`);
+            zip.file(`docs/${doc.filename}`, md);
+          } catch (e) {}
+        }
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${projectMeta?.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Kora_Offline'}_workspace.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast('Respaldo ZIP generado exitosamente', 'success');
+    } catch (err: any) {
+      toast('No se pudo generar el ZIP: ' + err.message, 'error');
     }
   };
 
@@ -297,6 +356,24 @@ export default function ProjectSettings() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* Backup */}
+        <section className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-card">
+          <h2 className="text-sm font-bold text-foreground font-heading flex items-center gap-2">
+            <FileArchive className="w-4 h-4 text-bento-blue" />
+            Respaldo
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Genera una copia completa del proyecto en formato ZIP. Incluye todas las listas, tareas, documentos y configuración.
+          </p>
+          <button
+            onClick={handleExportZip}
+            className="bg-primary hover:opacity-90 text-primary-foreground font-bold px-4 py-2 rounded-xl text-xs transition-colors flex items-center gap-1.5"
+          >
+            <FileArchive className="w-3.5 h-3.5" />
+            Respaldar como ZIP
+          </button>
         </section>
 
       </div>

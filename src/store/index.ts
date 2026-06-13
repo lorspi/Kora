@@ -113,6 +113,8 @@ interface ProjectState {
   deleteUser: (userId: string) => Promise<void>;
   showProjectSettings: boolean;
   setShowProjectSettings: (show: boolean) => void;
+  showAbout: boolean;
+  setShowAbout: (show: boolean) => void;
 }
 
 // Helper to save/load persistence state
@@ -1909,8 +1911,8 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
     },
 
     // Navigation and quick search parameters
-    setShowMediaExplorer: (show) => set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showProjectSettings: false }),
-    setSelectedList: (listId) => set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false }),
+    setShowMediaExplorer: (show) => set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showProjectSettings: false, showAbout: false }),
+    setSelectedList: (listId) => set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false }),
     setSelectedTask: (taskId) => {
       const prevTaskId = get().selectedTaskId;
       if (prevTaskId && prevTaskId !== taskId) {
@@ -1918,7 +1920,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       }
       set({ selectedTaskId: taskId, selectedDocId: null });
     },
-    setSelectedDoc: (docId) => set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false }),
+    setSelectedDoc: (docId) => set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false }),
     setSearchQuery: (query) => set({ searchQuery: query }),
     setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen }),
 
@@ -1929,7 +1931,8 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       selectedListId: show ? null : get().selectedListId, 
       selectedDocId: null, 
       selectedTaskId: null, 
-      showMediaExplorer: false 
+      showMediaExplorer: false,
+      showAbout: false
     }),
 
     // Project Administration
@@ -1967,6 +1970,17 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       const updatedUsers = users.filter(u => u.id !== userId);
       await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
       set({ users: updatedUsers });
-    }
+    },
+
+    // About view
+    showAbout: false,
+    setShowAbout: (show) => set({
+      showAbout: show,
+      selectedListId: show ? null : get().selectedListId,
+      selectedDocId: null,
+      selectedTaskId: null,
+      showMediaExplorer: false,
+      showProjectSettings: false
+    })
   };
 });

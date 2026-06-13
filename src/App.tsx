@@ -13,6 +13,7 @@ import ListViews from './components/ListViews';
 import DocView from './components/DocView';
 import MediaExplorer from './components/MediaExplorer';
 import ProjectSettings from './components/ProjectSettings';
+import AboutKora from './components/AboutKora';
 import TaskDrawer from './components/TaskDrawer';
 import SearchDialog from './components/SearchDialog';
 import { 
@@ -42,6 +43,7 @@ export default function App() {
     selectedDocId, 
     showMediaExplorer,
     showProjectSettings,
+    showAbout,
     backgroundReload,
     logs,
     initialize,
@@ -125,7 +127,9 @@ export default function App() {
       {/* Main Work Area Container */}
       <main id="main-content-flow" className="flex-1 flex flex-col h-full bg-background overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden">
-          {showProjectSettings ? (
+          {showAbout ? (
+            <AboutKora />
+          ) : showProjectSettings ? (
             <ProjectSettings />
           ) : showMediaExplorer ? (
             <MediaExplorer />

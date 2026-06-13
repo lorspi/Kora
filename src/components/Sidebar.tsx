@@ -9,8 +9,7 @@ import { useProjectStore } from '../store';
 import { 
   ProjectMetadata, 
   TaskList, 
-  DocMetadata, 
-  SystemUser 
+  DocMetadata 
 } from '../types';
 import { 
   LogOut, 
@@ -18,16 +17,11 @@ import {
   Layers, 
   FileText, 
   Search, 
-  FileArchive, 
-  HelpCircle,
-  Laptop,
-  Github,
+  Info,
   RefreshCw,
   ImageIcon,
   Settings
 } from 'lucide-react';
-import JSZip from 'jszip';
-import { normalizePath, dbGetAllKeys, dbGet } from '../lib/fs';
 import ThemeToggle from './ThemeToggle';
 
 export default function Sidebar() {
@@ -50,6 +44,8 @@ export default function Sidebar() {
     setShowMediaExplorer,
     showProjectSettings,
     setShowProjectSettings,
+    showAbout,
+    setShowAbout,
     adapter
   } = useProjectStore();
   const { toast, confirm } = useUI();
@@ -98,61 +94,6 @@ export default function Sidebar() {
       }
     } catch (e) {
       toast('Error al escanear documentos', 'error');
-    }
-  };
-
-  const handleExportZip = async () => {
-    try {
-      const zip = new JSZip();
-      const state = useProjectStore.getState();
-      if (!state.adapter) return;
-      const fileAdapter = state.adapter;
-      
-      if (fileAdapter.getMode() === 'VIRTUAL') {
-        const keys = await dbGetAllKeys();
-        for (const key of keys) {
-          const entry = await dbGet(key);
-          if (entry) {
-            const cleanPath = key.replace(/^\//, '');
-            if (entry.isBinary) {
-              zip.file(cleanPath, entry.content as Blob);
-            } else {
-              zip.file(cleanPath, entry.content as string);
-            }
-          }
-        }
-      } else {
-        zip.file('config.json', JSON.stringify({ projectId: state.projectMeta?.id, projectName: state.projectMeta?.name, lastOpenedBy: state.activeUser?.id, lastModified: Date.now() }, null, 2));
-        zip.file('project.json', JSON.stringify(state.projectMeta, null, 2));
-        zip.file('users/users.json', JSON.stringify(state.users, null, 2));
-        zip.file('activity/logs.json', JSON.stringify(state.logs, null, 2));
-        zip.file('activity/locks.json', JSON.stringify({}, null, 2));
-        for (const list of state.lists) {
-          zip.file(`lists/${list.id}.json`, JSON.stringify(list, null, 2));
-        }
-        for (const task of state.tasks) {
-          zip.file(`tasks/task-${task.id}.json`, JSON.stringify(task, null, 2));
-        }
-        zip.file('docs/info.json', JSON.stringify(state.docs, null, 2));
-        for (const doc of state.docs) {
-          try {
-            const md = await fileAdapter.readTextFile(`/docs/${doc.filename}`);
-            zip.file(`docs/${doc.filename}`, md);
-          } catch (e) {}
-        }
-      }
-
-      const content = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(content);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${projectMeta?.name.replace(/[^a-zA-Z0-9]/g, '_') || 'Kora_Offline'}_workspace.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      toast('No se pudo generar el ZIP: ' + err.message, 'error');
     }
   };
 
@@ -410,27 +351,16 @@ export default function Sidebar() {
 
       </div>
 
-      {/* Backup Sync Settings Utilities */}
+      {/* Utilities */}
       <div className="p-3 border-t border-border bg-secondary mt-auto flex flex-col gap-2">
-        <button 
-          onClick={handleExportZip}
+        <button
+          onClick={() => setShowAbout(true)}
           className="w-full px-3 py-2 bg-card hover:bg-accent border border-border rounded-xl text-foreground text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer font-semibold leading-none shadow-card"
-          title="Conserva copia física legible de tu proyecto en un ZIP"
+          title="Acerca de esta aplicación"
         >
-          <FileArchive className="w-4 h-4 text-bento-blue" />
-          Respaldar como ZIP
+          <Info className="w-4 h-4 text-muted-foreground" />
+          Acerca de Kora
         </button>
-
-        <a
-          href="https://github.com/lorspi/Kora"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="w-full px-3 py-2 bg-card hover:bg-accent border border-border rounded-xl text-foreground text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer font-semibold leading-none shadow-card"
-          title="Ver repositorio en GitHub"
-        >
-          <Github className="w-4 h-4 text-muted-foreground" />
-          Kora en GitHub
-        </a>
 
         <button 
           onClick={async () => {
