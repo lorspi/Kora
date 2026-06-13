@@ -349,6 +349,20 @@ export const useProjectStore = create<ProjectState>((set, get) => {
             if (!savedHandle) {
               throw new Error('No stored File System Access handle disponible.');
             }
+            // Verify permissions before attempting to load.
+            // After closing a tab, the browser revokes FSA permissions and
+            // requires a new user gesture to re-grant them. queryPermission
+            // lets us detect this without triggering the error.
+            const permState = await (savedHandle as any).queryPermission({ mode: 'readwrite' });
+            if (permState !== 'granted') {
+              // Permissions lost — go back to LoadFolderScreen so the user
+              // can re-select the folder (which provides the user gesture needed).
+              console.info('FSA permissions not granted after tab restore, showing folder selection.');
+              savePersistenceState({ hasActiveProject: false, fsMode: 'VIRTUAL' });
+              await clearDirectoryHandle();
+              set({ isLoading: false });
+              return;
+            }
             await get().loadProjectDirectory(savedHandle, 'FSA_API');
           } else {
             await get().loadProjectDirectory(null, 'VIRTUAL');
@@ -357,6 +371,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           console.warn('Failed to auto-load persisted project', e);
           // Clear invalid state
           savePersistenceState({ hasActiveProject: false, fsMode: 'VIRTUAL' });
+          await clearDirectoryHandle();
           set({ isLoading: false });
         }
       } else {

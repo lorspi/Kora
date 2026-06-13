@@ -24,13 +24,27 @@ interface ConfirmOptions {
   variant?: 'danger' | 'default';
 }
 
+interface PromptOptions {
+  title: string;
+  message?: string;
+  placeholder?: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  defaultValue?: string;
+}
+
 interface ConfirmState extends ConfirmOptions {
   resolve: (value: boolean) => void;
+}
+
+interface PromptState extends PromptOptions {
+  resolve: (value: string | null) => void;
 }
 
 interface UIContextValue {
   toast: (message: string, type?: ToastType) => void;
   confirm: (options: ConfirmOptions) => Promise<boolean>;
+  prompt: (options: PromptOptions) => Promise<string | null>;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -48,6 +62,7 @@ export function useUI() {
 export function UIProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
+  const [promptState, setPromptState] = useState<PromptState | null>(null);
   const timerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const toast = useCallback((message: string, type: ToastType = 'info') => {
@@ -71,17 +86,31 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const prompt = useCallback((options: PromptOptions): Promise<string | null> => {
+    return new Promise(resolve => {
+      setPromptState({ ...options, resolve });
+    });
+  }, []);
+
   const handleConfirmResponse = (value: boolean) => {
     confirmState?.resolve(value);
     setConfirmState(null);
   };
 
+  const handlePromptResponse = (value: string | null) => {
+    promptState?.resolve(value);
+    setPromptState(null);
+  };
+
   return (
-    <UIContext.Provider value={{ toast, confirm }}>
+    <UIContext.Provider value={{ toast, confirm, prompt }}>
       {children}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       {confirmState && (
         <ConfirmModal state={confirmState} onResponse={handleConfirmResponse} />
+      )}
+      {promptState && (
+        <PromptModal state={promptState} onResponse={handlePromptResponse} />
       )}
     </UIContext.Provider>
   );
@@ -196,6 +225,95 @@ function ConfirmModal({
             {confirmLabel}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── PromptModal ──────────────────────────────────────────────────────────────
+
+function PromptModal({
+  state,
+  onResponse,
+}: {
+  state: PromptState;
+  onResponse: (value: string | null) => void;
+}) {
+  const { title, message, placeholder = '', confirmLabel = 'Aceptar', cancelLabel = 'Cancelar', defaultValue = '' } = state;
+  const [inputValue, setInputValue] = React.useState(defaultValue);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    // Auto-focus the input when the modal opens
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (inputValue.trim()) {
+      onResponse(inputValue.trim());
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[9998] flex items-center justify-center bg-foreground/20 backdrop-blur-[2px] animate-fade-in"
+      onClick={() => onResponse(null)}
+    >
+      <div
+        className="bg-card border border-border rounded-2xl shadow-card-hover w-full max-w-sm mx-4 overflow-hidden"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <div className="flex items-center gap-2">
+            <Info className="w-4 h-4 text-bento-blue shrink-0" />
+            <h2 className="text-sm font-bold text-foreground font-heading">{title}</h2>
+          </div>
+          <button
+            onClick={() => onResponse(null)}
+            className="p-1 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <form onSubmit={handleSubmit} className="px-5 pb-5">
+          {message && (
+            <p className="text-xs text-muted-foreground leading-relaxed mb-3">{message}</p>
+          )}
+          <input
+            ref={inputRef}
+            type="text"
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            placeholder={placeholder}
+            className="w-full bg-secondary border border-input rounded-xl px-3 py-2 text-xs text-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring"
+            onKeyDown={e => {
+              if (e.key === 'Escape') onResponse(null);
+            }}
+          />
+
+          {/* Actions */}
+          <div className="flex gap-2 justify-end mt-4">
+            <button
+              type="button"
+              onClick={() => onResponse(null)}
+              className="px-4 py-2 text-xs font-semibold rounded-xl bg-secondary hover:bg-accent border border-border text-foreground transition-colors cursor-pointer"
+            >
+              {cancelLabel}
+            </button>
+            <button
+              type="submit"
+              disabled={!inputValue.trim()}
+              className="px-4 py-2 text-xs font-bold rounded-xl bg-primary hover:opacity-90 text-primary-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {confirmLabel}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

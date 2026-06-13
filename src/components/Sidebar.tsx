@@ -161,7 +161,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-2 overflow-hidden">
           <img src="/icon.svg" alt="Kora" className="w-8 h-8 shrink-0" />
           <div className="leading-tight overflow-hidden">
-            <span className="text-xs font-bold text-foreground block truncate font-heading">Kora Workspace</span>
+            <span className="text-xs font-bold text-foreground block truncate font-heading">{projectMeta?.name || 'Kora Workspace'}</span>
             <span className="text-[10px] text-muted-foreground block font-mono truncate">
               {adapter?.getMode() === 'VIRTUAL' ? 'Disco Virtual' : 'Carpeta Local'}
             </span>

@@ -47,7 +47,7 @@ export default function ListViews() {
     setSelectedTask,
     locks
   } = useProjectStore();
-  const { toast, confirm } = useUI();
+  const { toast, confirm, prompt: uiPrompt } = useUI();
 
   const [activeTab, setActiveTab] = useState<ActiveViewTab>('list');
   const [quickTitle, setQuickTitle] = useState('');
@@ -204,8 +204,8 @@ export default function ListViews() {
               <button 
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`pb-3 flex items-center gap-1.5 cursor-pointer transition-colors border-b-2 ${
-                  activeTab === tab ? 'border-primary text-foreground font-bold' : 'border-transparent text-muted-foreground hover:text-foreground'
+                className={`pb-3 flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  activeTab === tab ? 'text-foreground font-bold' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -445,8 +445,8 @@ export default function ListViews() {
                   </div>
 
                   <button 
-                    onClick={() => {
-                      const name = prompt('Nombre de la tarea:');
+                    onClick={async () => {
+                      const name = await uiPrompt({ title: 'Crear tarea', placeholder: 'Nombre de la tarea' });
                       if (name && name.trim()) handleQuickTaskAdd(status.id, name);
                     }}
                     className="w-full py-1.5 bg-secondary hover:bg-accent text-muted-foreground hover:text-foreground border border-border text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer font-bold leading-none shadow-card"
