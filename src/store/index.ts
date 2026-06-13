@@ -106,6 +106,13 @@ interface ProjectState {
   getDocViewMode: (docId: string | null) => 'edit' | 'preview' | 'split';
   setDocViewMode: (docId: string, mode: 'edit' | 'preview' | 'split') => Promise<void>;
   saveProjectConfig: (config?: ProjectConfig) => Promise<void>;
+  
+  // Project Administration
+  updateProjectMeta: (name: string, description: string) => Promise<void>;
+  updateUser: (userId: string, updates: { name?: string; isSuperAdmin?: boolean }) => Promise<void>;
+  deleteUser: (userId: string) => Promise<void>;
+  showProjectSettings: boolean;
+  setShowProjectSettings: (show: boolean) => void;
 }
 
 // Helper to save/load persistence state
@@ -1902,8 +1909,8 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
     },
 
     // Navigation and quick search parameters
-    setShowMediaExplorer: (show) => set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null }),
-    setSelectedList: (listId) => set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false }),
+    setShowMediaExplorer: (show) => set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showProjectSettings: false }),
+    setSelectedList: (listId) => set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false }),
     setSelectedTask: (taskId) => {
       const prevTaskId = get().selectedTaskId;
       if (prevTaskId && prevTaskId !== taskId) {
@@ -1911,8 +1918,55 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       }
       set({ selectedTaskId: taskId, selectedDocId: null });
     },
-    setSelectedDoc: (docId) => set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false }),
+    setSelectedDoc: (docId) => set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false }),
     setSearchQuery: (query) => set({ searchQuery: query }),
-    setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen })
+    setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen }),
+
+    // Project settings view
+    showProjectSettings: false,
+    setShowProjectSettings: (show) => set({ 
+      showProjectSettings: show, 
+      selectedListId: show ? null : get().selectedListId, 
+      selectedDocId: null, 
+      selectedTaskId: null, 
+      showMediaExplorer: false 
+    }),
+
+    // Project Administration
+    updateProjectMeta: async (name, description) => {
+      const { adapter, projectMeta } = get();
+      if (!adapter || !projectMeta) return;
+      const updated: ProjectMetadata = { ...projectMeta, name, description };
+      await adapter.writeTextFile('/project.json', JSON.stringify(updated, null, 2));
+      set({ projectMeta: updated });
+    },
+
+    updateUser: async (userId, updates) => {
+      const { adapter, users, activeUser } = get();
+      if (!adapter) return;
+      const updatedUsers = users.map(u => {
+        if (u.id !== userId) return u;
+        return {
+          ...u,
+          ...(updates.name !== undefined ? { name: updates.name } : {}),
+          ...(updates.isSuperAdmin !== undefined ? { isSuperAdmin: updates.isSuperAdmin } : {})
+        };
+      });
+      await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
+      // Update activeUser if it was the one modified
+      const updatedActive = activeUser && activeUser.id === userId 
+        ? updatedUsers.find(u => u.id === userId) || activeUser 
+        : activeUser;
+      set({ users: updatedUsers, activeUser: updatedActive });
+    },
+
+    deleteUser: async (userId) => {
+      const { adapter, users, activeUser } = get();
+      if (!adapter) return;
+      if (activeUser?.id === userId) throw new Error('No puedes eliminar tu propio usuario.');
+      const updatedUsers = users.filter(u => u.id !== userId);
+      await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
+      set({ users: updatedUsers });
+    }
   };
 });

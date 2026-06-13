@@ -23,7 +23,8 @@ import {
   Laptop,
   Github,
   RefreshCw,
-  ImageIcon
+  ImageIcon,
+  Settings
 } from 'lucide-react';
 import JSZip from 'jszip';
 import { normalizePath, dbGetAllKeys, dbGet } from '../lib/fs';
@@ -47,6 +48,8 @@ export default function Sidebar() {
     setSearchOpen,
     showMediaExplorer,
     setShowMediaExplorer,
+    showProjectSettings,
+    setShowProjectSettings,
     adapter
   } = useProjectStore();
   const { toast, confirm } = useUI();
@@ -384,6 +387,23 @@ export default function Sidebar() {
             >
               <ImageIcon className="w-3.5 h-3.5 shrink-0" />
               <span className="text-xs font-semibold">Explorador de Medios</span>
+            </button>
+          </div>
+        </div>
+
+        {/* PROJECT SETTINGS */}
+        <div>
+          <div className="space-y-0.5">
+            <button
+              onClick={() => setShowProjectSettings(true)}
+              className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
+                showProjectSettings
+                  ? 'bg-bento-purple-light text-bento-purple border-l-2 border-bento-purple font-bold'
+                  : 'hover:bg-accent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5 shrink-0" />
+              <span className="text-xs font-semibold">Configuración</span>
             </button>
           </div>
         </div>
