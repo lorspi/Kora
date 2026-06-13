@@ -15,7 +15,7 @@ Pero Kora también nace con otra convicción: **la productividad no necesita est
 
 En un mundo donde muchas herramientas intentan hacerlo todo, Kora busca hacer pocas cosas, pero hacerlas bien. Sin complejidad innecesaria, sin configuraciones interminables y sin perder el foco.
 
-<img src="./public/screenshots/dashboard-v2.png" alt="Captura de pantalla" width="800"/>
+<img src="./public/screenshots/dashboard-pwa.png" alt="Captura de pantalla" width="800"/>
 
 ## Principios de Kora
 - Offline first.
