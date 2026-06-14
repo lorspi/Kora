@@ -17,7 +17,7 @@ export function useVersion() {
       setVersion(cachedLocalVersion);
       return;
     }
-    fetch('/version.txt')
+    fetch('/version.txt', { cache: 'no-store' })
       .then(res => res.text())
       .then(text => {
         cachedLocalVersion = text.trim();
@@ -48,9 +48,9 @@ export function useUpdateCheck() {
     const check = async () => {
       setChecking(true);
       try {
-        // Load local (cached) version
+        // Load local (cached) version — always bypass HTTP cache
         if (!cachedLocalVersion) {
-          const localRes = await fetch('/version.txt');
+          const localRes = await fetch('/version.txt', { cache: 'no-store' });
           cachedLocalVersion = (await localRes.text()).trim();
         }
         setLocalVersion(cachedLocalVersion);
@@ -87,7 +87,19 @@ export function useUpdateCheck() {
       await Promise.all(registrations.map(reg => reg.unregister()));
     }
 
-    // 3. Hard reload
+    // 3. Reset in-memory version cache
+    cachedLocalVersion = null;
+    cachedRemoteVersion = null;
+    checkedForUpdate = false;
+
+    // 4. Force browser to fetch fresh version.txt (bust HTTP cache)
+    try {
+      await fetch('/version.txt', { cache: 'reload' });
+    } catch {
+      // Ignore — the reload below will pick it up
+    }
+
+    // 5. Hard reload bypassing browser cache
     window.location.reload();
   };
 
