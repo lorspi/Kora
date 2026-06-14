@@ -17,7 +17,7 @@ const AVATAR_COLORS = [
 type OnboardingStep = 'user' | 'project' | 'template';
 
 export default function ProjectOnboarding() {
-  const { projectMeta, initializeNewProject } = useProjectStore();
+  const { projectMeta, initializeNewProject, closeProject } = useProjectStore();
   
   const [step, setStep] = useState<OnboardingStep>('user');
   const [loading, setLoading] = useState(false);
@@ -216,13 +216,22 @@ export default function ProjectOnboarding() {
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-primary hover:opacity-90 text-primary-foreground font-bold py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 mt-4"
-            >
-              Siguiente <ArrowRight className="w-4 h-4" />
-            </button>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={closeProject}
+                className="flex-1 bg-secondary hover:bg-muted text-foreground py-2.5 rounded-xl text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex-1 bg-primary hover:opacity-90 text-primary-foreground font-bold py-2.5 rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5"
+              >
+                Siguiente <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </form>
         )}
 

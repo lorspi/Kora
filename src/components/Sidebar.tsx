@@ -12,6 +12,8 @@ import {
   TaskList, 
   DocMetadata 
 } from '../types';
+import { dbGetAllKeys, dbGet } from '../lib/fs';
+import JSZip from 'jszip';
 import { 
   LogOut, 
   Plus, 
@@ -21,7 +23,11 @@ import {
   Info,
   RefreshCw,
   ImageIcon,
-  Settings
+  Settings,
+  AlertTriangle,
+  Download,
+  X,
+  Trash2
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -57,6 +63,48 @@ export default function Sidebar() {
   const [showAddList, setShowAddList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [newListColor, setNewListColor] = useState('#8b5cf6');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false);
+  const [isExportingZip, setIsExportingZip] = useState(false);
+
+  const isVirtualMode = adapter?.getMode() === 'VIRTUAL';
+
+  const handleExportZipFromModal = async () => {
+    setIsExportingZip(true);
+    try {
+      const zip = new JSZip();
+      const state = useProjectStore.getState();
+      if (!state.adapter) return;
+
+      const keys = await dbGetAllKeys();
+      for (const key of keys) {
+        const entry = await dbGet(key);
+        if (entry) {
+          const cleanPath = key.replace(/^\//, '');
+          if (entry.isBinary) {
+            zip.file(cleanPath, entry.content as Blob);
+          } else {
+            zip.file(cleanPath, entry.content as string);
+          }
+        }
+      }
+
+      const content = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(content);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${projectMeta?.name?.replace(/[^\w\u00C0-\u024F\s-]/g, '').replace(/\s+/g, '_') || 'Kora_Offline'}_workspace.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast('Respaldo ZIP descargado exitosamente', 'success');
+    } catch (err: any) {
+      toast('No se pudo generar el ZIP: ' + err.message, 'error');
+    } finally {
+      setIsExportingZip(false);
+    }
+  };
 
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
@@ -390,17 +438,115 @@ export default function Sidebar() {
 
         <button 
           onClick={async () => {
-            const ok = await confirm({ title: 'Cambiar de carpeta', message: '¿Seguro que deseas salir del proyecto local actual? Se cerrará la sesión de la carpeta.', confirmLabel: 'Salir', variant: 'danger' });
-            if (ok) closeProject();
+            if (isVirtualMode) {
+              setDeleteConfirmChecked(false);
+              setShowDeleteModal(true);
+            } else {
+              const ok = await confirm({ title: 'Cambiar de carpeta', message: '¿Seguro que deseas salir del proyecto local actual? Se cerrará la sesión de la carpeta.', confirmLabel: 'Salir', variant: 'danger' });
+              if (ok) closeProject();
+            }
           }}
           className="w-full px-3 py-2 bg-card hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-border hover:border-destructive/30 rounded-xl text-[11px] transition-all flex items-center justify-center gap-1 mt-1 cursor-pointer"
         >
-          <LogOut className="w-3.5 h-3.5" />
-          Cambiar de Carpeta / Salir
+          {isVirtualMode ? (
+            <>
+              <Trash2 className="w-3.5 h-3.5" />
+              Borrar datos / Salir
+            </>
+          ) : (
+            <>
+              <LogOut className="w-3.5 h-3.5" />
+              Cambiar de Carpeta / Salir
+            </>
+          )}
         </button>
       </div>
 
     </aside>
+
+    {/* Modal: Borrar datos del Disco Virtual — fuera del aside para cubrir pantalla completa */}
+    {showDeleteModal && (
+      <div
+        className="fixed inset-0 z-[9998] flex items-center justify-center bg-foreground/20 backdrop-blur-[2px] animate-fade-in"
+        onClick={() => setShowDeleteModal(false)}
+      >
+        <div
+          className="bg-card border border-border rounded-2xl shadow-card-hover w-full max-w-md mx-4 overflow-hidden"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 pt-5 pb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
+              <h2 className="text-sm font-bold text-foreground font-heading">Borrar datos del Disco Virtual</h2>
+            </div>
+            <button
+              onClick={() => setShowDeleteModal(false)}
+              className="p-1 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Body */}
+          <div className="px-5 pb-4 space-y-3">
+            <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-3">
+              <p className="text-xs text-destructive font-semibold leading-relaxed">
+                ⚠️ Esta acción es permanente e irreversible. Todos los datos almacenados en el Disco Virtual del navegador (listas, tareas, documentos y archivos multimedia) serán eliminados definitivamente.
+              </p>
+            </div>
+
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Antes de continuar, te recomendamos descargar una copia de seguridad de tu proyecto en formato ZIP.
+            </p>
+
+            {/* Download ZIP button */}
+            <button
+              onClick={handleExportZipFromModal}
+              disabled={isExportingZip}
+              className="w-full px-4 py-2.5 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Download className="w-4 h-4" />
+              {isExportingZip ? 'Generando ZIP...' : 'Descargar copia de seguridad (.zip)'}
+            </button>
+
+            {/* Confirmation checkbox */}
+            <label className="flex items-start gap-2.5 cursor-pointer pt-2 border-t border-border">
+              <input
+                type="checkbox"
+                checked={deleteConfirmChecked}
+                onChange={e => setDeleteConfirmChecked(e.target.checked)}
+                className="mt-0.5 w-4 h-4 rounded border-border accent-destructive cursor-pointer shrink-0"
+              />
+              <span className="text-xs text-foreground leading-relaxed select-none">
+                Entiendo que todos mis datos serán borrados permanentemente y que esta acción no se puede deshacer.
+              </span>
+            </label>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 px-5 pb-5 justify-end">
+            <button
+              onClick={() => setShowDeleteModal(false)}
+              className="px-4 py-2 text-xs font-semibold rounded-xl bg-secondary hover:bg-accent border border-border text-foreground transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => {
+                setShowDeleteModal(false);
+                closeProject();
+              }}
+              disabled={!deleteConfirmChecked}
+              className="px-4 py-2 text-xs font-bold rounded-xl bg-destructive hover:opacity-90 text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Borrar todo y salir
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     </>
   );
 }

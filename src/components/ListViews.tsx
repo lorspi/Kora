@@ -166,7 +166,7 @@ export default function ListViews() {
               <input
                 id="quick-task-input"
                 type="text"
-                placeholder="Rápido: Nombrar tarea..."
+                placeholder="Crear tarea..."
                 className="bg-card border border-input rounded-xl px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground w-full sm:w-60 focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-colors"
                 value={quickTitle}
                 onChange={(e) => setQuickTitle(e.target.value)}
