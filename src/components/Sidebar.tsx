@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { useUI } from '../lib/ui';
+import { useUpdateCheck } from '../hooks/useVersion';
 import { useProjectStore } from '../store';
 import { 
   ProjectMetadata, 
@@ -49,6 +50,7 @@ export default function Sidebar() {
     adapter
   } = useProjectStore();
   const { toast, confirm } = useUI();
+  const { updateAvailable } = useUpdateCheck();
 
   const [showAddList, setShowAddList] = useState(false);
   const [newListName, setNewListName] = useState('');
@@ -355,11 +357,14 @@ export default function Sidebar() {
       <div className="p-3 border-t border-border bg-secondary mt-auto flex flex-col gap-2">
         <button
           onClick={() => setShowAbout(true)}
-          className="w-full px-3 py-2 bg-card hover:bg-accent border border-border rounded-xl text-foreground text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer font-semibold leading-none shadow-card"
+          className="relative w-full px-3 py-2 bg-card hover:bg-accent border border-border rounded-xl text-foreground text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer font-semibold leading-none shadow-card"
           title="Acerca de esta aplicación"
         >
           <Info className="w-4 h-4 text-muted-foreground" />
           Acerca de Kora
+          {updateAvailable && (
+            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
+          )}
         </button>
 
         <button 

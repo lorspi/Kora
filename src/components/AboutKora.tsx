@@ -4,7 +4,8 @@
  */
 
 import React from 'react';
-import { useVersion } from '../hooks/useVersion';
+import { useVersion, useUpdateCheck } from '../hooks/useVersion';
+import { useUI } from '../lib/ui';
 import { 
   Info, 
   Github, 
@@ -13,11 +14,25 @@ import {
   Globe, 
   Heart,
   Code2,
-  Cpu
+  Download
 } from 'lucide-react';
 
 export default function AboutKora() {
   const version = useVersion();
+  const { updateAvailable, remoteVersion, performUpdate } = useUpdateCheck();
+  const { confirm } = useUI();
+
+  const handleUpdate = async () => {
+    const ok = await confirm({
+      title: 'Actualizar Kora',
+      message: `Se actualizará de v${version} a v${remoteVersion}. Esto borrará la versión actual de la aplicación en caché y cargará la nueva versión desde el servidor. Tus datos de proyecto no se perderán, pero tendrás que volver a abrir la carpeta del proyecto.`,
+      confirmLabel: 'Actualizar ahora',
+      variant: 'danger'
+    });
+    if (ok) {
+      await performUpdate();
+    }
+  };
 
   const techStack = [
     'React 19',
@@ -40,6 +55,15 @@ export default function AboutKora() {
             <h1 className="text-2xl font-bold text-foreground font-heading">Kora</h1>
             <p className="text-xs text-muted-foreground font-mono mt-1">versión {version}</p>
           </div>
+          {updateAvailable && (
+            <button
+              onClick={handleUpdate}
+              className="inline-flex items-center gap-1.5 bg-bento-blue-light text-bento-blue border border-bento-blue/30 px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-80 transition-opacity cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Actualización disponible (v{remoteVersion})
+            </button>
+          )}
           <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
             El lugar donde los proyectos encuentran un hogar permanente. Gestión de proyectos offline-first, sin servidores externos ni suscripciones.
           </p>
