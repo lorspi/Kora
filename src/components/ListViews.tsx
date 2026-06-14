@@ -261,16 +261,16 @@ export default function ListViews() {
                             draggable={!locks[task.id] || Date.now() >= locks[task.id].expiresAt}
                             onDragStart={(e) => handleTaskDragStart(e, task.id)}
                             onDragEnd={handleTaskDragEnd}
-                            className={`p-3.5 hover:bg-accent/50 flex items-center justify-between gap-4 transition-colors group ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'}`}
+                            className={`p-3.5 hover:bg-accent/50 transition-colors group ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'}`}
                           >
-                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="flex items-start gap-3 min-w-0">
                               <button 
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   const alternateSt = activeList.statuses.find(s => s.isCompleted !== status.isCompleted);
                                   if (alternateSt) updateTask({ ...task, statusId: alternateSt.id });
                                 }}
-                                className={`w-5 h-5 rounded-full border transition-all flex items-center justify-center shrink-0 hover:scale-105 active:scale-95 ${
+                                className={`w-5 h-5 rounded-full border transition-all flex items-center justify-center shrink-0 hover:scale-105 active:scale-95 mt-0.5 ${
                                   status.isCompleted 
                                     ? 'bg-bento-green-light border-bento-green text-bento-green' 
                                     : 'border-border hover:border-muted-foreground text-transparent hover:text-muted-foreground'
@@ -280,7 +280,8 @@ export default function ListViews() {
                               </button>
 
                               <div onClick={() => setSelectedTask(task.id)} className="cursor-pointer min-w-0 flex-1">
-                                <div className="flex items-center gap-2 mb-1">
+                                {/* Line 1: task code + title + assignees */}
+                                <div className="flex items-center gap-2 mb-0.5">
                                   <span className="font-mono text-[10px] font-bold text-muted-foreground shrink-0">{task.taskCode}</span>
                                   {pendingBlocked && (
                                     <span className="text-[9px] bg-destructive/20 text-destructive font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-0.5 border border-destructive/40">
@@ -293,47 +294,51 @@ export default function ListViews() {
                                     </span>
                                   )}
                                 </div>
-                                <h4 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue truncate ${
-                                  status.isCompleted ? 'line-through text-muted-foreground group-hover:text-muted-foreground' : ''
-                                }`}>
-                                  {task.title}
-                                </h4>
-                              </div>
-                            </div>
+                                <div className="flex items-center gap-2">
+                                  <h4 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue truncate ${
+                                    status.isCompleted ? 'line-through text-muted-foreground group-hover:text-muted-foreground' : ''
+                                  }`}>
+                                    {task.title}
+                                  </h4>
+                                  <div className="flex -space-x-1.5 shrink-0">
+                                    {task.assignees.map(userId => {
+                                      const userObj = users.find(u => u.id === userId);
+                                      return userObj ? (
+                                        <span key={userId} className="w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: userObj.avatarColor }} title={userObj.name}>
+                                          {userObj.name.charAt(0)}
+                                        </span>
+                                      ) : null;
+                                    })}
+                                  </div>
+                                </div>
 
-                            <div className="flex items-center gap-3 shrink-0">
-                              {totalCount > 0 && (
-                                <span className="text-[10px] bg-secondary text-muted-foreground font-semibold px-2 py-0.5 rounded-full border border-border flex items-center gap-1">
-                                  <CheckCircle2 className="w-3 h-3 text-bento-blue" />
-                                  {completeCount}/{totalCount}
-                                </span>
-                              )}
-                              {task.dueDate && (
-                                <span className={`text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 font-semibold border ${
-                                  new Date(task.dueDate) < new Date() && !status.isCompleted
-                                    ? 'bg-destructive/20 text-destructive border-destructive/40'
-                                    : 'bg-secondary text-muted-foreground border-border'
-                                }`}>
-                                  <Calendar className="w-3 h-3" />
-                                  {task.dueDate}
-                                </span>
-                              )}
-                              <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${getPriorityBadgeColor(task.priority)}`}>
-                                {getPriorityLabel(task.priority)}
-                              </span>
-                              <div className="flex -space-x-1.5 overflow-hidden">
-                                {task.assignees.map(userId => {
-                                  const userObj = users.find(u => u.id === userId);
-                                  return userObj ? (
-                                    <span key={userId} className="w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: userObj.avatarColor }} title={userObj.name}>
-                                      {userObj.name.charAt(0)}
+                                {/* Line 2: chips (subtasks, date, priority) */}
+                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                  {totalCount > 0 && (
+                                    <span className="text-[10px] bg-secondary text-muted-foreground font-semibold px-2 py-0.5 rounded-full border border-border flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3 text-bento-blue" />
+                                      {completeCount}/{totalCount}
                                     </span>
-                                  ) : null;
-                                })}
+                                  )}
+                                  {task.dueDate && (
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 font-semibold border ${
+                                      new Date(task.dueDate) < new Date() && !status.isCompleted
+                                        ? 'bg-destructive/20 text-destructive border-destructive/40'
+                                        : 'bg-secondary text-muted-foreground border-border'
+                                    }`}>
+                                      <Calendar className="w-3 h-3" />
+                                      {task.dueDate}
+                                    </span>
+                                  )}
+                                  <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${getPriorityBadgeColor(task.priority)}`}>
+                                    {getPriorityLabel(task.priority)}
+                                  </span>
+                                </div>
                               </div>
+
                               <button 
                                 onClick={() => setSelectedTask(task.id)}
-                                className="p-1 text-muted-foreground hover:text-bento-blue hover:bg-accent rounded transition-colors hidden group-hover:block"
+                                className="p-1 text-muted-foreground hover:text-bento-blue hover:bg-accent rounded transition-colors hidden group-hover:block shrink-0"
                                 title="Abrir ficha"
                               >
                                 <Maximize2 className="w-3.5 h-3.5" />

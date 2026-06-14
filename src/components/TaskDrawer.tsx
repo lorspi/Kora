@@ -8,6 +8,7 @@ import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { Task, SystemUser } from '../types';
 import { MarkdownPreview } from '../lib/markdown';
+import MobileNotesDrawer from './MobileNotesDrawer';
 import { 
   X, 
   Trash2, 
@@ -340,7 +341,7 @@ export default function TaskDrawer() {
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
           
           {/* Column Left */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 border-r border-border bg-card">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-16 md:pb-6 space-y-6 border-r border-border bg-card">
             
             {blockerTask && (
               <div className="p-3.5 bg-destructive/20 border border-destructive/40 rounded-xl text-destructive text-xs">
@@ -538,8 +539,8 @@ export default function TaskDrawer() {
             </div>
           </div>
 
-          {/* Column Right - Activity & Notes */}
-          <div className="w-full md:w-96 shrink-0 overflow-hidden p-6 bg-secondary flex flex-col gap-3">
+          {/* Column Right - Activity & Notes (desktop only) */}
+          <div className="hidden md:flex w-96 shrink-0 overflow-hidden p-6 bg-secondary flex-col gap-3">
 
             {/* Tabs */}
             <div className="flex gap-4 text-xs font-semibold text-muted-foreground border-b border-border shrink-0">
@@ -716,6 +717,35 @@ export default function TaskDrawer() {
             )}
           </div>
         </div>
+
+        {/* Mobile Bottom Sheet Drawer for Notes & Activity */}
+        <MobileNotesDrawer
+          activityTab={activityTab}
+          setActivityTab={setActivityTab}
+          taskLogs={taskLogs}
+          users={users}
+          activeUser={activeUser}
+          isLockedByOther={isLockedByOther}
+          editingLogId={editingLogId}
+          setEditingLogId={setEditingLogId}
+          editingText={editingText}
+          setEditingText={setEditingText}
+          editComment={editComment}
+          deleteComment={deleteComment}
+          confirm={confirm}
+          resolvedMedia={resolvedMedia}
+          setPreviewMediaUrl={setPreviewMediaUrl}
+          setPreviewMediaType={setPreviewMediaType}
+          newComment={newComment}
+          setNewComment={setNewComment}
+          commentFiles={commentFiles}
+          removeCommentFile={removeCommentFile}
+          cleanupCommentFiles={cleanupCommentFiles}
+          handleCommentSubmit={handleCommentSubmit}
+          handleCommentPaste={handleCommentPaste}
+          handleCommentAttachment={handleCommentAttachment}
+          commentTextareaRef={commentTextareaRef}
+        />
 
         {/* Image Preview Modal */}
         {previewMediaUrl && (
