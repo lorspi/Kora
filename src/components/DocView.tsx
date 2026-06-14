@@ -19,7 +19,11 @@ import {
   List, 
   ArrowLeftRight,
   Paperclip,
-  Check
+  Check,
+  ChevronDown,
+  ImageIcon,
+  Film,
+  FolderOpen
 } from 'lucide-react';
 
 export default function DocView() {
@@ -32,7 +36,8 @@ export default function DocView() {
     uploadAttachment, 
     resolveAttachmentUrl,
     getDocViewMode,
-    setDocViewMode
+    setDocViewMode,
+    adapter
   } = useProjectStore();
   const { toast, confirm } = useUI();
 
@@ -47,6 +52,11 @@ export default function DocView() {
   const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [showMediaPicker, setShowMediaPicker] = useState(false);
+  const [mediaFiles, setMediaFiles] = useState<{ name: string; path: string; type: 'image' | 'video' }[]>([]);
+  const attachMenuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!selectedDocId) return;
@@ -139,6 +149,70 @@ export default function DocView() {
     }
   };
 
+  // Close attach menu on outside click
+  useEffect(() => {
+    if (!showAttachMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (attachMenuRef.current && !attachMenuRef.current.contains(e.target as Node)) {
+        setShowAttachMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showAttachMenu]);
+
+  const handleOpenMediaPicker = async () => {
+    setShowAttachMenu(false);
+    if (!adapter) return;
+    try {
+      const images = await adapter.listFiles('/attachments/images');
+      const videos = await adapter.listFiles('/attachments/videos');
+      const files = [
+        ...images.map(name => ({ name, path: `/attachments/images/${name}`, type: 'image' as const })),
+        ...videos.map(name => ({ name, path: `/attachments/videos/${name}`, type: 'video' as const }))
+      ];
+      setMediaFiles(files);
+      setShowMediaPicker(true);
+    } catch {
+      setMediaFiles([]);
+      setShowMediaPicker(true);
+    }
+  };
+
+  const [mediaThumbs, setMediaThumbs] = useState<Record<string, string>>({});
+
+  // Load thumbnails when media picker opens
+  useEffect(() => {
+    if (!showMediaPicker || !adapter || mediaFiles.length === 0) return;
+    let cancelled = false;
+    const loadThumbs = async () => {
+      const thumbs: Record<string, string> = {};
+      for (const file of mediaFiles) {
+        if (cancelled) break;
+        try {
+          const blob = await adapter.readBinaryFile(file.path);
+          thumbs[file.path] = URL.createObjectURL(blob);
+        } catch { /* skip */ }
+      }
+      if (!cancelled) setMediaThumbs(thumbs);
+    };
+    loadThumbs();
+    return () => {
+      cancelled = true;
+      Object.values(mediaThumbs).forEach(url => URL.revokeObjectURL(url));
+    };
+  }, [showMediaPicker, mediaFiles]);
+
+  const handleInsertFromLibrary = (file: { name: string; path: string; type: 'image' | 'video' }) => {
+    const relativePath = file.path.startsWith('/') ? file.path.substring(1) : file.path;
+    if (file.type === 'video') {
+      injectSyntax(`\n<video src="${relativePath}" controls className="max-w-full rounded-xl border border-border"></video>\n`);
+    } else {
+      injectSyntax(`\n![${file.name}](${relativePath})\n`);
+    }
+    setShowMediaPicker(false);
+  };
+
   const renderMarkdownPreview = () => (
     <MarkdownPreview
       content={content}
@@ -224,7 +298,7 @@ export default function DocView() {
         
         {(mode === 'edit' || mode === 'split') && (
           <div className="flex-1 h-full flex flex-col bg-card border-r border-border">
-            <div className="bg-secondary border-b border-border px-4 py-2 flex items-center gap-1 text-muted-foreground shrink-0 select-none overflow-x-auto">
+            <div className="bg-secondary border-b border-border px-4 py-2 flex items-center gap-1 text-muted-foreground shrink-0 select-none relative z-10">
               <button onClick={() => injectSyntax('**', '**')} className="p-1.5 hover:text-foreground hover:bg-accent rounded transition-all cursor-pointer" title="Negrita (**)">
                 <Bold className="w-3.5 h-3.5" />
               </button>
@@ -241,11 +315,33 @@ export default function DocView() {
                 <List className="w-3.5 h-3.5" />
               </button>
               <span className="w-px h-4 bg-border mx-2"></span>
-              <label className="p-1.5 hover:text-foreground hover:bg-accent rounded transition-all cursor-pointer flex items-center justify-center gap-1">
-                <Paperclip className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-semibold">Adjuntar Imágenes / Videos Locales</span>
-                <input type="file" accept="image/*,video/*" onChange={handleAttachmentUpload} className="hidden" />
-              </label>
+              <div className="relative" ref={attachMenuRef}>
+                <button
+                  onClick={() => setShowAttachMenu(!showAttachMenu)}
+                  className="p-1.5 hover:text-foreground hover:bg-accent rounded transition-all cursor-pointer flex items-center gap-1"
+                  title="Adjuntar imagen o video"
+                >
+                  <Paperclip className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-semibold">Adjuntar</span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+                {showAttachMenu && (
+                  <div className="absolute top-full left-0 mt-1 bg-card border border-border rounded-xl shadow-card-hover py-1 z-50 min-w-[200px]">
+                    <label className="flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-accent cursor-pointer transition-colors">
+                      <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                      Desde archivo
+                      <input ref={fileInputRef} type="file" accept="image/*,video/*" onChange={(e) => { handleAttachmentUpload(e); setShowAttachMenu(false); }} className="hidden" />
+                    </label>
+                    <button
+                      onClick={handleOpenMediaPicker}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-accent cursor-pointer transition-colors text-left"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                      Desde biblioteca de medios
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             <textarea
@@ -268,6 +364,63 @@ export default function DocView() {
           </div>
         )}
       </div>
+
+      {/* Media Library Picker Modal */}
+      {showMediaPicker && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-foreground/20 backdrop-blur-[2px] animate-fade-in" onClick={() => setShowMediaPicker(false)}>
+          <div className="bg-card border border-border rounded-2xl shadow-card-hover w-full max-w-lg mx-4 max-h-[75vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-border shrink-0">
+              <h2 className="text-sm font-bold text-foreground font-heading flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-bento-blue" />
+                Biblioteca de Medios
+              </h2>
+              <button onClick={() => setShowMediaPicker(false)} className="p-1 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                ✕
+              </button>
+            </div>
+            <p className="px-5 pt-3 text-[10px] text-muted-foreground">Haz clic en un archivo para insertarlo en el documento.</p>
+            <div className="flex-1 overflow-y-auto p-4">
+              {mediaFiles.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-8">No hay archivos en la biblioteca de medios.</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-3">
+                  {mediaFiles.map(file => (
+                    <button
+                      key={file.path}
+                      onClick={() => handleInsertFromLibrary(file)}
+                      className="group relative flex flex-col items-center rounded-xl border border-border hover:border-bento-blue/50 bg-secondary hover:bg-accent overflow-hidden transition-all cursor-pointer"
+                      title={file.name}
+                    >
+                      <div className="w-full aspect-square flex items-center justify-center overflow-hidden bg-secondary">
+                        {mediaThumbs[file.path] ? (
+                          file.type === 'video' ? (
+                            <video src={mediaThumbs[file.path]} className="w-full h-full object-cover" muted />
+                          ) : (
+                            <img src={mediaThumbs[file.path]} alt={file.name} className="w-full h-full object-cover" />
+                          )
+                        ) : (
+                          <div className="text-muted-foreground/30">
+                            {file.type === 'video' ? <Film className="w-8 h-8" /> : <ImageIcon className="w-8 h-8" />}
+                          </div>
+                        )}
+                      </div>
+                      <div className="w-full px-2 py-1.5">
+                        <span className="text-[9px] font-mono text-muted-foreground group-hover:text-foreground truncate block">{file.name}</span>
+                      </div>
+                      {/* Type badge */}
+                      <span className={`absolute top-1.5 right-1.5 text-[7px] font-bold uppercase px-1 py-0.5 rounded ${
+                        file.type === 'video' ? 'bg-bento-purple-light text-bento-purple' : 'bg-bento-blue-light text-bento-blue'
+                      }`}>
+                        {file.type === 'video' ? 'VID' : 'IMG'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
