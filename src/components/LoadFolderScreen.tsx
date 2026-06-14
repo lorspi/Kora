@@ -5,14 +5,16 @@
 
 import React, { useState } from 'react';
 import { useProjectStore } from '../store';
-import { FolderOpen, HardDrive, HelpCircle, AlertTriangle, FileArchive, ArrowRight, Cpu, Github } from 'lucide-react';
+import { FolderOpen, HardDrive, HelpCircle, AlertTriangle, FileArchive, ArrowRight, Cpu, Github, Download } from 'lucide-react';
 import { FsMode, FileSystemAdapter, dbClear, dbSet, normalizePath } from '../lib/fs';
 import JSZip from 'jszip';
 import ThemeToggle from './ThemeToggle';
 import VersionBadge from './VersionBadge';
+import { useUpdateCheck } from '../hooks/useVersion';
 
 export default function LoadFolderScreen() {
   const { loadProjectDirectory, createBlankProject, seedSampleProject, adapter } = useProjectStore();
+  const { updateAvailable, remoteVersion, localVersion, performUpdate } = useUpdateCheck();
   const [fsaSupported] = useState<boolean>(() => 'showDirectoryPicker' in window);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -127,6 +129,15 @@ export default function LoadFolderScreen() {
           <p className="mt-2 text-muted-foreground text-sm max-w-md mx-auto">
             Edita, organiza y colabora sobre tus tareas con almacenamiento local y privado. Tus datos permanecen en tu control.
           </p>
+          {updateAvailable && (
+            <button
+              onClick={performUpdate}
+              className="mt-3 inline-flex items-center gap-1.5 bg-bento-blue-light text-bento-blue border border-bento-blue/30 px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-80 transition-opacity cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Actualización disponible (v{remoteVersion})
+            </button>
+          )}
         </div>
 
         {errorMsg && (
