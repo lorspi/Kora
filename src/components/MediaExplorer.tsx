@@ -194,15 +194,15 @@ export default function MediaExplorer() {
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-background animate-fade-in">
       
       {/* Header */}
-      <div className="p-6 border-b border-border bg-card shrink-0">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-bold text-foreground font-heading flex items-center gap-2">
-              <ImageIcon className="w-5 h-5 text-bento-blue" />
+      <div className="p-4 sm:p-6 border-b border-border bg-card shrink-0">
+        <div className="flex items-center justify-between mb-4 gap-3">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-bold text-foreground font-heading flex items-center gap-2">
+              <ImageIcon className="w-5 h-5 text-bento-blue shrink-0" />
               Explorador de Medios
             </h2>
             <p className="text-xs text-muted-foreground mt-1">
-              Administra los archivos adjuntos de tu workspace. Solo los medios huérfanos se pueden eliminar.
+              Administra los archivos adjuntos de tu workspace.
             </p>
           </div>
           <button 
@@ -238,7 +238,7 @@ export default function MediaExplorer() {
       </div>
 
       {/* Media Grid */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>

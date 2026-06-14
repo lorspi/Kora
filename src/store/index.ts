@@ -115,6 +115,10 @@ interface ProjectState {
   setShowProjectSettings: (show: boolean) => void;
   showAbout: boolean;
   setShowAbout: (show: boolean) => void;
+  
+  // Mobile sidebar
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
 }
 
 // Helper to save/load persistence state
@@ -1919,8 +1923,8 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
     },
 
     // Navigation and quick search parameters
-    setShowMediaExplorer: (show) => set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showProjectSettings: false, showAbout: false }),
-    setSelectedList: (listId) => set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false }),
+    setShowMediaExplorer: (show) => set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showProjectSettings: false, showAbout: false, sidebarOpen: false }),
+    setSelectedList: (listId) => set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false }),
     setSelectedTask: (taskId) => {
       const prevTaskId = get().selectedTaskId;
       if (prevTaskId && prevTaskId !== taskId) {
@@ -1928,7 +1932,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       }
       set({ selectedTaskId: taskId, selectedDocId: null });
     },
-    setSelectedDoc: (docId) => set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false }),
+    setSelectedDoc: (docId) => set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false }),
     setSearchQuery: (query) => set({ searchQuery: query }),
     setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen }),
 
@@ -1940,7 +1944,8 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       selectedDocId: null, 
       selectedTaskId: null, 
       showMediaExplorer: false,
-      showAbout: false
+      showAbout: false,
+      sidebarOpen: false
     }),
 
     // Project Administration
@@ -1988,7 +1993,12 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       selectedDocId: null,
       selectedTaskId: null,
       showMediaExplorer: false,
-      showProjectSettings: false
-    })
+      showProjectSettings: false,
+      sidebarOpen: false
+    }),
+
+    // Mobile sidebar
+    sidebarOpen: false,
+    setSidebarOpen: (open) => set({ sidebarOpen: open })
   };
 });

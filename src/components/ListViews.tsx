@@ -149,25 +149,25 @@ export default function ListViews() {
     <div id="list-views-container" className="flex-1 flex flex-col h-full bg-background font-body overflow-hidden">
       
       {/* Workspace Ribbon Title & View Tabs Selector */}
-      <div className="bg-card px-6 pt-5 pb-0 border-b border-border shrink-0">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="w-3.5 h-3.5 rounded-full" style={{ backgroundColor: activeList.color }}></div>
-            <h1 className="text-xl font-bold text-foreground flex items-center gap-2 font-heading">
+      <div className="bg-card px-3 sm:px-6 pt-4 sm:pt-5 pb-0 border-b border-border shrink-0">
+        <div className="flex flex-col gap-3 sm:gap-4 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: activeList.color }}></div>
+            <h1 className="text-lg sm:text-xl font-bold text-foreground flex items-center gap-2 font-heading truncate">
               {activeList.name}
             </h1>
-            <span className="text-xs bg-secondary text-muted-foreground font-mono px-2 py-0.5 rounded-full border border-border">
+            <span className="text-xs bg-secondary text-muted-foreground font-mono px-2 py-0.5 rounded-full border border-border shrink-0">
               {listTasks.length} {listTasks.length === 1 ? 'tarea' : 'tareas'}
             </span>
           </div>
 
           {activeTab !== 'settings' && (
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center flex-wrap">
               <input
                 id="quick-task-input"
                 type="text"
                 placeholder="Rápido: Nombrar tarea..."
-                className="bg-card border border-input rounded-xl px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground w-48 sm:w-60 focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-colors"
+                className="bg-card border border-input rounded-xl px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground w-full sm:w-60 focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-colors"
                 value={quickTitle}
                 onChange={(e) => setQuickTitle(e.target.value)}
                 onKeyDown={(e) => {
@@ -195,16 +195,16 @@ export default function ListViews() {
         </div>
 
         {/* List views select toggles */}
-        <div className="flex gap-6 text-xs font-semibold text-muted-foreground">
+        <div className="flex gap-3 sm:gap-6 text-xs font-semibold text-muted-foreground overflow-x-auto">
           {(['list', 'kanban', 'table', 'settings'] as const).map(tab => {
             const icons = { list: ListIcon, kanban: Kanban, table: Table, settings: SettingsIcon };
-            const labels = { list: 'Lista', kanban: 'Kanban', table: 'Tabla', settings: 'Estados & Config' };
+            const labels = { list: 'Lista', kanban: 'Kanban', table: 'Tabla', settings: 'Config' };
             const Icon = icons[tab];
             return (
               <button 
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`pb-3 flex items-center gap-1.5 cursor-pointer transition-colors ${
+                className={`pb-3 flex items-center gap-1.5 cursor-pointer transition-colors whitespace-nowrap shrink-0 ${
                   activeTab === tab ? 'text-foreground font-bold' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
@@ -217,7 +217,7 @@ export default function ListViews() {
       </div>
 
       {/* Screen Render based on chosen view tab */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-3 sm:p-6">
         {activeTab === 'list' && (
           <div className="space-y-6">
             {activeList.statuses.map(status => {

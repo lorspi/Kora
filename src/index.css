@@ -222,3 +222,16 @@ body {
 .dark .form-date::-webkit-calendar-picker-indicator {
   filter: none;
 }
+
+/* ===== Mobile Responsive Layout ===== */
+@media (min-width: 1024px) {
+  #app-sidebar {
+    transform: translateX(0) !important;
+    position: relative !important;
+    inset: auto !important;
+    z-index: auto !important;
+    width: 16rem !important;
+    max-width: none !important;
+    transition: none !important;
+  }
+}

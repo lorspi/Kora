@@ -226,21 +226,21 @@ export default function DocView() {
     <div id="doc-view-container" className="flex-1 flex flex-col h-full bg-background font-body overflow-hidden">
       
       {/* Editorial Header Ribbon */}
-      <div className="bg-card border-b border-border px-6 py-4 shrink-0 flex items-center justify-between gap-4">
+      <div className="bg-card border-b border-border px-3 sm:px-6 py-3 sm:py-4 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="flex-1 min-w-0">
           <input 
             type="text"
-            className="w-full bg-transparent border-0 text-lg font-bold text-foreground hover:bg-accent focus:bg-card px-2 py-1 rounded-xl focus:outline-none transition-colors focus:ring-1 focus:ring-ring font-heading"
+            className="w-full bg-transparent border-0 text-base sm:text-lg font-bold text-foreground hover:bg-accent focus:bg-card px-2 py-1 rounded-xl focus:outline-none transition-colors focus:ring-1 focus:ring-ring font-heading"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
-          <div className="text-[10px] text-muted-foreground font-mono px-2 mt-0.5 flex items-center gap-1">
+          <div className="text-[10px] text-muted-foreground font-mono px-2 mt-0.5 flex items-center gap-1 truncate">
             <span>Formato: Markdown legible. Archivo:</span>
-            <span className="text-foreground font-semibold">/docs/{docMeta.filename}</span>
+            <span className="text-foreground font-semibold truncate">/docs/{docMeta.filename}</span>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <div className="bg-secondary p-1 border border-border rounded-xl flex">
             {(['edit', 'split', 'preview'] as const).map(m => {
               const icons = { edit: Edit3, split: ArrowLeftRight, preview: Eye };
@@ -294,7 +294,7 @@ export default function DocView() {
       </div>
 
       {/* Editor Main body container */}
-      <div className="flex-1 overflow-hidden flex">
+      <div className="flex-1 overflow-hidden flex flex-col sm:flex-row">
         
         {(mode === 'edit' || mode === 'split') && (
           <div className="flex-1 h-full flex flex-col bg-card border-r border-border">

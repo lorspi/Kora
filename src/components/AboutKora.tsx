@@ -45,8 +45,8 @@ export default function AboutKora() {
   ];
 
   return (
-    <div className="flex-1 overflow-auto p-6 font-body">
-      <div className="max-w-2xl mx-auto space-y-8">
+    <div className="flex-1 overflow-auto p-4 sm:p-6 font-body">
+      <div className="max-w-2xl mx-auto space-y-6 sm:space-y-8">
 
         {/* Header */}
         <div className="text-center space-y-3 pb-4">

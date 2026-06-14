@@ -47,7 +47,9 @@ export default function Sidebar() {
     setShowProjectSettings,
     showAbout,
     setShowAbout,
-    adapter
+    adapter,
+    sidebarOpen,
+    setSidebarOpen
   } = useProjectStore();
   const { toast, confirm } = useUI();
   const { updateAvailable } = useUpdateCheck();
@@ -100,7 +102,26 @@ export default function Sidebar() {
   };
 
   return (
-    <aside id="app-sidebar" className="w-64 shrink-0 bg-card border-r border-border text-card-foreground flex flex-col h-full font-body select-none relative">
+    <>
+      {/* Overlay backdrop for mobile */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside 
+        id="app-sidebar" 
+        className={`
+          fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw]
+          bg-card border-r border-border text-card-foreground 
+          flex flex-col h-full font-body select-none
+          transform transition-transform duration-300 ease-in-out
+          lg:relative lg:inset-auto lg:z-auto lg:w-64 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:transition-none
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}
+      >
       
       {/* Workspace App Name Header */}
       <div className="p-4 border-b border-border flex items-center justify-between">
@@ -380,5 +401,6 @@ export default function Sidebar() {
       </div>
 
     </aside>
+    </>
   );
 }
