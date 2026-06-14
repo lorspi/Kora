@@ -280,59 +280,114 @@ export default function ListViews() {
                               </button>
 
                               <div onClick={() => setSelectedTask(task.id)} className="cursor-pointer min-w-0 flex-1">
-                                {/* Line 1: task code + title + assignees */}
-                                <div className="flex items-center gap-2 mb-0.5">
-                                  <span className="font-mono text-[10px] font-bold text-muted-foreground shrink-0">{task.taskCode}</span>
-                                  {pendingBlocked && (
-                                    <span className="text-[9px] bg-destructive/20 text-destructive font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-0.5 border border-destructive/40">
-                                      <AlertCircle className="w-2.5 h-2.5" /> Bloqueada
-                                    </span>
-                                  )}
-                                  {isLocked && (
-                                    <span className="text-[9px] bg-bento-yellow-light text-bento-yellow font-mono px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-border">
-                                      <FolderLock className="w-2.5 h-2.5" /> En Edición: @{locks[task.id].username}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <h4 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue truncate ${
-                                    status.isCompleted ? 'line-through text-muted-foreground group-hover:text-muted-foreground' : ''
-                                  }`}>
-                                    {task.title}
-                                  </h4>
-                                  <div className="flex -space-x-1.5 shrink-0">
-                                    {task.assignees.map(userId => {
-                                      const userObj = users.find(u => u.id === userId);
-                                      return userObj ? (
-                                        <span key={userId} className="w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: userObj.avatarColor }} title={userObj.name}>
-                                          {userObj.name.charAt(0)}
+                                {/* Desktop: single row layout */}
+                                <div className="hidden lg:block">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="font-mono text-[10px] font-bold text-muted-foreground shrink-0">{task.taskCode}</span>
+                                    {pendingBlocked && (
+                                      <span className="text-[9px] bg-destructive/20 text-destructive font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-0.5 border border-destructive/40">
+                                        <AlertCircle className="w-2.5 h-2.5" /> Bloqueada
+                                      </span>
+                                    )}
+                                    {isLocked && (
+                                      <span className="text-[9px] bg-bento-yellow-light text-bento-yellow font-mono px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-border">
+                                        <FolderLock className="w-2.5 h-2.5" /> En Edición: @{locks[task.id].username}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <h4 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue truncate ${
+                                      status.isCompleted ? 'line-through text-muted-foreground group-hover:text-muted-foreground' : ''
+                                    }`}>
+                                      {task.title}
+                                    </h4>
+                                    <div className="flex items-center gap-2 ml-auto shrink-0">
+                                      {totalCount > 0 && (
+                                        <span className="text-[10px] bg-secondary text-muted-foreground font-semibold px-2 py-0.5 rounded-full border border-border flex items-center gap-1">
+                                          <CheckCircle2 className="w-3 h-3 text-bento-blue" />
+                                          {completeCount}/{totalCount}
                                         </span>
-                                      ) : null;
-                                    })}
+                                      )}
+                                      {task.dueDate && (
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 font-semibold border ${
+                                          new Date(task.dueDate) < new Date() && !status.isCompleted
+                                            ? 'bg-destructive/20 text-destructive border-destructive/40'
+                                            : 'bg-secondary text-muted-foreground border-border'
+                                        }`}>
+                                          <Calendar className="w-3 h-3" />
+                                          {task.dueDate}
+                                        </span>
+                                      )}
+                                      <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${getPriorityBadgeColor(task.priority)}`}>
+                                        {getPriorityLabel(task.priority)}
+                                      </span>
+                                      <div className="flex -space-x-1.5 shrink-0">
+                                        {task.assignees.map(userId => {
+                                          const userObj = users.find(u => u.id === userId);
+                                          return userObj ? (
+                                            <span key={userId} className="w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: userObj.avatarColor }} title={userObj.name}>
+                                              {userObj.name.charAt(0)}
+                                            </span>
+                                          ) : null;
+                                        })}
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
 
-                                {/* Line 2: chips (subtasks, date, priority) */}
-                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                  {totalCount > 0 && (
-                                    <span className="text-[10px] bg-secondary text-muted-foreground font-semibold px-2 py-0.5 rounded-full border border-border flex items-center gap-1">
-                                      <CheckCircle2 className="w-3 h-3 text-bento-blue" />
-                                      {completeCount}/{totalCount}
-                                    </span>
-                                  )}
-                                  {task.dueDate && (
-                                    <span className={`text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 font-semibold border ${
-                                      new Date(task.dueDate) < new Date() && !status.isCompleted
-                                        ? 'bg-destructive/20 text-destructive border-destructive/40'
-                                        : 'bg-secondary text-muted-foreground border-border'
+                                {/* Mobile: stacked layout */}
+                                <div className="lg:hidden">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="font-mono text-[10px] font-bold text-muted-foreground shrink-0">{task.taskCode}</span>
+                                    {pendingBlocked && (
+                                      <span className="text-[9px] bg-destructive/20 text-destructive font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-0.5 border border-destructive/40">
+                                        <AlertCircle className="w-2.5 h-2.5" /> Bloqueada
+                                      </span>
+                                    )}
+                                    {isLocked && (
+                                      <span className="text-[9px] bg-bento-yellow-light text-bento-yellow font-mono px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-border">
+                                        <FolderLock className="w-2.5 h-2.5" /> En Edición: @{locks[task.id].username}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <h4 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue truncate ${
+                                      status.isCompleted ? 'line-through text-muted-foreground group-hover:text-muted-foreground' : ''
                                     }`}>
-                                      <Calendar className="w-3 h-3" />
-                                      {task.dueDate}
+                                      {task.title}
+                                    </h4>
+                                    <div className="flex -space-x-1.5 shrink-0">
+                                      {task.assignees.map(userId => {
+                                        const userObj = users.find(u => u.id === userId);
+                                        return userObj ? (
+                                          <span key={userId} className="w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: userObj.avatarColor }} title={userObj.name}>
+                                            {userObj.name.charAt(0)}
+                                          </span>
+                                        ) : null;
+                                      })}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    {totalCount > 0 && (
+                                      <span className="text-[10px] bg-secondary text-muted-foreground font-semibold px-2 py-0.5 rounded-full border border-border flex items-center gap-1">
+                                        <CheckCircle2 className="w-3 h-3 text-bento-blue" />
+                                        {completeCount}/{totalCount}
+                                      </span>
+                                    )}
+                                    {task.dueDate && (
+                                      <span className={`text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 font-semibold border ${
+                                        new Date(task.dueDate) < new Date() && !status.isCompleted
+                                          ? 'bg-destructive/20 text-destructive border-destructive/40'
+                                          : 'bg-secondary text-muted-foreground border-border'
+                                      }`}>
+                                        <Calendar className="w-3 h-3" />
+                                        {task.dueDate}
+                                      </span>
+                                    )}
+                                    <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${getPriorityBadgeColor(task.priority)}`}>
+                                      {getPriorityLabel(task.priority)}
                                     </span>
-                                  )}
-                                  <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${getPriorityBadgeColor(task.priority)}`}>
-                                    {getPriorityLabel(task.priority)}
-                                  </span>
+                                  </div>
                                 </div>
                               </div>
 
@@ -497,15 +552,15 @@ export default function ListViews() {
                           )}
                         </td>
                         <td className="p-3">
-                          <select className="bg-card border border-input rounded px-2 py-0.5 text-[11px] text-foreground font-body focus:outline-none" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
+                          <select className="form-select bg-card border border-input rounded px-2 py-0.5 text-[11px] text-foreground font-body focus:outline-none" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
                             {activeList.statuses.map(s => (<option key={s.id} value={s.id}>{s.name.replace(/[^\w\s/]/g, '')}</option>))}
                           </select>
                         </td>
                         <td className="p-3">
-                          <input type="date" className="bg-card border border-input text-foreground rounded px-2 py-0.5 text-[10px] focus:outline-none" value={task.dueDate || ''} onChange={(e) => updateTask({ ...task, dueDate: e.target.value })} />
+                          <input type="date" className="form-date bg-card border border-input text-foreground rounded px-2 py-0.5 text-[10px] focus:outline-none" value={task.dueDate || ''} onChange={(e) => updateTask({ ...task, dueDate: e.target.value })} />
                         </td>
                         <td className="p-3">
-                          <select className="bg-card border border-input rounded px-1.5 py-0.5 text-[10px] text-foreground focus:outline-none uppercase font-bold tracking-wider" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
+                          <select className="form-select bg-card border border-input rounded px-1.5 py-0.5 text-[10px] text-foreground focus:outline-none uppercase font-bold tracking-wider" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
                             <option value="low">Baja</option>
                             <option value="medium">Media</option>
                             <option value="high">Alta</option>
@@ -558,6 +613,131 @@ export default function ListViews() {
 
 const STATUS_COLORS = ['#d1d5db', '#2563eb', '#eab308', '#10b981', '#ef4444', '#8b5cf6', '#f97316', '#06b6d4', '#ec4899'];
 
+const PRESET_COLORS = [
+  '#8b5cf6', '#6366f1', '#3b82f6', '#06b6d4', '#10b981', '#22c55e', '#eab308', '#f97316',
+  '#ef4444', '#ec4899', '#d946ef', '#b8860b', '#6b7280', '#374151'
+];
+
+function ColorSwatchPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  const customInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleCustomClick = () => {
+    if (customInputRef.current) {
+      customInputRef.current.click();
+    }
+  };
+
+  const isPreset = PRESET_COLORS.includes(value.toLowerCase());
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      {PRESET_COLORS.map(color => (
+        <button
+          key={color}
+          type="button"
+          onClick={() => onChange(color)}
+          className={`w-6 h-6 rounded-full border-2 transition-all cursor-pointer shrink-0 hover:scale-110 ${
+            value.toLowerCase() === color ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-transparent hover:border-muted-foreground/50'
+          }`}
+          style={{ backgroundColor: color }}
+          title={color}
+        />
+      ))}
+      {/* Custom color button */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={handleCustomClick}
+          className={`w-6 h-6 rounded-full border-2 border-dashed transition-all cursor-pointer shrink-0 hover:scale-110 flex items-center justify-center ${
+            !isPreset ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-muted-foreground/50 hover:border-muted-foreground'
+          }`}
+          style={!isPreset ? { backgroundColor: value } : undefined}
+          title="Color personalizado"
+        >
+          {isPreset && <Plus className="w-3 h-3 text-muted-foreground" />}
+        </button>
+        <input
+          ref={customInputRef}
+          type="color"
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ColorSwatchPickerCompact({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const customInputRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const isPreset = PRESET_COLORS.includes(value.toLowerCase());
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-5 h-5 rounded-full border-2 border-border cursor-pointer shrink-0 hover:scale-110 transition-all"
+        style={{ backgroundColor: value }}
+        title="Cambiar color"
+      />
+      {open && (
+        <div className="absolute z-50 top-7 left-0 bg-card border border-border rounded-xl p-2.5 shadow-xl min-w-[180px]">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {PRESET_COLORS.map(color => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => { onChange(color); setOpen(false); }}
+                className={`w-5 h-5 rounded-full border-2 transition-all cursor-pointer shrink-0 hover:scale-110 ${
+                  value.toLowerCase() === color ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-transparent hover:border-muted-foreground/50'
+                }`}
+                style={{ backgroundColor: color }}
+                title={color}
+              />
+            ))}
+            {/* Custom color */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => customInputRef.current?.click()}
+                className={`w-5 h-5 rounded-full border-2 border-dashed transition-all cursor-pointer shrink-0 hover:scale-110 flex items-center justify-center ${
+                  !isPreset ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-muted-foreground/50 hover:border-muted-foreground'
+                }`}
+                style={!isPreset ? { backgroundColor: value } : undefined}
+                title="Color personalizado"
+              >
+                {isPreset && <Plus className="w-2.5 h-2.5 text-muted-foreground" />}
+              </button>
+              <input
+                ref={customInputRef}
+                type="color"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingsPanel({ activeList, updateListConfig, deleteList }: {
   activeList: TaskList;
   updateListConfig: (listId: string, name: string, color: string, statuses: TaskStatus[]) => Promise<void>;
@@ -571,12 +751,12 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
   const [newStatusColor, setNewStatusColor] = useState('#6b7280');
   const [saving, setSaving] = useState(false);
 
-  // Sync local state when active list changes
+  // Sync local state when active list changes (only on list switch, not on data updates)
   useEffect(() => {
     setListName(activeList.name);
     setListColor(activeList.color);
     setStatuses(activeList.statuses);
-  }, [activeList.id, activeList.statuses]);
+  }, [activeList.id]);
 
   const hasChanges = listName !== activeList.name || listColor !== activeList.color || JSON.stringify(statuses) !== JSON.stringify(activeList.statuses);
 
@@ -626,8 +806,8 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
   };
 
   return (
-    <div className="max-w-xl space-y-6">
-      <div className="bg-card border border-border rounded-xl p-5 shadow-card space-y-5">
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div className="bg-card border border-border rounded-2xl p-5 shadow-card space-y-5">
         <h3 className="text-sm font-bold text-foreground font-heading">Configurar Lista</h3>
         <p className="text-xs text-muted-foreground">Edita el nombre, color de la lista y configura los estados del flujo de trabajo.</p>
 
@@ -645,15 +825,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
           </div>
           <div className="space-y-1">
             <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Color de la Lista</label>
-            <div className="flex items-center gap-2">
-              <input 
-                type="color"
-                className="w-8 h-8 rounded-lg border border-border cursor-pointer"
-                value={listColor}
-                onChange={(e) => setListColor(e.target.value)}
-              />
-              <span className="text-[10px] font-mono text-muted-foreground">{listColor}</span>
-            </div>
+            <ColorSwatchPicker value={listColor} onChange={setListColor} />
           </div>
         </div>
 
@@ -665,13 +837,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
             {statuses.map((st) => (
               <div key={st.id} className="flex items-center gap-2 bg-secondary p-2.5 rounded-lg border border-border">
                 {/* Color picker */}
-                <input 
-                  type="color"
-                  className="w-5 h-5 rounded-full border border-border cursor-pointer shrink-0"
-                  value={st.color}
-                  onChange={(e) => handleStatusColorChange(st.id, e.target.value)}
-                  title="Color del estado"
-                />
+                <ColorSwatchPickerCompact value={st.color} onChange={(c) => handleStatusColorChange(st.id, c)} />
                 
                 {/* Name input */}
                 <input 
@@ -711,12 +877,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
 
           {/* Add new status */}
           <div className="flex items-center gap-2 pt-2">
-            <input 
-              type="color"
-              className="w-5 h-5 rounded-full border border-border cursor-pointer shrink-0"
-              value={newStatusColor}
-              onChange={(e) => setNewStatusColor(e.target.value)}
-            />
+            <ColorSwatchPickerCompact value={newStatusColor} onChange={setNewStatusColor} />
             <input 
               type="text"
               className="flex-1 bg-card border border-input rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring"

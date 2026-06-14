@@ -19,8 +19,83 @@ import {
   Pencil,
   X,
   Crown,
-  FileArchive
+  FileArchive,
+  Plus
 } from 'lucide-react';
+
+const PRESET_COLORS = [
+  '#8b5cf6', '#6366f1', '#3b82f6', '#06b6d4', '#10b981', '#22c55e', '#eab308', '#f97316',
+  '#ef4444', '#ec4899', '#d946ef', '#b8860b', '#6b7280', '#374151'
+];
+
+function UserColorPicker({ value, onChange }: { value: string; onChange: (color: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const customInputRef = React.useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  const isPreset = PRESET_COLORS.includes(value.toLowerCase());
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="w-7 h-7 rounded-full border-2 border-border cursor-pointer shrink-0 hover:scale-110 transition-all"
+        style={{ backgroundColor: value }}
+        title="Cambiar color"
+      />
+      {open && (
+        <div className="absolute z-50 top-9 left-0 bg-card border border-border rounded-xl p-2.5 shadow-xl min-w-[180px]">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {PRESET_COLORS.map(color => (
+              <button
+                key={color}
+                type="button"
+                onClick={() => { onChange(color); setOpen(false); }}
+                className={`w-5 h-5 rounded-full border-2 transition-all cursor-pointer shrink-0 hover:scale-110 ${
+                  value.toLowerCase() === color ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-transparent hover:border-muted-foreground/50'
+                }`}
+                style={{ backgroundColor: color }}
+                title={color}
+              />
+            ))}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => customInputRef.current?.click()}
+                className={`w-5 h-5 rounded-full border-2 border-dashed transition-all cursor-pointer shrink-0 hover:scale-110 flex items-center justify-center ${
+                  !isPreset ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-muted-foreground/50 hover:border-muted-foreground'
+                }`}
+                style={!isPreset ? { backgroundColor: value } : undefined}
+                title="Color personalizado"
+              >
+                {isPreset && <Plus className="w-2.5 h-2.5 text-muted-foreground" />}
+              </button>
+              <input
+                ref={customInputRef}
+                type="color"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ProjectSettings() {
   const { 
@@ -43,6 +118,7 @@ export default function ProjectSettings() {
   // User editing
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('');
 
   useEffect(() => {
     setProjName(projectMeta?.name || '');
@@ -67,14 +143,15 @@ export default function ProjectSettings() {
   const handleStartEditUser = (user: SystemUser) => {
     setEditingUserId(user.id);
     setEditName(user.name);
+    setEditColor(user.avatarColor);
   };
 
   const handleSaveUserName = async (userId: string) => {
     if (!editName.trim()) return;
     try {
-      await updateUser(userId, { name: editName.trim() });
+      await updateUser(userId, { name: editName.trim(), avatarColor: editColor });
       setEditingUserId(null);
-      toast('Nombre de usuario actualizado', 'success');
+      toast('Usuario actualizado', 'success');
     } catch (e: any) {
       toast('Error: ' + e.message, 'error');
     }
@@ -279,33 +356,39 @@ export default function ProjectSettings() {
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  {editingUserId === user.id && isSuperAdmin ? (
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        value={editName}
-                        onChange={e => setEditName(e.target.value)}
-                        className="flex-1 bg-card border border-input rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring"
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') handleSaveUserName(user.id);
-                          if (e.key === 'Escape') setEditingUserId(null);
-                        }}
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => handleSaveUserName(user.id)}
-                        className="p-1 rounded hover:bg-accent text-bento-green transition-colors"
-                        title="Guardar"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setEditingUserId(null)}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground transition-colors"
-                        title="Cancelar"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                  {editingUserId === user.id && (isSuperAdmin || user.id === activeUser?.id) ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          className="flex-1 bg-card border border-input rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring"
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleSaveUserName(user.id);
+                            if (e.key === 'Escape') setEditingUserId(null);
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleSaveUserName(user.id)}
+                          className="p-1 rounded hover:bg-accent text-bento-green transition-colors"
+                          title="Guardar"
+                        >
+                          <Save className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setEditingUserId(null)}
+                          className="p-1 rounded hover:bg-accent text-muted-foreground transition-colors"
+                          title="Cancelar"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground font-semibold">Color:</span>
+                        <UserColorPicker value={editColor} onChange={setEditColor} />
+                      </div>
                     </div>
                   ) : (
                     <div>
@@ -323,33 +406,37 @@ export default function ProjectSettings() {
                   )}
                 </div>
 
-                {/* Actions (only for superadmin) */}
-                {isSuperAdmin && editingUserId !== user.id && (
+                {/* Actions */}
+                {editingUserId !== user.id && (isSuperAdmin || user.id === activeUser?.id) && (
                   <div className="flex items-center gap-1 shrink-0">
                     <button
                       onClick={() => handleStartEditUser(user)}
                       className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                      title="Editar nombre"
+                      title="Editar"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
-                    <button
-                      onClick={() => handleToggleSuperAdmin(user)}
-                      className={`p-1.5 rounded-lg hover:bg-accent transition-colors ${
-                        user.isSuperAdmin ? 'text-bento-yellow hover:text-bento-orange' : 'text-muted-foreground hover:text-bento-yellow'
-                      }`}
-                      title={user.isSuperAdmin ? 'Revocar superadmin' : 'Hacer superadmin'}
-                    >
-                      {user.isSuperAdmin ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
-                    </button>
-                    {user.id !== activeUser?.id && (
-                      <button
-                        onClick={() => handleDeleteUser(user)}
-                        className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                        title="Eliminar usuario"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                    {isSuperAdmin && (
+                      <>
+                        <button
+                          onClick={() => handleToggleSuperAdmin(user)}
+                          className={`p-1.5 rounded-lg hover:bg-accent transition-colors ${
+                            user.isSuperAdmin ? 'text-bento-yellow hover:text-bento-orange' : 'text-muted-foreground hover:text-bento-yellow'
+                          }`}
+                          title={user.isSuperAdmin ? 'Revocar superadmin' : 'Hacer superadmin'}
+                        >
+                          {user.isSuperAdmin ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
+                        </button>
+                        {user.id !== activeUser?.id && (
+                          <button
+                            onClick={() => handleDeleteUser(user)}
+                            className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                            title="Eliminar usuario"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 )}

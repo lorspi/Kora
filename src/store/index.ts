@@ -109,7 +109,7 @@ interface ProjectState {
   
   // Project Administration
   updateProjectMeta: (name: string, description: string) => Promise<void>;
-  updateUser: (userId: string, updates: { name?: string; isSuperAdmin?: boolean }) => Promise<void>;
+  updateUser: (userId: string, updates: { name?: string; isSuperAdmin?: boolean; avatarColor?: string }) => Promise<void>;
   deleteUser: (userId: string) => Promise<void>;
   showProjectSettings: boolean;
   setShowProjectSettings: (show: boolean) => void;
@@ -1965,7 +1965,8 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
         return {
           ...u,
           ...(updates.name !== undefined ? { name: updates.name } : {}),
-          ...(updates.isSuperAdmin !== undefined ? { isSuperAdmin: updates.isSuperAdmin } : {})
+          ...(updates.isSuperAdmin !== undefined ? { isSuperAdmin: updates.isSuperAdmin } : {}),
+          ...(updates.avatarColor !== undefined ? { avatarColor: updates.avatarColor } : {})
         };
       });
       await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
