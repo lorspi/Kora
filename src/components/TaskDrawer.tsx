@@ -321,7 +321,7 @@ export default function TaskDrawer() {
               {activeList.name} &gt; {task.taskCode}
             </span>
             {blockerTask && (
-              <span className="text-[9px] bg-destructive/10 text-destructive border border-destructive/20 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
+              <span className="text-[9px] bg-destructive/20 text-destructive border border-destructive/40 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
                 ⚠️ BLOQUEADA POR {blockerTask.taskCode}
               </span>
             )}
@@ -343,7 +343,7 @@ export default function TaskDrawer() {
           <div className="flex-1 overflow-y-auto p-6 space-y-6 border-r border-border bg-card">
             
             {blockerTask && (
-              <div className="p-3.5 bg-destructive/10 border border-destructive/20 rounded-xl text-destructive text-xs">
+              <div className="p-3.5 bg-destructive/20 border border-destructive/40 rounded-xl text-destructive text-xs">
                 ⚠️ <strong>Esta tarea está bloqueada:</strong> No puedes avanzar libremente hasta completar <strong className="underline font-mono">{blockerTask.taskCode} ({blockerTask.title})</strong>.
               </div>
             )}

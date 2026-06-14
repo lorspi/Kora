@@ -215,34 +215,25 @@ export default function MediaExplorer() {
           </button>
         </div>
 
-        {/* Stats bar */}
-        <div className="flex items-center gap-4 text-[10px] font-mono text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <ImageIcon className="w-3 h-3" /> Total: <strong className="text-foreground">{totalCount}</strong>
-          </span>
-          <span className="flex items-center gap-1">
-            <Link2 className="w-3 h-3 text-bento-green" /> Vinculados: <strong className="text-bento-green">{linkedCount}</strong>
-          </span>
-          <span className="flex items-center gap-1">
-            <Unlink className="w-3 h-3 text-bento-orange" /> Huérfanos: <strong className="text-bento-orange">{orphanCount}</strong>
-          </span>
-        </div>
-
         {/* Filters */}
         <div className="flex gap-2 mt-4">
-          {(['all', 'linked', 'orphan'] as const).map(f => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer border ${
-                filter === f 
-                  ? 'bg-primary text-primary-foreground border-primary' 
-                  : 'bg-secondary text-muted-foreground border-border hover:bg-accent hover:text-foreground'
-              }`}
-            >
-              {f === 'all' ? 'Todos' : f === 'linked' ? 'Vinculados' : 'Huérfanos'}
-            </button>
-          ))}
+          {(['all', 'linked', 'orphan'] as const).map(f => {
+            const label = f === 'all' ? 'Todos' : f === 'linked' ? 'Vinculados' : 'Huérfanos';
+            const count = f === 'all' ? totalCount : f === 'linked' ? linkedCount : orphanCount;
+            return (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-3 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors cursor-pointer border ${
+                  filter === f 
+                    ? 'bg-primary text-primary-foreground border-primary' 
+                    : 'bg-secondary text-muted-foreground border-border hover:bg-accent hover:text-foreground'
+                }`}
+              >
+                {label} ({count})
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -367,7 +358,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, isDeleting, onPreview, onDe
         {/* Status badge */}
         <span className={`absolute top-2 right-2 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-md ${
           item.isOrphan 
-            ? 'bg-destructive/10 text-destructive' 
+            ? 'bg-destructive/20 text-destructive' 
             : 'bg-bento-green-light text-bento-green'
         }`}>
           {item.isOrphan ? '⚠️ Huérfano' : '✓ Vinculado'}

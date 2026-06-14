@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { useProjectStore } from '../store';
 import { UserPlus, FileText, Sparkles, ArrowRight, ChevronLeft, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { hashPassword } from '../lib/crypto';
+import VersionBadge from './VersionBadge';
 
 const AVATAR_COLORS = [
   '#ef4444', '#f97316', '#f59e0b', '#10b981', '#06b6d4',
@@ -351,6 +352,7 @@ export default function ProjectOnboarding() {
           </div>
         )}
       </div>
+      <VersionBadge />
     </div>
   );
 }

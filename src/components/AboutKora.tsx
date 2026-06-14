@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { useVersion } from '../hooks/useVersion';
 import { 
   Info, 
   Github, 
@@ -16,14 +17,7 @@ import {
 } from 'lucide-react';
 
 export default function AboutKora() {
-  const [version, setVersion] = useState('...');
-
-  useEffect(() => {
-    fetch('/version.txt')
-      .then(res => res.text())
-      .then(text => setVersion(text.trim()))
-      .catch(() => setVersion('desconocida'));
-  }, []);
+  const version = useVersion();
 
   const techStack = [
     'React 19',

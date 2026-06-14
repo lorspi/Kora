@@ -177,7 +177,7 @@ export default function ProjectSettings() {
       const url = URL.createObjectURL(content);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${projectMeta?.name?.replace(/[^a-zA-Z0-9]/g, '_') || 'Kora_Offline'}_workspace.zip`;
+      link.download = `${projectMeta?.name?.replace(/[^\w\u00C0-\u024F\s-]/g, '').replace(/\s+/g, '_') || 'Kora_Offline'}_workspace.zip`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

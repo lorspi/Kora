@@ -89,8 +89,8 @@ export default function ListViews() {
     switch (p) {
       case 'low': return 'bg-secondary text-muted-foreground border-border';
       case 'medium': return 'bg-bento-blue-light text-bento-blue border-border';
-      case 'high': return 'bg-bento-orange-light text-bento-orange border-border';
-      case 'urgent': return 'bg-destructive/10 text-destructive border-destructive/30 animate-pulse';
+      case 'high': return 'bg-bento-orange-light text-bento-orange border-bento-orange/30';
+      case 'urgent': return 'bg-destructive/20 text-destructive border-destructive/40 animate-pulse';
     }
   };
 
@@ -283,7 +283,7 @@ export default function ListViews() {
                                 <div className="flex items-center gap-2 mb-1">
                                   <span className="font-mono text-[10px] font-bold text-muted-foreground shrink-0">{task.taskCode}</span>
                                   {pendingBlocked && (
-                                    <span className="text-[9px] bg-destructive/10 text-destructive font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-0.5 border border-destructive/20">
+                                    <span className="text-[9px] bg-destructive/20 text-destructive font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-0.5 border border-destructive/40">
                                       <AlertCircle className="w-2.5 h-2.5" /> Bloqueada
                                     </span>
                                   )}
@@ -311,7 +311,7 @@ export default function ListViews() {
                               {task.dueDate && (
                                 <span className={`text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 font-semibold border ${
                                   new Date(task.dueDate) < new Date() && !status.isCompleted
-                                    ? 'bg-destructive/10 text-destructive border-destructive/20'
+                                    ? 'bg-destructive/20 text-destructive border-destructive/40'
                                     : 'bg-secondary text-muted-foreground border-border'
                                 }`}>
                                   <Calendar className="w-3 h-3" />

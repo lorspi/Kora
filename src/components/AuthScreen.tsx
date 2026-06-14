@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { useProjectStore } from '../store';
 import { KeyRound, UserPlus, LogIn, ChevronRight, User, Sparkles, ArrowLeft } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
+import VersionBadge from './VersionBadge';
 
 const AVATAR_COLORS = [
   '#ef4444', '#f97316', '#f59e0b', '#10b981', '#06b6d4',
@@ -228,6 +229,7 @@ export default function AuthScreen() {
         )}
 
       </div>
+      <VersionBadge />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { FolderOpen, HardDrive, HelpCircle, AlertTriangle, FileArchive, ArrowRig
 import { FsMode, FileSystemAdapter, dbClear, dbSet, normalizePath } from '../lib/fs';
 import JSZip from 'jszip';
 import ThemeToggle from './ThemeToggle';
+import VersionBadge from './VersionBadge';
 
 export default function LoadFolderScreen() {
   const { loadProjectDirectory, createBlankProject, seedSampleProject, adapter } = useProjectStore();
@@ -281,6 +282,7 @@ export default function LoadFolderScreen() {
           </a>
         </div>
       </div>
+      <VersionBadge />
     </div>
   );
 }
