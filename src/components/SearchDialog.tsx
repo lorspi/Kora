@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useProjectStore } from '../store';
 import { Search, X, CheckSquare, FileText, Tag, Image, CornerDownLeft, CircleDot } from 'lucide-react';
 
@@ -21,6 +21,61 @@ export default function SearchDialog() {
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const itemRefs = useRef<(HTMLButtonElement | HTMLSpanElement | null)[]>([]);
+
+  const query = searchQuery.trim().toLowerCase();
+
+  const filteredTasks = useMemo(() => query.length === 0 ? [] : tasks.filter(t => 
+    t.title.toLowerCase().includes(query) ||
+    t.description.toLowerCase().includes(query) ||
+    t.taskCode.toLowerCase().includes(query) ||
+    t.tags.some(tag => tag.toLowerCase().includes(query))
+  ), [query, tasks]);
+
+  const filteredDocs = useMemo(() => query.length === 0 ? [] : docs.filter(d => 
+    d.title.toLowerCase().includes(query)
+  ), [query, docs]);
+
+  const allTags = useMemo(() => Array.from(new Set(tasks.flatMap(t => t.tags))), [tasks]);
+  const filteredTags = useMemo(() => query.length === 0 ? [] : allTags.filter(tag => 
+    tag.toLowerCase().includes(query)
+  ), [query, allTags]);
+
+  // Build a flat list of navigable items
+  const navigableItems = useMemo(() => {
+    const items: { type: 'task' | 'doc' | 'tag'; id: string }[] = [];
+    filteredTasks.forEach(t => items.push({ type: 'task', id: t.id }));
+    filteredDocs.forEach(d => items.push({ type: 'doc', id: d.id }));
+    filteredTags.forEach(tag => items.push({ type: 'tag', id: tag }));
+    return items;
+  }, [filteredTasks, filteredDocs, filteredTags]);
+
+  // Reset selected index when results change
+  useEffect(() => {
+    setSelectedIndex(navigableItems.length > 0 ? 0 : -1);
+  }, [navigableItems.length, query]);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (selectedIndex >= 0 && itemRefs.current[selectedIndex]) {
+      itemRefs.current[selectedIndex]?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [selectedIndex]);
+
+  const openItem = useCallback((index: number) => {
+    const item = navigableItems[index];
+    if (!item) return;
+    if (item.type === 'task') {
+      setSelectedTask(item.id);
+      setSearchOpen(false);
+    } else if (item.type === 'doc') {
+      setSelectedDoc(item.id);
+      setSearchOpen(false);
+    } else if (item.type === 'tag') {
+      setSearchQuery(item.id);
+    }
+  }, [navigableItems, setSelectedTask, setSelectedDoc, setSearchOpen, setSearchQuery]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -31,36 +86,37 @@ export default function SearchDialog() {
       if (e.key === 'Escape' && isSearchOpen) {
         setSearchOpen(false);
       }
+      if (!isSearchOpen) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(prev => 
+          prev < navigableItems.length - 1 ? prev + 1 : 0
+        );
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(prev => 
+          prev > 0 ? prev - 1 : navigableItems.length - 1
+        );
+      } else if (e.key === 'Enter' && selectedIndex >= 0) {
+        e.preventDefault();
+        openItem(selectedIndex);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSearchOpen]);
+  }, [isSearchOpen, navigableItems, selectedIndex, openItem]);
 
   useEffect(() => {
     if (isSearchOpen && inputRef.current) {
       setTimeout(() => inputRef.current?.focus(), 80);
     }
+    if (!isSearchOpen) {
+      setSelectedIndex(-1);
+    }
   }, [isSearchOpen]);
 
   if (!isSearchOpen) return null;
-
-  const query = searchQuery.trim().toLowerCase();
-
-  const filteredTasks = query.length === 0 ? [] : tasks.filter(t => 
-    t.title.toLowerCase().includes(query) ||
-    t.description.toLowerCase().includes(query) ||
-    t.taskCode.toLowerCase().includes(query) ||
-    t.tags.some(tag => tag.toLowerCase().includes(query))
-  );
-
-  const filteredDocs = query.length === 0 ? [] : docs.filter(d => 
-    d.title.toLowerCase().includes(query)
-  );
-
-  const allTags = Array.from(new Set(tasks.flatMap(t => t.tags)));
-  const filteredTags = query.length === 0 ? [] : allTags.filter(tag => 
-    tag.toLowerCase().includes(query)
-  );
 
   return (
     <div id="search-dialog-backdrop" className="fixed inset-0 bg-foreground/30 backdrop-blur-sm z-50 flex items-start justify-center pt-24 px-6 font-body">
@@ -80,7 +136,7 @@ export default function SearchDialog() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
-          <span className="text-[10px] bg-secondary border border-border text-muted-foreground px-2 py-0.5 rounded font-mono select-none">
+          <span className="text-[10px] bg-secondary border border-border text-muted-foreground px-2 py-0.5 rounded font-mono select-none hidden sm:inline">
             ESC
           </span>
           <button 
@@ -110,24 +166,28 @@ export default function SearchDialog() {
                     Tareas encontradas ({filteredTasks.length})
                   </span>
                   <div className="space-y-1.5">
-                    {filteredTasks.map(t => (
+                    {filteredTasks.map((t, i) => {
+                      const flatIndex = i;
+                      return (
                       <button
                         key={t.id}
+                        ref={el => { itemRefs.current[flatIndex] = el; }}
                         onClick={() => {
                           setSelectedTask(t.id);
                           setSearchOpen(false);
                         }}
-                        className="w-full text-left p-2.5 rounded-xl bg-secondary hover:bg-accent border border-border hover:border-bento-blue/50 transition-all flex items-center justify-between gap-3 group/item"
+                        className={`w-full text-left p-2.5 rounded-xl bg-secondary hover:bg-accent border border-border hover:border-bento-blue/50 transition-all flex items-center justify-between gap-3 group/item ${selectedIndex === flatIndex ? 'ring-2 ring-bento-blue bg-accent border-bento-blue/50' : ''}`}
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <span className="font-mono text-[10px] font-bold text-muted-foreground shrink-0">{t.taskCode}</span>
                           <span className="text-xs font-semibold text-foreground group-hover/item:text-bento-blue truncate">{t.title}</span>
                         </div>
-                        <span className="text-[10px] bg-card group-hover/item:bg-primary group-hover/item:text-primary-foreground border border-border text-muted-foreground px-2 py-0.5 rounded transition-colors font-mono font-medium flex items-center gap-1 shrink-0">
+                        <span className="text-[10px] bg-card group-hover/item:bg-primary group-hover/item:text-primary-foreground border border-border text-muted-foreground px-2 py-0.5 rounded transition-colors font-mono font-medium hidden sm:flex items-center gap-1 shrink-0">
                           Abrir <CornerDownLeft className="w-3 h-3" />
                         </span>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -139,24 +199,28 @@ export default function SearchDialog() {
                     Documentos Markdown ({filteredDocs.length})
                   </span>
                   <div className="space-y-1.5">
-                    {filteredDocs.map(d => (
+                    {filteredDocs.map((d, i) => {
+                      const flatIndex = filteredTasks.length + i;
+                      return (
                       <button
                         key={d.id}
+                        ref={el => { itemRefs.current[flatIndex] = el; }}
                         onClick={() => {
                           setSelectedDoc(d.id);
                           setSearchOpen(false);
                         }}
-                        className="w-full text-left p-2.5 rounded-xl bg-secondary hover:bg-accent border border-border hover:border-bento-orange/50 transition-all flex items-center justify-between gap-3 group/item"
+                        className={`w-full text-left p-2.5 rounded-xl bg-secondary hover:bg-accent border border-border hover:border-bento-orange/50 transition-all flex items-center justify-between gap-3 group/item ${selectedIndex === flatIndex ? 'ring-2 ring-bento-orange bg-accent border-bento-orange/50' : ''}`}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <FileText className="w-4 h-4 text-bento-orange" />
                           <span className="text-xs font-semibold text-foreground group-hover/item:text-bento-orange truncate">{d.title}</span>
                         </div>
-                        <span className="text-[10px] bg-card group-hover/item:bg-primary group-hover/item:text-primary-foreground border border-border text-muted-foreground px-2 py-0.5 rounded transition-colors font-mono font-medium flex items-center gap-1 shrink-0">
+                        <span className="text-[10px] bg-card group-hover/item:bg-primary group-hover/item:text-primary-foreground border border-border text-muted-foreground px-2 py-0.5 rounded transition-colors font-mono font-medium hidden sm:flex items-center gap-1 shrink-0">
                           Ver <CornerDownLeft className="w-3 h-3" />
                         </span>
                       </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -168,15 +232,19 @@ export default function SearchDialog() {
                     Etiquetas coincidentes ({filteredTags.length})
                   </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {filteredTags.map(tag => (
+                    {filteredTags.map((tag, i) => {
+                      const flatIndex = filteredTasks.length + filteredDocs.length + i;
+                      return (
                       <span 
                         key={tag}
-                        className="text-[10px] font-bold bg-bento-green-light text-bento-green border border-border px-2.5 py-0.5 rounded-full font-mono cursor-pointer hover:opacity-80 transition-all uppercase"
+                        ref={el => { itemRefs.current[flatIndex] = el; }}
+                        className={`text-[10px] font-bold bg-bento-green-light text-bento-green border border-border px-2.5 py-0.5 rounded-full font-mono cursor-pointer hover:opacity-80 transition-all uppercase ${selectedIndex === flatIndex ? 'ring-2 ring-bento-green opacity-80' : ''}`}
                         onClick={() => setSearchQuery(tag)}
                       >
                         #{tag}
                       </span>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -191,11 +259,15 @@ export default function SearchDialog() {
           )}
         </div>
 
-        {/* Tip panel */}
-        <div className="p-3 border-t border-border text-center text-[10px] text-muted-foreground font-mono bg-secondary shrink-0 flex items-center justify-center gap-1">
-          <span>Protip: Presiona</span>
+        {/* Tip panel - hidden on mobile (touch devices don't have keyboards) */}
+        <div className="p-3 border-t border-border text-center text-[10px] text-muted-foreground font-mono bg-secondary shrink-0 hidden sm:flex items-center justify-center gap-1">
+          <span>Navega con</span>
+          <kbd className="bg-card border border-border px-1 py-0.5 rounded text-muted-foreground">↑↓</kbd>
+          <span>y abre con</span>
+          <kbd className="bg-card border border-border px-1 py-0.5 rounded text-muted-foreground">Enter</kbd>
+          <span className="mx-1">·</span>
           <kbd className="bg-card border border-border px-1 py-0.5 rounded text-muted-foreground">Ctrl+K</kbd>
-          <span>en cualquier pantalla para abrir este panel.</span>
+          <span>para abrir este panel.</span>
         </div>
 
       </div>
