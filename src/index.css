@@ -235,3 +235,16 @@ body {
     transition: none !important;
   }
 }
+
+/* ===== Block Editor Placeholder ===== */
+[contenteditable][data-placeholder]:focus:empty::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground));
+  opacity: 0.5;
+  pointer-events: none;
+  font-style: normal;
+}
+
+[contenteditable]:focus {
+  outline: none;
+}
