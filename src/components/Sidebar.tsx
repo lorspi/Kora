@@ -27,7 +27,8 @@ import {
   AlertTriangle,
   Download,
   X,
-  Trash2
+  Trash2,
+  ChevronLeft
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -183,8 +184,8 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Global Search trigger icon */}
-        <div className="flex items-center gap-1">
+        {/* Global Search trigger icon – hidden on mobile (already in MobileHeader) */}
+        <div className="hidden lg:flex items-center gap-1">
           <ThemeToggle />
           <button 
             onClick={() => setSearchOpen(true)}
@@ -194,6 +195,14 @@ export default function Sidebar() {
             <Search className="w-4 h-4" />
           </button>
         </div>
+        {/* Close sidebar button – visible only on mobile */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="lg:hidden p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          aria-label="Cerrar menú"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Quick Switch User & Profile Box */}

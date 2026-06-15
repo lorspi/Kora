@@ -835,14 +835,14 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
           
           <div className="space-y-2">
             {statuses.map((st) => (
-              <div key={st.id} className="flex items-center gap-2 bg-secondary p-2.5 rounded-lg border border-border">
+              <div key={st.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-secondary p-2.5 rounded-lg border border-border">
                 {/* Color picker */}
                 <ColorSwatchPickerCompact value={st.color} onChange={(c) => handleStatusColorChange(st.id, c)} />
                 
                 {/* Name input */}
                 <input 
                   type="text"
-                  className="flex-1 bg-card border border-input rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring"
+                  className="flex-1 min-w-0 bg-card border border-input rounded-lg px-2.5 py-1.5 text-xs text-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring"
                   value={st.name}
                   onChange={(e) => handleStatusNameChange(st.id, e.target.value)}
                   placeholder="Nombre del estado"
@@ -852,7 +852,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
                 <button
                   type="button"
                   onClick={() => handleStatusCompletedToggle(st.id)}
-                  className={`px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border transition-colors cursor-pointer shrink-0 ${
+                  className={`sm:ml-0 ml-auto px-2 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider border transition-colors cursor-pointer shrink-0 ${
                     st.isCompleted
                       ? 'bg-bento-green-light text-bento-green border-bento-green/30'
                       : 'bg-secondary text-muted-foreground border-border hover:border-bento-green/50'
