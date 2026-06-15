@@ -33,7 +33,9 @@ import {
   FolderOpen,
   Check,
   Copy,
-  Link
+  Link,
+  MoreVertical,
+  FileCode
 } from 'lucide-react';
 
 // ─── Block Types ────────────────────────────────────────────────────────────────
@@ -199,6 +201,42 @@ function renderInlineMarkdown(text: string, resolvedUrls: Record<string, string>
   return parts.length > 0 ? parts : [text];
 }
 
+// ─── Viewport Boundary Helper ───────────────────────────────────────────────────
+
+function useViewportBoundary(menuRef: React.RefObject<HTMLDivElement | null>, position: { top: number; left: number }) {
+  useEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let adjustedLeft = position.left;
+    let adjustedTop = position.top;
+
+    // Right edge overflow
+    if (rect.right > vw - 8) {
+      adjustedLeft = vw - rect.width - 8;
+    }
+    // Left edge overflow
+    if (adjustedLeft < 8) {
+      adjustedLeft = 8;
+    }
+    // Bottom edge overflow
+    if (rect.bottom > vh - 8) {
+      adjustedTop = position.top - rect.height - 8;
+    }
+    // Top edge overflow
+    if (adjustedTop < 8) {
+      adjustedTop = 8;
+    }
+
+    if (adjustedLeft !== position.left || adjustedTop !== position.top) {
+      el.style.left = `${adjustedLeft}px`;
+      el.style.top = `${adjustedTop}px`;
+    }
+  });
+}
+
 // ─── Slash Command Menu ─────────────────────────────────────────────────────────
 
 function SlashMenu({ position, filter, onSelect, onClose }: {
@@ -209,6 +247,8 @@ function SlashMenu({ position, filter, onSelect, onClose }: {
 }) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useViewportBoundary(menuRef, position);
 
   const filtered = useMemo(() => {
     if (!filter) return SLASH_COMMANDS;
@@ -306,6 +346,8 @@ function FloatingToolbar({ position, onFormat, onClose, onLinkModeChange }: {
   const [linkUrl, setLinkUrl] = useState('');
   const linkInputRef = useRef<HTMLInputElement>(null);
   const savedSelectionRef = useRef<{ blockId: string; startIdx: number; endIdx: number; text: string } | null>(null);
+
+  useViewportBoundary(toolbarRef, position);
 
   useEffect(() => {
     if (showLinkInput && linkInputRef.current) {
@@ -429,6 +471,8 @@ function BlockContextMenu({ position, onDelete, onDuplicate, onConvert, onClose 
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [showConvertSub, setShowConvertSub] = useState(false);
+
+  useViewportBoundary(menuRef, position);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -706,7 +750,7 @@ function BlockEditor({ block, index, focused, totalBlocks, onUpdate, onFocus, on
   if (block.type === 'divider') {
     return (
       <div className="group flex items-center gap-2 py-2" onClick={() => onFocus(block.id)}>
-        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+        <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity">
           <button
             onClick={(e) => { e.stopPropagation(); onAddBelow(block.id); }}
             className="p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer"
@@ -736,7 +780,7 @@ function BlockEditor({ block, index, focused, totalBlocks, onUpdate, onFocus, on
       const resolvedSrc = resolvedUrls[img.src] || img.src;
       return (
         <div className="group flex items-start gap-2 py-1">
-          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity pt-2 shrink-0">
+          <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity pt-2 shrink-0">
             <button
               onClick={() => onAddBelow(block.id)}
               className="p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer"
@@ -774,7 +818,7 @@ function BlockEditor({ block, index, focused, totalBlocks, onUpdate, onFocus, on
       const resolvedSrc = resolvedUrls[videoSrc] || videoSrc;
       return (
         <div className="group flex items-start gap-2 py-1">
-          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity pt-2 shrink-0">
+          <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity pt-2 shrink-0">
             <button
               onClick={() => onAddBelow(block.id)}
               className="p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer"
@@ -806,7 +850,7 @@ function BlockEditor({ block, index, focused, totalBlocks, onUpdate, onFocus, on
   if (block.type === 'code') {
     return (
       <div className="group flex items-start gap-2 py-1">
-        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity pt-2 shrink-0">
+        <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity pt-2 shrink-0">
           <button
             onClick={() => onAddBelow(block.id)}
             className="p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer"
@@ -864,15 +908,15 @@ function BlockEditor({ block, index, focused, totalBlocks, onUpdate, onFocus, on
   }
 
   const wrapperClasses: Record<string, string> = {
-    bullet: 'pl-4 border-l-2 border-muted-foreground/20',
-    numbered: 'pl-4 border-l-2 border-bento-blue/30',
+    bullet: 'pl-2',
+    numbered: 'pl-2',
     quote: 'pl-4 border-l-4 border-bento-blue bg-bento-blue/5 rounded-r-lg py-1',
     checklist: 'pl-1',
   };
 
   return (
     <div className="group flex items-start gap-2 py-0.5">
-      <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity pt-0.5 shrink-0">
+      <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity pt-0.5 shrink-0">
         <button
           onClick={() => onAddBelow(block.id)}
           className="p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer"
@@ -1003,6 +1047,12 @@ export default function DocView() {
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [showMediaPicker, setShowMediaPicker] = useState(false);
   const [mediaFiles, setMediaFiles] = useState<{ name: string; path: string; type: 'image' | 'video' }[]>([]);
+
+  // Doc menu and code mode
+  const [showDocMenu, setShowDocMenu] = useState(false);
+  const [codeMode, setCodeMode] = useState(false);
+  const docMenuRef = useRef<HTMLDivElement>(null);
+  const codeTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [mediaThumbs, setMediaThumbs] = useState<Record<string, string>>({});
   const attachMenuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1295,6 +1345,18 @@ export default function DocView() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showAttachMenu]);
 
+  // Close doc menu on outside click
+  useEffect(() => {
+    if (!showDocMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (docMenuRef.current && !docMenuRef.current.contains(e.target as Node)) {
+        setShowDocMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showDocMenu]);
+
   // Load thumbnails when media picker opens
   useEffect(() => {
     if (!showMediaPicker || !adapter || mediaFiles.length === 0) return;
@@ -1515,56 +1577,97 @@ export default function DocView() {
             Guardar
           </button>
 
-          <button
-            onClick={async () => {
-              const ok = await confirm({ title: 'Eliminar documento', message: '¿Eliminar de forma permanente este archivo Markdown? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' });
-              if (ok) deleteDoc(docMeta.id);
-            }}
-            className="p-2 bg-card border border-border text-muted-foreground hover:text-destructive rounded-xl hover:bg-destructive/10 transition-colors cursor-pointer"
-            title="Eliminar documento (.md)"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          <div className="relative" ref={docMenuRef}>
+            <button
+              onClick={() => setShowDocMenu(!showDocMenu)}
+              className="p-2 bg-card border border-border text-muted-foreground hover:text-foreground rounded-xl hover:bg-accent transition-colors cursor-pointer"
+              title="Opciones del documento"
+            >
+              <MoreVertical className="w-3.5 h-3.5" />
+            </button>
+            {showDocMenu && (
+              <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-xl shadow-card-hover py-1 z-50 min-w-[180px]">
+                <button
+                  onClick={() => {
+                    setCodeMode(!codeMode);
+                    setShowDocMenu(false);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer transition-colors text-left"
+                >
+                  <FileCode className="w-3.5 h-3.5" />
+                  {codeMode ? 'Modo bloques' : 'Modo código'}
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowDocMenu(false);
+                    const ok = await confirm({ title: 'Eliminar documento', message: '¿Eliminar de forma permanente este archivo Markdown? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' });
+                    if (ok) deleteDoc(docMeta.id);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-destructive cursor-pointer transition-colors text-left"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Eliminar documento
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Block Editor Body */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
-          {blocks.map((block, idx) => (
-            <div key={block.id} data-block-id={block.id}>
-              <BlockEditor
-                block={block}
-                index={idx}
-                focused={focusedBlockId === block.id}
-                totalBlocks={blocks.length}
-                onUpdate={handleBlockUpdate}
-                onFocus={setFocusedBlockId}
-                onKeyDown={handleBlockKeyDown}
-                onAddBelow={addBlockBelow}
-                onDelete={deleteBlock}
-                onDuplicate={duplicateBlock}
-                onConvertType={convertBlockType}
-                onMoveBlock={moveBlock}
-                resolvedUrls={resolvedUrls}
-              />
-            </div>
-          ))}
-          
-          {/* Empty area click to add block at end */}
-          <div 
-            className="min-h-[200px] cursor-text"
-            onClick={() => {
-              const lastBlock = blocks[blocks.length - 1];
-              if (lastBlock && lastBlock.content === '') {
-                setFocusedBlockId(lastBlock.id);
-              } else {
-                addBlockBelow(blocks[blocks.length - 1].id);
-              }
+      {!codeMode ? (
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
+            {blocks.map((block, idx) => (
+              <div key={block.id} data-block-id={block.id}>
+                <BlockEditor
+                  block={block}
+                  index={idx}
+                  focused={focusedBlockId === block.id}
+                  totalBlocks={blocks.length}
+                  onUpdate={handleBlockUpdate}
+                  onFocus={setFocusedBlockId}
+                  onKeyDown={handleBlockKeyDown}
+                  onAddBelow={addBlockBelow}
+                  onDelete={deleteBlock}
+                  onDuplicate={duplicateBlock}
+                  onConvertType={convertBlockType}
+                  onMoveBlock={moveBlock}
+                  resolvedUrls={resolvedUrls}
+                />
+              </div>
+            ))}
+            
+            {/* Empty area click to add block at end */}
+            <div 
+              className="min-h-[200px] cursor-text"
+              onClick={() => {
+                const lastBlock = blocks[blocks.length - 1];
+                if (lastBlock && lastBlock.content === '') {
+                  setFocusedBlockId(lastBlock.id);
+                } else {
+                  addBlockBelow(blocks[blocks.length - 1].id);
+                }
+              }}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-hidden flex flex-col">
+          <textarea
+            ref={codeTextareaRef}
+            className="flex-1 w-full bg-card text-foreground p-6 text-xs font-mono focus:outline-none resize-none leading-relaxed"
+            style={{ tabSize: 2 }}
+            value={blocksToMarkdown(blocks)}
+            onChange={(e) => {
+              const newBlocks = markdownToBlocks(e.target.value);
+              skipHistoryRef.current = true;
+              setBlocks(newBlocks);
             }}
+            placeholder="# Escribe en Markdown..."
           />
         </div>
-      </div>
+      )}
 
       {/* Slash Command Menu */}
       {slashMenu && (
