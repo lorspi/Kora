@@ -5,7 +5,7 @@
 
 > ⚠️ **IMPORTANTE: PROYECTO EN ETAPA MUY TEMPRANA DE DESARROLLO** ⚠️
 >
-> Ete proyecto está en una fase inicial y muchas funcionalidades aún no están implementadas o no funcionan correctamente. Si decides probarlo, ten en cuenta que el proyecto sigue evolucionando.
+> Este proyecto está en una fase inicial y muchas funcionalidades aún no están implementadas o no funcionan correctamente. Si decides probarlo, ten en cuenta que el proyecto sigue evolucionando.
 
 Kora es el lugar donde los proyectos encuentran un hogar permanente.
 
