@@ -1013,7 +1013,11 @@ export default function DocView() {
     activeUser,
     locks,
     lockDoc,
-    unlockDoc
+    unlockDoc,
+    setDocHasUnsavedChanges,
+    pendingNavigationAction,
+    confirmPendingNavigation,
+    cancelPendingNavigation
   } = useProjectStore();
   const { toast, confirm } = useUI();
 
@@ -1141,11 +1145,44 @@ export default function DocView() {
     };
   }, [selectedDocId, activeUser?.id]);
 
-  // Track changes
+  // Track changes and sync to store for navigation interception
   useEffect(() => {
     const currentMd = blocksToMarkdown(blocks);
-    setHasChanges(currentMd !== originalMarkdown || title !== (docMeta?.title || ''));
-  }, [blocks, title, originalMarkdown, docMeta?.title]);
+    const changed = currentMd !== originalMarkdown || title !== (docMeta?.title || '');
+    setHasChanges(changed);
+    setDocHasUnsavedChanges(changed);
+  }, [blocks, title, originalMarkdown, docMeta?.title, setDocHasUnsavedChanges]);
+
+  // Watch for pending navigation (user tried to leave while having unsaved changes)
+  const isHandlingRef = useRef(false);
+
+  useEffect(() => {
+    if (!pendingNavigationAction || isHandlingRef.current) return;
+    isHandlingRef.current = true;
+
+    const handlePendingNavigation = async () => {
+      const shouldSave = await confirm({
+        title: 'Cambios sin guardar',
+        message: 'Tienes cambios sin guardar en este documento. ¿Quieres guardarlos antes de salir?',
+        confirmLabel: 'Guardar',
+        cancelLabel: 'Cancelar',
+      });
+
+      if (shouldSave) {
+        const saved = await handleSave();
+        if (saved) {
+          confirmPendingNavigation();
+        } else {
+          cancelPendingNavigation();
+        }
+      } else {
+        cancelPendingNavigation();
+      }
+      isHandlingRef.current = false;
+    };
+
+    handlePendingNavigation();
+  }, [pendingNavigationAction]);
 
   // Resolve attachment URLs
   useEffect(() => {
@@ -1163,16 +1200,18 @@ export default function DocView() {
 
   if (!docMeta) return null;
 
-  const handleSave = async () => {
-    if (!selectedDocId) return;
+  const handleSave = async (): Promise<boolean> => {
+    if (!selectedDocId) return false;
     setLoading(true);
     try {
       const markdown = blocksToMarkdown(blocks);
       await saveDocContent(selectedDocId, title, markdown);
       setOriginalMarkdown(markdown);
       setHasChanges(false);
+      return true;
     } catch (e) {
       toast('Error al guardar documento', 'error');
+      return false;
     } finally {
       setLoading(false);
     }

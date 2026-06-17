@@ -46,6 +46,13 @@ interface ProjectState {
   searchQuery: string;
   isSearchOpen: boolean;
   
+  // Doc unsaved changes tracking for navigation confirmation
+  docHasUnsavedChanges: boolean;
+  setDocHasUnsavedChanges: (has: boolean) => void;
+  pendingNavigationAction: (() => void) | null;
+  confirmPendingNavigation: () => void;
+  cancelPendingNavigation: () => void;
+
   // Methods
   setFsMode: (mode: FsMode) => void;
   loadProjectDirectory: (handle: FileSystemDirectoryHandle | null, mode: FsMode) => Promise<void>;
@@ -207,8 +214,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     tasks: [],
     docs: [],
     locks: {},
-    logs: [],
-  isOnboarding: false,
+    logs: [],    isOnboarding: false,
+
+    // Doc unsaved changes tracking
+    docHasUnsavedChanges: false,
+    pendingNavigationAction: null,
 
     // Selection / Navigation UI
     selectedListId: null,
@@ -2007,8 +2017,34 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
     },
 
     // Navigation and quick search parameters
-    setShowMediaExplorer: (show) => set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showProjectSettings: false, showAbout: false, sidebarOpen: false }),
-    setSelectedList: (listId) => set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false }),
+    setShowMediaExplorer: (show) => {
+      const state = get();
+      if (show && state.docHasUnsavedChanges && state.selectedDocId) {
+        set({
+          pendingNavigationAction: () => {
+            const currentState = get();
+            if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
+            set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+          }
+        });
+        return;
+      }
+      set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+    },
+    setSelectedList: (listId) => {
+      const state = get();
+      if (state.docHasUnsavedChanges && state.selectedDocId) {
+        set({
+          pendingNavigationAction: () => {
+            const currentState = get();
+            if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
+            set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+          }
+        });
+        return;
+      }
+      set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+    },
     setSelectedTask: (taskId) => {
       const prevTaskId = get().selectedTaskId;
       if (prevTaskId && prevTaskId !== taskId) {
@@ -2016,8 +2052,33 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       }
       set({ selectedTaskId: taskId, selectedDocId: null });
     },
+    setDocHasUnsavedChanges: (has) => set({ docHasUnsavedChanges: has }),
+
+    confirmPendingNavigation: () => {
+      const action = get().pendingNavigationAction;
+      if (action) action();
+      set({ pendingNavigationAction: null, docHasUnsavedChanges: false });
+    },
+
+    cancelPendingNavigation: () => {
+      set({ pendingNavigationAction: null });
+    },
+
     setSelectedDoc: (docId) => {
-      const prevDocId = get().selectedDocId;
+      const state = get();
+      const prevDocId = state.selectedDocId;
+
+      // If there are unsaved changes and navigating to a different doc, intercept
+      if (state.docHasUnsavedChanges && prevDocId && prevDocId !== docId) {
+        set({
+          pendingNavigationAction: () => {
+            if (prevDocId && prevDocId !== docId) get().unlockDoc(prevDocId);
+            set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+          }
+        });
+        return;
+      }
+
       if (prevDocId && prevDocId !== docId) {
         get().unlockDoc(prevDocId);
       }
@@ -2028,15 +2089,20 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
 
     // Project settings view
     showProjectSettings: false,
-    setShowProjectSettings: (show) => set({ 
-      showProjectSettings: show, 
-      selectedListId: show ? null : get().selectedListId, 
-      selectedDocId: null, 
-      selectedTaskId: null, 
-      showMediaExplorer: false,
-      showAbout: false,
-      sidebarOpen: false
-    }),
+    setShowProjectSettings: (show) => {
+      const state = get();
+      if (show && state.docHasUnsavedChanges && state.selectedDocId) {
+        set({
+          pendingNavigationAction: () => {
+            const currentState = get();
+            if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
+            set({ showProjectSettings: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showMediaExplorer: false, showAbout: false, sidebarOpen: false });
+          }
+        });
+        return;
+      }
+      set({ showProjectSettings: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showMediaExplorer: false, showAbout: false, sidebarOpen: false });
+    },
 
     // Project Administration
     updateProjectMeta: async (name, description) => {
@@ -2078,15 +2144,20 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
 
     // About view
     showAbout: false,
-    setShowAbout: (show) => set({
-      showAbout: show,
-      selectedListId: show ? null : get().selectedListId,
-      selectedDocId: null,
-      selectedTaskId: null,
-      showMediaExplorer: false,
-      showProjectSettings: false,
-      sidebarOpen: false
-    }),
+    setShowAbout: (show) => {
+      const state = get();
+      if (show && state.docHasUnsavedChanges && state.selectedDocId) {
+        set({
+          pendingNavigationAction: () => {
+            const currentState = get();
+            if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
+            set({ showAbout: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, sidebarOpen: false });
+          }
+        });
+        return;
+      }
+      set({ showAbout: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, sidebarOpen: false });
+    },
 
     // Mobile sidebar
     sidebarOpen: false,
