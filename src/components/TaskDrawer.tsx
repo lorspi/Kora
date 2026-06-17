@@ -447,7 +447,7 @@ export default function TaskDrawer() {
                           const isAssigned = task.assignees.includes(u.id);
                           return (
                             <label key={u.id} className="flex items-center gap-2 cursor-pointer select-none group/u py-0.5">
-                              <input type="checkbox" disabled={isLockedByOther} checked={isAssigned} onChange={() => handleToggleAssignee(u.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
+                              <input type="checkbox" disabled={isLockedByOther} checked={isAssigned} onChange={() => handleToggleAssignee(u.id)} className="app-checkbox w-3.5 h-3.5 mr-1" />
                               <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }}>{u.name.charAt(0)}</span>
                               <span className="text-xs text-foreground group-hover/u:text-foreground truncate">{u.name}</span>
                             </label>
@@ -501,7 +501,7 @@ export default function TaskDrawer() {
                       {task.subtasks.map(sub => (
                         <div key={sub.id} className="flex items-center justify-between gap-3 p-1.5 rounded bg-card border border-border hover:bg-accent transition-colors shadow-card">
                           <label className="flex items-center gap-2 cursor-pointer select-none flex-1">
-                            <input type="checkbox" disabled={isLockedByOther} checked={sub.isCompleted} onChange={() => toggleSubtask(task.id, sub.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
+                            <input type="checkbox" disabled={isLockedByOther} checked={sub.isCompleted} onChange={() => toggleSubtask(task.id, sub.id)} className="app-checkbox w-3.5 h-3.5 mr-1" />
                             <span className={`text-xs text-foreground truncate ${sub.isCompleted ? 'line-through text-muted-foreground' : ''}`}>{sub.title}</span>
                           </label>
                           <button type="button" disabled={isLockedByOther} onClick={() => deleteSubtask(task.id, sub.id)} className="text-muted-foreground hover:text-destructive p-0.5 rounded transition-colors">
@@ -524,7 +524,7 @@ export default function TaskDrawer() {
                         return (
                           <label key={other.id} className="flex items-center justify-between p-1 hover:bg-accent rounded cursor-pointer select-none">
                             <span className="flex items-center gap-2 truncate">
-                              <input type="checkbox" disabled={isLockedByOther} checked={isChecked} onChange={() => handleToggleDependency(other.id)} className="rounded border-border text-bento-blue accent-bento-blue w-3.5 h-3.5 mr-1" />
+                              <input type="checkbox" disabled={isLockedByOther} checked={isChecked} onChange={() => handleToggleDependency(other.id)} className="app-checkbox w-3.5 h-3.5 mr-1" />
                               <span className="font-mono text-[9px] font-bold text-muted-foreground">{other.taskCode}</span>
                               <span className="text-xs text-foreground truncate max-w-sm">{other.title}</span>
                             </span>

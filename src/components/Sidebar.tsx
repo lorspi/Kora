@@ -525,7 +525,7 @@ export default function Sidebar() {
                 type="checkbox"
                 checked={deleteConfirmChecked}
                 onChange={e => setDeleteConfirmChecked(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded border-border accent-destructive cursor-pointer shrink-0"
+                className="mt-0.5 w-4 h-4 app-checkbox app-checkbox--danger shrink-0"
               />
               <span className="text-xs text-foreground leading-relaxed select-none">
                 Entiendo que todos mis datos serán borrados permanentemente y que esta acción no se puede deshacer.
