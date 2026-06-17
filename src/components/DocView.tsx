@@ -66,6 +66,19 @@ function generateId(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
+// Returns the display number for a numbered block based on consecutive numbered blocks
+function getNumberedDisplayIndex(blocks: Block[], idx: number): number {
+  let count = 1;
+  for (let i = idx - 1; i >= 0; i--) {
+    if (blocks[i].type === 'numbered') {
+      count++;
+    } else {
+      break;
+    }
+  }
+  return count;
+}
+
 function markdownToBlocks(markdown: string): Block[] {
   if (!markdown.trim()) return [{ id: generateId(), type: 'paragraph', content: '' }];
   
@@ -119,7 +132,7 @@ function blocksToMarkdown(blocks: Block[]): string {
       case 'h2': return `## ${block.content}`;
       case 'h3': return `### ${block.content}`;
       case 'bullet': return `- ${block.content}`;
-      case 'numbered': return `${idx + 1}. ${block.content}`;
+      case 'numbered': return `${getNumberedDisplayIndex(blocks, idx)}. ${block.content}`;
       case 'quote': return `> ${block.content}`;
       case 'code': return `\`\`\`\n${block.content}\n\`\`\``;
       case 'divider': return '---';
@@ -572,9 +585,10 @@ function parseVideo(content: string): string | null {
   return match[1];
 }
 
-function BlockEditor({ block, index, focused, totalBlocks, onUpdate, onFocus, onKeyDown, onAddBelow, onDelete, onDuplicate, onConvertType, onMoveBlock, resolvedUrls }: {
+function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpdate, onFocus, onKeyDown, onAddBelow, onDelete, onDuplicate, onConvertType, onMoveBlock, resolvedUrls }: {
   block: Block;
   index: number;
+  numberedIndex: number;
   focused: boolean;
   totalBlocks: number;
   onUpdate: (id: string, updates: Partial<Block>) => void;
@@ -944,7 +958,7 @@ function BlockEditor({ block, index, focused, totalBlocks, onUpdate, onFocus, on
             <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-muted-foreground shrink-0" />
           )}
           {block.type === 'numbered' && (
-            <span className="text-[10px] font-mono text-muted-foreground mt-0.5 shrink-0 w-4 text-right">{index + 1}.</span>
+            <span className="text-[10px] font-mono text-muted-foreground mt-0.5 shrink-0 w-4 text-right">{numberedIndex}.</span>
           )}
           <div
             ref={inputRef}
@@ -1618,11 +1632,14 @@ export default function DocView() {
       {!codeMode ? (
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
-            {blocks.map((block, idx) => (
+            {blocks.map((block, idx) => {
+              const numberedIndex = block.type === 'numbered' ? getNumberedDisplayIndex(blocks, idx) : 0;
+              return (
               <div key={block.id} data-block-id={block.id}>
                 <BlockEditor
                   block={block}
                   index={idx}
+                  numberedIndex={numberedIndex}
                   focused={focusedBlockId === block.id}
                   totalBlocks={blocks.length}
                   onUpdate={handleBlockUpdate}
@@ -1636,7 +1653,8 @@ export default function DocView() {
                   resolvedUrls={resolvedUrls}
                 />
               </div>
-            ))}
+            );
+          })}
             
             {/* Empty area click to add block at end */}
             <div 
