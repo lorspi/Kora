@@ -421,7 +421,7 @@ export default function TaskDrawer() {
 
               <div className="p-4">
                 {detailTab === 'details' && (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Estado de Tarea</span>
                       <CustomSelect
@@ -471,7 +471,7 @@ export default function TaskDrawer() {
                       </div>
                     </div>
 
-                    <div className="space-y-2.5 col-span-2">
+                    <div className="space-y-2.5 col-span-1 sm:col-span-2">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Etiquetas / Tags</span>
                       <form onSubmit={handleAddTag} className="flex gap-1.5">
                         <input type="text" disabled={isLockedByOther} className="bg-card border border-input rounded-lg px-2.5 py-1 text-[11px] text-foreground placeholder-muted-foreground focus:outline-none w-full shadow-card" placeholder="Escribir TAG..." value={newTag} onChange={(e) => setNewTag(e.target.value)} />
