@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import mermaid from 'mermaid';
 import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { 
@@ -36,14 +37,15 @@ import {
   Link,
   MoreVertical,
   FileCode,
-  ShieldAlert
+  ShieldAlert,
+  GitBranch
 } from 'lucide-react';
 
 // ─── Block Types ────────────────────────────────────────────────────────────────
 
 interface Block {
   id: string;
-  type: 'paragraph' | 'h1' | 'h2' | 'h3' | 'bullet' | 'numbered' | 'quote' | 'code' | 'divider' | 'checklist';
+  type: 'paragraph' | 'h1' | 'h2' | 'h3' | 'bullet' | 'numbered' | 'quote' | 'code' | 'divider' | 'checklist' | 'mermaid';
   content: string;
   checked?: boolean;
 }
@@ -59,6 +61,7 @@ const SLASH_COMMANDS = [
   { type: 'quote', label: 'Cita', icon: Quote, shortcut: '>', description: 'Bloque de cita' },
   { type: 'code', label: 'Código', icon: Code, shortcut: '```', description: 'Bloque de código' },
   { type: 'divider', label: 'Divisor', icon: Minus, shortcut: '---', description: 'Línea horizontal' },
+  { type: 'mermaid', label: 'Diagrama Mermaid', icon: GitBranch, shortcut: '```mermaid', description: 'Diagrama de flujo, secuencia, Gantt...' },
 ] as const;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -106,6 +109,15 @@ function markdownToBlocks(markdown: string): Block[] {
       blocks.push({ id: generateId(), type: 'bullet', content: line.slice(2) });
     } else if (/^\d+\.\s/.test(line)) {
       blocks.push({ id: generateId(), type: 'numbered', content: line.replace(/^\d+\.\s/, '') });
+    } else if (line.startsWith('```mermaid')) {
+      // Collect mermaid diagram lines
+      const mermaidLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        mermaidLines.push(lines[i]);
+        i++;
+      }
+      blocks.push({ id: generateId(), type: 'mermaid', content: mermaidLines.join('\n') });
     } else if (line.startsWith('```')) {
       // Collect code block lines
       const codeLines: string[] = [];
@@ -135,6 +147,7 @@ function blocksToMarkdown(blocks: Block[]): string {
       case 'bullet': return `- ${block.content}`;
       case 'numbered': return `${getNumberedDisplayIndex(blocks, idx)}. ${block.content}`;
       case 'quote': return `> ${block.content}`;
+      case 'mermaid': return `\`\`\`mermaid\n${block.content}\n\`\`\``;
       case 'code': return `\`\`\`\n${block.content}\n\`\`\``;
       case 'divider': return '---';
       case 'checklist': return `- [${block.checked ? 'x' : ' '}] ${block.content}`;
@@ -560,6 +573,109 @@ function BlockContextMenu({ position, onDelete, onDuplicate, onConvert, onClose 
   );
 }
 
+// ─── Mermaid Diagram Renderer ────────────────────────────────────────────────────
+
+/** Return sober/subdued theme variables for Mermaid based on dark/light mode */
+function getMermaidThemeConfig(isDark: boolean) {
+  if (isDark) {
+    return {
+      startOnLoad: false,
+      theme: 'base' as const,
+      themeVariables: {
+        background: 'transparent',
+        primaryColor: '#334155',
+        primaryTextColor: '#e2e8f0',
+        primaryBorderColor: '#475569',
+        secondaryColor: '#1e293b',
+        secondaryTextColor: '#cbd5e1',
+        secondaryBorderColor: '#334155',
+        tertiaryColor: '#0f172a',
+        lineColor: '#475569',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        fontSize: '12px',
+        edgeLabelBackground: '#1e293b',
+        nodeBorder: '#334155',
+      }
+    };
+  }
+  return {
+    startOnLoad: false,
+    theme: 'base' as const,
+    themeVariables: {
+      background: 'transparent',
+      primaryColor: '#64748b',
+      primaryTextColor: '#1e293b',
+      primaryBorderColor: '#94a3b8',
+      secondaryColor: '#f1f5f9',
+      secondaryTextColor: '#334155',
+      secondaryBorderColor: '#cbd5e1',
+      tertiaryColor: '#f8fafc',
+      lineColor: '#94a3b8',
+      fontFamily: 'Inter, system-ui, sans-serif',
+      fontSize: '12px',
+      edgeLabelBackground: '#ffffff',
+      nodeBorder: '#cbd5e1',
+    }
+  };
+}
+
+function MermaidDiagram({ chart }: { chart: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains('dark'));
+
+  // Listen for theme changes
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDark(document.documentElement.classList.contains('dark'));
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const renderDiagram = async () => {
+      const el = containerRef.current;
+      if (!el || !chart.trim()) return;
+      
+      setRenderError(null);
+      el.innerHTML = '';
+      
+      try {
+        // Re-initialize mermaid with current theme before each render
+        mermaid.initialize(getMermaidThemeConfig(isDark));
+        // Use a unique ID for mermaid to render into
+        const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
+        const { svg } = await mermaid.render(id, chart);
+        el.innerHTML = svg;
+      } catch (err: any) {
+        console.warn('Mermaid render error:', err);
+        setRenderError(err?.message || 'Error al renderizar diagrama');
+      }
+    };
+
+    renderDiagram();
+  }, [chart, isDark]);
+
+  if (!chart.trim()) {
+    return <div className="py-4 text-center text-[10px] text-muted-foreground italic">Escribe código Mermaid para generar el diagrama</div>;
+  }
+
+  return (
+    <div className="relative">
+      <div 
+        ref={containerRef}
+        className="flex justify-center py-4 overflow-x-auto mermaid"
+      />
+      {renderError && (
+        <div className="text-[10px] text-destructive text-center pb-2 font-mono">
+          ⚠️ {renderError}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Block Editor Component ─────────────────────────────────────────────────────
 
 // Check if content is an image markdown syntax
@@ -607,6 +723,14 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
   const codeRef = useRef<HTMLTextAreaElement>(null);
   const contentRef = useRef(block.content);
   const [contextMenu, setContextMenu] = useState<{ top: number; left: number } | null>(null);
+  const [mermaidCodeExpanded, setMermaidCodeExpanded] = useState(false);
+
+  // Auto-focus mermaid textarea when expanded
+  useEffect(() => {
+    if (block.type === 'mermaid' && mermaidCodeExpanded && codeRef.current) {
+      codeRef.current.focus();
+    }
+  }, [mermaidCodeExpanded, block.type]);
 
   // Drag state
   const dragRef = useRef<{ isDragging: boolean; startY: number; blockId: string } | null>(null);
@@ -867,6 +991,81 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
         </div>
       );
     }
+  }
+
+  if (block.type === 'mermaid') {
+    const isExpanded = block.content.trim() ? mermaidCodeExpanded : true;
+    const lineCount = block.content.split('\n').length;
+    
+    return (
+      <div className="group flex flex-col gap-2 py-2">
+        <div className="flex items-start gap-2">
+          {!readOnly && (
+          <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity pt-2 shrink-0">
+            <button
+              onClick={() => onAddBelow(block.id)}
+              className="p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            {renderGripHandle()}
+          </div>
+          )}
+          {/* Diagram preview */}
+          <div className="flex-1 min-w-0">
+            <div className="bg-card border border-border rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <GitBranch className="w-3.5 h-3.5 text-bento-blue" />
+                  <span className="text-[10px] font-mono font-bold text-muted-foreground">mermaid</span>
+                </div>
+                {!readOnly && (
+                  <button
+                    onClick={() => setMermaidCodeExpanded(!mermaidCodeExpanded)}
+                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    title={isExpanded ? 'Colapsar código' : 'Editar código'}
+                  >
+                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
+              <MermaidDiagram chart={block.content} />
+            </div>
+            {/* Collapsible code editor */}
+            {!readOnly && (
+              <div className={`overflow-hidden transition-all duration-200 ${isExpanded ? 'max-h-[500px] opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
+                <div className="bg-secondary border border-border rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-accent border-b border-border">
+                    <span className="text-[10px] font-mono font-bold text-muted-foreground">Código fuente</span>
+                    <span className="text-[9px] font-mono text-muted-foreground">{lineCount} línea{lineCount !== 1 ? 's' : ''}</span>
+                  </div>
+                  <textarea
+                    ref={codeRef}
+                    className="w-full bg-transparent p-3 text-xs font-mono text-foreground focus:outline-none resize-none"
+                    value={block.content}
+                    onChange={(e) => onUpdate(block.id, { content: e.target.value })}
+                    onFocus={() => onFocus(block.id)}
+                    onKeyDown={handleKeyDownInner}
+                    placeholder="graph TD\n  A[Inicio] --> B[Fin]"
+                    rows={Math.max(3, Math.min(10, lineCount))}
+                    style={{ fontFamily: 'JetBrains Mono, Fira Code, monospace' }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        {contextMenu && (
+          <BlockContextMenu
+            position={contextMenu}
+            onDelete={() => onDelete(block.id)}
+            onDuplicate={() => onDuplicate(block.id)}
+            onConvert={(type) => onConvertType(block.id, type)}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
+      </div>
+    );
   }
 
   if (block.type === 'code') {
@@ -1284,7 +1483,7 @@ export default function DocView() {
     if (!block) return;
 
     if (e.key === 'Enter' && !e.shiftKey) {
-      if (block.type === 'code') return; // Allow newlines in code blocks
+      if (block.type === 'code' || block.type === 'mermaid') return; // Allow newlines in code/mermaid blocks
       e.preventDefault();
       // If slash menu is open, let it handle Enter
       if (slashMenu) return;
