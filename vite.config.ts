@@ -12,12 +12,42 @@ export default defineConfig(() => {
       },
     },
     build: {
+      chunkSizeWarningLimit: 2200,
       rollupOptions: {
         output: {
-          manualChunks: {
-            'vendor-react': ['react', 'react-dom'],
-            'vendor-icons': ['lucide-react'],
-            'vendor-jszip': ['jszip'],
+          manualChunks: (id) => {
+            if (id.includes('node_modules')) {
+              if (id.includes('react-dom') || id.includes('/react/')) {
+                return 'vendor-react';
+              }
+              if (id.includes('lucide-react')) {
+                return 'vendor-icons';
+              }
+              if (id.includes('jszip')) {
+                return 'vendor-jszip';
+              }
+              if (id.includes('zustand')) {
+                return 'vendor-zustand';
+              }
+              if (id.includes('cytoscape')) {
+                return 'vendor-cytoscape';
+              }
+              if (id.includes('katex')) {
+                return 'vendor-katex';
+              }
+              if (id.includes('elkjs') || id.includes('elk-worker')) {
+                return 'vendor-elk';
+              }
+              if (id.includes('d3-') || id.includes('/d3/')) {
+                return 'vendor-d3';
+              }
+              if (id.includes('dagre') || id.includes('graphlib')) {
+                return 'vendor-dagre';
+              }
+              if (id.includes('mermaid')) {
+                return 'vendor-mermaid';
+              }
+            }
           },
         },
       },

@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import { useProjectStore } from './store';
 import LoadFolderScreen from './components/LoadFolderScreen';
 import ProjectOnboarding from './components/ProjectOnboarding';
 import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
 import ListViews from './components/ListViews';
-import DocView from './components/DocView';
+const DocView = lazy(() => import('./components/DocView'));
 import MediaExplorer from './components/MediaExplorer';
 import TrashView from './components/TrashView';
 import ProjectInfoCards from './components/ProjectInfoCards';
@@ -164,7 +164,9 @@ export default function App() {
             ) : showMediaExplorer ? (
               <MediaExplorer />
             ) : selectedDocId ? (
-              <DocView />
+              <Suspense fallback={<div className="flex-1 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>}>
+                <DocView />
+              </Suspense>
             ) : selectedListId ? (
               <ListViews />
             ) : (
