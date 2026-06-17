@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { Task, TaskStatus, TaskList } from '../types';
+import CustomSelect from './CustomSelect';
 import { 
   Check, 
   ChevronDown, 
@@ -174,16 +175,17 @@ export default function ListViews() {
                   if (e.key === 'Enter') handleQuickTaskAdd(activeList.statuses[0].id);
                 }}
               />
-              <select
-                className="form-select bg-card border border-input rounded-xl px-3 py-1.5 text-xs text-foreground font-body focus:outline-none"
+              <CustomSelect
+                className="w-full sm:w-auto"
                 value={quickPriority}
-                onChange={(e) => setQuickPriority(e.target.value as Task['priority'])}
-              >
-                <option value="low">Prioridad Baja</option>
-                <option value="medium">Prioridad Media</option>
-                <option value="high">Prioridad Alta</option>
-                <option value="urgent">Prioridad Urgente</option>
-              </select>
+                onChange={(value) => setQuickPriority(value as Task['priority'])}
+                options={[
+                  { value: 'low', label: 'Prioridad Baja' },
+                  { value: 'medium', label: 'Prioridad Media' },
+                  { value: 'high', label: 'Prioridad Alta' },
+                  { value: 'urgent', label: 'Prioridad Urgente' },
+                ]}
+              />
               <button 
                 onClick={() => handleQuickTaskAdd(activeList.statuses[0].id)}
                 className="bg-primary hover:opacity-90 text-primary-foreground font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0 shadow-card"
@@ -552,20 +554,36 @@ export default function ListViews() {
                           )}
                         </td>
                         <td className="p-3">
-                          <select className="form-select bg-card border border-input rounded px-2 py-0.5 text-[11px] text-foreground font-body focus:outline-none" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
-                            {activeList.statuses.map(s => (<option key={s.id} value={s.id}>{s.name.replace(/[^\w\s/]/g, '')}</option>))}
-                          </select>
+                          <CustomSelect
+                            size="sm"
+                            className="inline-flex min-w-[100px]"
+                            value={task.statusId}
+                            onChange={(value) => updateTask({ ...task, statusId: value })}
+                            options={activeList.statuses.map(s => ({ value: s.id, label: s.name.replace(/[^\w\s/]/g, '') }))}
+                          />
                         </td>
                         <td className="p-3">
                           <input type="date" className="form-date bg-card border border-input text-foreground rounded px-2 py-0.5 text-[10px] focus:outline-none" value={task.dueDate || ''} onChange={(e) => updateTask({ ...task, dueDate: e.target.value })} />
                         </td>
                         <td className="p-3">
-                          <select className="form-select bg-card border border-input rounded px-1.5 py-0.5 text-[10px] text-foreground focus:outline-none uppercase font-bold tracking-wider" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
-                            <option value="low">Baja</option>
-                            <option value="medium">Media</option>
-                            <option value="high">Alta</option>
-                            <option value="urgent">Urgente</option>
-                          </select>
+                          <CustomSelect
+                            size="sm"
+                            className="inline-flex min-w-[80px]"
+                            value={task.priority}
+                            onChange={(value) => updateTask({ ...task, priority: value as Task['priority'] })}
+                            options={[
+                              { value: 'low', label: 'Baja' },
+                              { value: 'medium', label: 'Media' },
+                              { value: 'high', label: 'Alta' },
+                              { value: 'urgent', label: 'Urgente' },
+                            ]}
+                            renderValue={(option) => (
+                              <span className="uppercase font-bold tracking-wider">{option.label}</span>
+                            )}
+                            renderOption={(option, selected) => (
+                              <span className={`${selected ? 'font-bold' : ''} uppercase tracking-wider text-[10px]`}>{option.label}</span>
+                            )}
+                          />
                         </td>
                         <td className="p-3">
                           <div className="flex -space-x-1.5 overflow-hidden">

@@ -112,6 +112,24 @@ export interface TaskLock {
   expiresAt: number;
 }
 
+export type TrashItemType = 'task' | 'document' | 'media';
+
+export interface TrashItem {
+  id: string; // UUID
+  type: TrashItemType;
+  originalData: any; // The original item data (task, doc metadata, or media info)
+  originalPath?: string; // Original file path (for media)
+  deletedAt: number;
+  deletedBy: string; // User ID
+  deletedByName: string;
+  label: string; // Display name
+  metadata?: {
+    taskCode?: string;
+    docFilename?: string;
+    mediaType?: 'image' | 'video';
+  };
+}
+
 export interface ProjectLocks {
   [taskId: string]: TaskLock;
 }

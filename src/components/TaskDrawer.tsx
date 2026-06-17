@@ -9,6 +9,7 @@ import { useProjectStore } from '../store';
 import { Task, SystemUser } from '../types';
 import { MarkdownPreview } from '../lib/markdown';
 import MobileNotesDrawer from './MobileNotesDrawer';
+import CustomSelect from './CustomSelect';
 import { 
   X, 
   Trash2, 
@@ -310,7 +311,7 @@ export default function TaskDrawer() {
           <div className="bg-bento-yellow-light border-b border-border p-3 flex items-center gap-2.5 text-bento-yellow text-xs shrink-0 select-none">
             <ShieldAlert className="w-5 h-5 shrink-0" />
             <div className="flex-1 font-semibold">
-              🔒 Tarea de solo lectura: @{lockingUser} está editando este archivo desde otra terminal ahora mismo.
+              Tarea de solo lectura: @{lockingUser} está editando este archivo desde otra terminal ahora mismo.
             </div>
           </div>
         )}
@@ -420,19 +421,32 @@ export default function TaskDrawer() {
 
               <div className="p-4">
                 {detailTab === 'details' && (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Estado de Tarea</span>
-                      <select disabled={isLockedByOther} className="form-select w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring cursor-pointer shadow-card font-semibold" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
-                        {activeList.statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
+                      <CustomSelect
+                        disabled={isLockedByOther}
+                        className="w-full"
+                        value={task.statusId}
+                        onChange={(value) => updateTask({ ...task, statusId: value })}
+                        options={activeList.statuses.map(s => ({ value: s.id, label: s.name }))}
+                      />
                     </div>
 
                     <div className="space-y-1.5">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Prioridad</span>
-                      <select disabled={isLockedByOther} className="form-select w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring cursor-pointer font-semibold shadow-card" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
-                        <option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
-                      </select>
+                      <CustomSelect
+                        disabled={isLockedByOther}
+                        className="w-full"
+                        value={task.priority}
+                        onChange={(value) => updateTask({ ...task, priority: value as Task['priority'] })}
+                        options={[
+                          { value: 'low', label: 'Baja' },
+                          { value: 'medium', label: 'Media' },
+                          { value: 'high', label: 'Alta' },
+                          { value: 'urgent', label: 'Urgente' },
+                        ]}
+                      />
                     </div>
 
                     <div className="space-y-1.5">
@@ -447,7 +461,7 @@ export default function TaskDrawer() {
                           const isAssigned = task.assignees.includes(u.id);
                           return (
                             <label key={u.id} className="flex items-center gap-2 cursor-pointer select-none group/u py-0.5">
-                              <input type="checkbox" disabled={isLockedByOther} checked={isAssigned} onChange={() => handleToggleAssignee(u.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
+                              <input type="checkbox" disabled={isLockedByOther} checked={isAssigned} onChange={() => handleToggleAssignee(u.id)} className="app-checkbox w-3.5 h-3.5 mr-1" />
                               <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }}>{u.name.charAt(0)}</span>
                               <span className="text-xs text-foreground group-hover/u:text-foreground truncate">{u.name}</span>
                             </label>
@@ -457,7 +471,7 @@ export default function TaskDrawer() {
                       </div>
                     </div>
 
-                    <div className="space-y-2.5 col-span-2">
+                    <div className="space-y-2.5 col-span-1 sm:col-span-2">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Etiquetas / Tags</span>
                       <form onSubmit={handleAddTag} className="flex gap-1.5">
                         <input type="text" disabled={isLockedByOther} className="bg-card border border-input rounded-lg px-2.5 py-1 text-[11px] text-foreground placeholder-muted-foreground focus:outline-none w-full shadow-card" placeholder="Escribir TAG..." value={newTag} onChange={(e) => setNewTag(e.target.value)} />
@@ -501,7 +515,7 @@ export default function TaskDrawer() {
                       {task.subtasks.map(sub => (
                         <div key={sub.id} className="flex items-center justify-between gap-3 p-1.5 rounded bg-card border border-border hover:bg-accent transition-colors shadow-card">
                           <label className="flex items-center gap-2 cursor-pointer select-none flex-1">
-                            <input type="checkbox" disabled={isLockedByOther} checked={sub.isCompleted} onChange={() => toggleSubtask(task.id, sub.id)} className="rounded border-border accent-bento-blue w-3.5 h-3.5 mr-1" />
+                            <input type="checkbox" disabled={isLockedByOther} checked={sub.isCompleted} onChange={() => toggleSubtask(task.id, sub.id)} className="app-checkbox w-3.5 h-3.5 mr-1" />
                             <span className={`text-xs text-foreground truncate ${sub.isCompleted ? 'line-through text-muted-foreground' : ''}`}>{sub.title}</span>
                           </label>
                           <button type="button" disabled={isLockedByOther} onClick={() => deleteSubtask(task.id, sub.id)} className="text-muted-foreground hover:text-destructive p-0.5 rounded transition-colors">
@@ -524,7 +538,7 @@ export default function TaskDrawer() {
                         return (
                           <label key={other.id} className="flex items-center justify-between p-1 hover:bg-accent rounded cursor-pointer select-none">
                             <span className="flex items-center gap-2 truncate">
-                              <input type="checkbox" disabled={isLockedByOther} checked={isChecked} onChange={() => handleToggleDependency(other.id)} className="rounded border-border text-bento-blue accent-bento-blue w-3.5 h-3.5 mr-1" />
+                              <input type="checkbox" disabled={isLockedByOther} checked={isChecked} onChange={() => handleToggleDependency(other.id)} className="app-checkbox w-3.5 h-3.5 mr-1" />
                               <span className="font-mono text-[9px] font-bold text-muted-foreground">{other.taskCode}</span>
                               <span className="text-xs text-foreground truncate max-w-sm">{other.title}</span>
                             </span>

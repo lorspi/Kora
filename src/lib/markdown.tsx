@@ -33,6 +33,19 @@ export function markdownToHtml(
   html = html.replace(/`(.*?)`/g, '<code class="bg-secondary text-bento-orange font-mono px-1.5 py-0.5 rounded text-[0.85em]">$1</code>');
   html = html.replace(/^> (.*?)$/gm, '<blockquote class="border-l-4 border-bento-blue bg-bento-blue-light pl-4 py-2 text-foreground rounded-r-lg my-3 font-medium">$1</blockquote>');
   html = html.replace(/^- (.*?)$/gm, '<li class="list-disc ml-5 text-muted-foreground py-0.5 text-xs leading-relaxed">$1</li>');
+  html = html.replace(/^\d+\.\s(.*?)$/gm, '<li class="list-decimal ml-5 text-muted-foreground py-0.5 text-xs leading-relaxed">$1</li>');
+
+  // Mermaid diagrams: show raw code in a styled block (live rendering requires JS, not available in static HTML preview)
+  html = html.replace(/```mermaid\n([\s\S]*?)```/g, (_, code) => {
+    const escaped = code.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return `<div class="bg-secondary border border-border rounded-lg p-3 my-3">
+      <div class="flex items-center gap-1.5 mb-2 text-[10px] font-mono font-bold text-bento-blue uppercase tracking-wider">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        Mermaid
+      </div>
+      <pre class="text-xs font-mono text-foreground whitespace-pre-wrap leading-relaxed">${escaped}</pre>
+    </div>`;
+  });
 
   const lines = html.split('\n');
   return lines.map(line => {

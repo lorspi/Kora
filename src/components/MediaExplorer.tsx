@@ -28,7 +28,7 @@ interface MediaItem {
 }
 
 export default function MediaExplorer() {
-  const { adapter, logs, tasks, docs, lists } = useProjectStore();
+  const { adapter, logs, tasks, docs, lists, deleteMediaFile } = useProjectStore();
   const { toast, confirm } = useUI();
 
   const [mediaItems, setMediaItems] = useState<MediaItem[]>([]);
@@ -163,7 +163,7 @@ export default function MediaExplorer() {
     if (!item.isOrphan) return;
     const ok = await confirm({
       title: 'Eliminar archivo',
-      message: `¿Eliminar definitivamente "${item.name}"? Esta acción no se puede deshacer.`,
+      message: `¿Eliminar "${item.name}"? Se moverá a la papelera de reciclaje.`,
       confirmLabel: 'Eliminar',
       variant: 'danger'
     });
@@ -171,7 +171,7 @@ export default function MediaExplorer() {
     
     setDeleting(item.path);
     try {
-      await adapter!.deleteFile(item.path);
+      await deleteMediaFile(item.path, item.name, item.type);
       setMediaItems(prev => prev.filter(m => m.path !== item.path));
     } catch (e) {
       toast('Error al eliminar el archivo.', 'error');

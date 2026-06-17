@@ -23,12 +23,13 @@ import {
   Info,
   RefreshCw,
   ImageIcon,
-  Settings,
   AlertTriangle,
   Download,
   X,
   Trash2,
-  ChevronLeft
+  LayoutDashboard,
+  ChevronLeft,
+  Trash as TrashIcon
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -50,13 +51,14 @@ export default function Sidebar() {
     setSearchOpen,
     showMediaExplorer,
     setShowMediaExplorer,
-    showProjectSettings,
-    setShowProjectSettings,
     showAbout,
     setShowAbout,
     adapter,
     sidebarOpen,
-    setSidebarOpen
+    setSidebarOpen,
+    showTrash,
+    setShowTrash,
+    trashItems
   } = useProjectStore();
   const { toast, confirm } = useUI();
   const { updateAvailable } = useUpdateCheck();
@@ -236,6 +238,23 @@ export default function Sidebar() {
 
       {/* Navigation Groups */}
       <div className="flex-1 overflow-y-auto px-2 py-3 space-y-6">
+
+        {/* DASHBOARD HOME LINK */}
+        <div>
+          <div className="space-y-0.5">
+            <button
+              onClick={() => setSelectedList(null)}
+              className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
+                !selectedListId && !selectedDocId && !showTrash && !showMediaExplorer && !showAbout
+                  ? 'bg-bento-purple-light text-bento-purple border-l-2 border-bento-purple font-bold'
+                  : 'hover:bg-accent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
+              <span className="text-xs font-semibold">Inicio</span>
+            </button>
+          </div>
+        </div>
         
         {/* LISTS GROUP */}
         <div>
@@ -412,19 +431,24 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* PROJECT SETTINGS */}
+        {/* TRASH */}
         <div>
           <div className="space-y-0.5">
             <button
-              onClick={() => setShowProjectSettings(true)}
+              onClick={() => setShowTrash(true)}
               className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
-                showProjectSettings
-                  ? 'bg-bento-purple-light text-bento-purple border-l-2 border-bento-purple font-bold'
+                showTrash
+                  ? 'bg-destructive/10 text-destructive border-l-2 border-destructive font-bold'
                   : 'hover:bg-accent text-muted-foreground hover:text-foreground'
               }`}
             >
-              <Settings className="w-3.5 h-3.5 shrink-0" />
-              <span className="text-xs font-semibold">Configuración</span>
+              <TrashIcon className="w-3.5 h-3.5 shrink-0" />
+              <span className="text-xs font-semibold flex-1">Papelera</span>
+              {trashItems.length > 0 && (
+                <span className="text-[9px] font-bold bg-destructive/20 text-destructive border border-destructive/30 px-1.5 py-0.5 rounded-full">
+                  {trashItems.length}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -525,7 +549,7 @@ export default function Sidebar() {
                 type="checkbox"
                 checked={deleteConfirmChecked}
                 onChange={e => setDeleteConfirmChecked(e.target.checked)}
-                className="mt-0.5 w-4 h-4 rounded border-border accent-destructive cursor-pointer shrink-0"
+                className="mt-0.5 w-4 h-4 app-checkbox app-checkbox--danger shrink-0"
               />
               <span className="text-xs text-foreground leading-relaxed select-none">
                 Entiendo que todos mis datos serán borrados permanentemente y que esta acción no se puede deshacer.
