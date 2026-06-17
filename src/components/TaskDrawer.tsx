@@ -311,7 +311,7 @@ export default function TaskDrawer() {
           <div className="bg-bento-yellow-light border-b border-border p-3 flex items-center gap-2.5 text-bento-yellow text-xs shrink-0 select-none">
             <ShieldAlert className="w-5 h-5 shrink-0" />
             <div className="flex-1 font-semibold">
-              🔒 Tarea de solo lectura: @{lockingUser} está editando este archivo desde otra terminal ahora mismo.
+              Tarea de solo lectura: @{lockingUser} está editando este archivo desde otra terminal ahora mismo.
             </div>
           </div>
         )}

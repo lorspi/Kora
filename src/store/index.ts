@@ -14,7 +14,8 @@ import {
   DocMetadata, 
   ProjectLocks, 
   TaskStatus, 
-  Subtask 
+  Subtask,
+  TaskLock
 } from '../types';
 import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDirectoryHandle, clearDirectoryHandle, dbClear } from '../lib/fs';
 import { hashPassword } from '../lib/crypto';
@@ -87,6 +88,8 @@ interface ProjectState {
   // Lock mechanism
   lockTask: (taskId: string) => Promise<boolean>;
   unlockTask: (taskId: string) => Promise<void>;
+  lockDoc: (docId: string) => Promise<boolean>;
+  unlockDoc: (docId: string) => Promise<void>;
   
   // Activity logger & notes
   addComment: (taskId: string, commentText: string, attachments?: string[]) => Promise<void>;
@@ -1749,14 +1752,15 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       // Re-save index Catalog
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
 
-      const updatedUsers = users.map(user => {
+      const allUsers = get().users;
+      const updatedUsers = allUsers.map(user => {
         if (!user.docViewModes || !user.docViewModes[docId]) return user;
         const updatedDocViewModes = { ...user.docViewModes };
         delete updatedDocViewModes[docId];
         return { ...user, docViewModes: updatedDocViewModes };
       });
 
-      if (JSON.stringify(updatedUsers) !== JSON.stringify(users)) {
+      if (JSON.stringify(updatedUsers) !== JSON.stringify(allUsers)) {
         await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
         const activeUser = updatedUsers.find(u => u.id === get().activeUser?.id) || null;
         set({ users: updatedUsers, activeUser });
@@ -1885,6 +1889,65 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       }
     },
 
+    lockDoc: async (docId) => {
+      const { adapter, activeUser } = get();
+      if (!adapter || !activeUser) return false;
+
+      try {
+        let locks: ProjectLocks = {};
+        if (await adapter.fileExists('/activity/locks.json')) {
+          const locksRaw = await adapter.readTextFile('/activity/locks.json');
+          locks = JSON.parse(locksRaw);
+        }
+
+        const now = Date.now();
+        const activeLock = locks[docId];
+
+        if (activeLock && activeLock.userId !== activeUser.id && activeLock.expiresAt > now) {
+          set({ locks });
+          return false;
+        }
+
+        locks[docId] = {
+          userId: activeUser.id,
+          username: activeUser.name,
+          expiresAt: now + 15000
+        };
+
+        await adapter.writeTextFile('/activity/locks.json', JSON.stringify(locks, null, 2));
+        set({ locks });
+        return true;
+      } catch (err) {
+        console.warn('Silent doc locking failure', err);
+        return true;
+      }
+    },
+
+    unlockDoc: async (docId) => {
+      const { adapter, activeUser, locks } = get();
+      if (!adapter || !activeUser) return;
+
+      try {
+        if (!locks[docId] || locks[docId].userId !== activeUser.id) {
+          return;
+        }
+
+        let freshLocks: ProjectLocks = {};
+        if (await adapter.fileExists('/activity/locks.json')) {
+          const locksRaw = await adapter.readTextFile('/activity/locks.json');
+          freshLocks = JSON.parse(locksRaw);
+        }
+
+        if (freshLocks[docId] && freshLocks[docId].userId === activeUser.id) {
+          delete freshLocks[docId];
+          await adapter.writeTextFile('/activity/locks.json', JSON.stringify(freshLocks, null, 2));
+          set({ locks: freshLocks });
+        }
+      } catch (e) {
+        console.warn('Doc unlock bypass', e);
+      }
+    },
+
     addComment: async (taskId, commentText, attachments) => {
       await logActivityAction(taskId, 'comentó', commentText, attachments);
     },
@@ -1953,7 +2016,13 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       }
       set({ selectedTaskId: taskId, selectedDocId: null });
     },
-    setSelectedDoc: (docId) => set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false }),
+    setSelectedDoc: (docId) => {
+      const prevDocId = get().selectedDocId;
+      if (prevDocId && prevDocId !== docId) {
+        get().unlockDoc(prevDocId);
+      }
+      set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+    },
     setSearchQuery: (query) => set({ searchQuery: query }),
     setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen }),
 

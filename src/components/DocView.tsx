@@ -35,7 +35,8 @@ import {
   Copy,
   Link,
   MoreVertical,
-  FileCode
+  FileCode,
+  ShieldAlert
 } from 'lucide-react';
 
 // ─── Block Types ────────────────────────────────────────────────────────────────
@@ -585,7 +586,7 @@ function parseVideo(content: string): string | null {
   return match[1];
 }
 
-function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpdate, onFocus, onKeyDown, onAddBelow, onDelete, onDuplicate, onConvertType, onMoveBlock, resolvedUrls }: {
+function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpdate, onFocus, onKeyDown, onAddBelow, onDelete, onDuplicate, onConvertType, onMoveBlock, resolvedUrls, readOnly }: {
   block: Block;
   index: number;
   numberedIndex: number;
@@ -600,6 +601,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
   onConvertType: (id: string, type: string) => void;
   onMoveBlock: (id: string, direction: 'up' | 'down') => void;
   resolvedUrls: Record<string, string>;
+  readOnly?: boolean;
 }) {
   const inputRef = useRef<HTMLDivElement>(null);
   const codeRef = useRef<HTMLTextAreaElement>(null);
@@ -764,6 +766,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
   if (block.type === 'divider') {
     return (
       <div className="group flex items-center gap-2 py-2" onClick={() => onFocus(block.id)}>
+        {!readOnly && (
         <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity">
           <button
             onClick={(e) => { e.stopPropagation(); onAddBelow(block.id); }}
@@ -773,6 +776,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
           </button>
           {renderGripHandle()}
         </div>
+        )}
         <hr className="flex-1 border-border" />
         {contextMenu && (
           <BlockContextMenu
@@ -794,6 +798,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
       const resolvedSrc = resolvedUrls[img.src] || img.src;
       return (
         <div className="group flex items-start gap-2 py-1">
+          {!readOnly && (
           <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity pt-2 shrink-0">
             <button
               onClick={() => onAddBelow(block.id)}
@@ -803,6 +808,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
             </button>
             {renderGripHandle()}
           </div>
+          )}
           <div className="flex-1 min-w-0 my-2">
             <img 
               src={resolvedSrc} 
@@ -832,6 +838,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
       const resolvedSrc = resolvedUrls[videoSrc] || videoSrc;
       return (
         <div className="group flex items-start gap-2 py-1">
+          {!readOnly && (
           <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity pt-2 shrink-0">
             <button
               onClick={() => onAddBelow(block.id)}
@@ -841,6 +848,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
             </button>
             {renderGripHandle()}
           </div>
+          )}
           <div className="flex-1 min-w-0 my-2">
             <video 
               src={resolvedSrc} 
@@ -864,6 +872,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
   if (block.type === 'code') {
     return (
       <div className="group flex items-start gap-2 py-1">
+        {!readOnly && (
         <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity pt-2 shrink-0">
           <button
             onClick={() => onAddBelow(block.id)}
@@ -873,6 +882,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
           </button>
           {renderGripHandle()}
         </div>
+        )}
         <div className="flex-1 min-w-0">
           <textarea
             ref={codeRef}
@@ -930,6 +940,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
 
   return (
     <div className="group flex items-start gap-2 py-0.5">
+      {!readOnly && (
       <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity pt-0.5 shrink-0">
         <button
           onClick={() => onAddBelow(block.id)}
@@ -940,6 +951,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
         </button>
         {renderGripHandle()}
       </div>
+      )}
       <div className={`flex-1 min-w-0 ${wrapperClasses[block.type] || ''}`}>
         <div className="flex items-start gap-2">
           {block.type === 'checklist' && (
@@ -962,7 +974,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
           )}
           <div
             ref={inputRef}
-            contentEditable
+            contentEditable={!readOnly}
             suppressContentEditableWarning
             className={`flex-1 min-w-0 outline-none ${elClassName} ${block.checked ? 'line-through text-muted-foreground' : ''}`}
             onInput={handleInput}
@@ -997,9 +1009,19 @@ export default function DocView() {
     deleteDoc, 
     uploadAttachment, 
     resolveAttachmentUrl,
-    adapter
+    adapter,
+    activeUser,
+    locks,
+    lockDoc,
+    unlockDoc
   } = useProjectStore();
   const { toast, confirm } = useUI();
+
+  const [isLockedByOther, setIsLockedByOther] = useState(false);
+  const [lockingUser, setLockingUser] = useState<string | null>(null);
+  const heartbeatTimer = useRef<any>(null);
+  const locksRef = useRef(locks);
+  locksRef.current = locks;
 
   const docMeta = docs.find(d => d.id === selectedDocId);
   
@@ -1086,6 +1108,38 @@ export default function DocView() {
       setLoading(false);
     });
   }, [selectedDocId, docMeta?.id]);
+
+  // Update locked-by-other status reactively when locks change
+  useEffect(() => {
+    if (!selectedDocId || !activeUser) return;
+    const activeLock = locks[selectedDocId];
+    const now = Date.now();
+    if (activeLock && activeLock.userId !== activeUser.id && activeLock.expiresAt > now) {
+      setIsLockedByOther(true);
+      setLockingUser(activeLock.username);
+    } else {
+      setIsLockedByOther(false);
+      setLockingUser(null);
+    }
+  }, [selectedDocId, activeUser?.id, locks]);
+
+  // Acquire lock and set up heartbeat interval
+  useEffect(() => {
+    if (!selectedDocId || !activeUser) return;
+    const acquireLock = async () => {
+      const activeLock = locksRef.current[selectedDocId];
+      const now = Date.now();
+      if (!activeLock || activeLock.userId === activeUser.id || activeLock.expiresAt <= now) {
+        await lockDoc(selectedDocId);
+      }
+    };
+    acquireLock();
+    heartbeatTimer.current = setInterval(acquireLock, 14000);
+    return () => {
+      if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
+      unlockDoc(selectedDocId);
+    };
+  }, [selectedDocId, activeUser?.id]);
 
   // Track changes
   useEffect(() => {
@@ -1527,13 +1581,23 @@ export default function DocView() {
 
   return (
     <div id="doc-view-container" className="flex-1 flex flex-col h-full bg-background font-body overflow-hidden">
+
+      {isLockedByOther && (
+        <div className="bg-bento-yellow-light border-b border-border p-3 flex items-center gap-2.5 text-bento-yellow text-xs shrink-0 select-none">
+          <ShieldAlert className="w-5 h-5 shrink-0" />
+          <div className="flex-1 font-semibold">
+            Documento de solo lectura: @{lockingUser} está editando este archivo desde otra terminal ahora mismo.
+          </div>
+        </div>
+      )}
       
       {/* Header */}
       <div className="bg-card border-b border-border px-3 sm:px-6 py-3 sm:py-4 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="flex-1 min-w-0">
           <input 
             type="text"
-            className="w-full bg-transparent border-0 text-base sm:text-lg font-bold text-foreground hover:bg-accent focus:bg-card px-2 py-1 rounded-xl focus:outline-none transition-colors focus:ring-1 focus:ring-ring font-heading"
+            disabled={isLockedByOther}
+            className="w-full bg-transparent border-0 text-base sm:text-lg font-bold text-foreground hover:bg-accent focus:bg-card px-2 py-1 rounded-xl focus:outline-none transition-colors focus:ring-1 focus:ring-ring font-heading disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
@@ -1547,8 +1611,9 @@ export default function DocView() {
           {/* Attachment button */}
           <div className="relative" ref={attachMenuRef}>
             <button
-              onClick={() => setShowAttachMenu(!showAttachMenu)}
-              className="p-2 bg-card border border-border text-muted-foreground hover:text-foreground rounded-xl hover:bg-accent transition-colors cursor-pointer flex items-center gap-1"
+              onClick={() => !isLockedByOther && setShowAttachMenu(!showAttachMenu)}
+              disabled={isLockedByOther}
+              className="p-2 bg-card border border-border text-muted-foreground hover:text-foreground rounded-xl hover:bg-accent transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
               title="Adjuntar imagen o video"
             >
               <Paperclip className="w-3.5 h-3.5" />
@@ -1574,7 +1639,7 @@ export default function DocView() {
 
           <button
             onClick={handleSave}
-            disabled={!hasChanges || loading}
+            disabled={!hasChanges || loading || isLockedByOther}
             className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all outline-none border cursor-pointer ${
               hasChanges 
                 ? 'bg-primary hover:opacity-90 text-primary-foreground border-primary shadow-card' 
@@ -1594,7 +1659,8 @@ export default function DocView() {
           <div className="relative" ref={docMenuRef}>
             <button
               onClick={() => setShowDocMenu(!showDocMenu)}
-              className="p-2 bg-card border border-border text-muted-foreground hover:text-foreground rounded-xl hover:bg-accent transition-colors cursor-pointer"
+              disabled={isLockedByOther}
+              className="p-2 bg-card border border-border text-muted-foreground hover:text-foreground rounded-xl hover:bg-accent transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               title="Opciones del documento"
             >
               <MoreVertical className="w-3.5 h-3.5" />
@@ -1612,12 +1678,13 @@ export default function DocView() {
                   {codeMode ? 'Modo bloques' : 'Modo código'}
                 </button>
                 <button
+                  disabled={isLockedByOther}
                   onClick={async () => {
                     setShowDocMenu(false);
                     const ok = await confirm({ title: 'Eliminar documento', message: '¿Eliminar de forma permanente este archivo Markdown? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' });
                     if (ok) deleteDoc(docMeta.id);
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-destructive cursor-pointer transition-colors text-left"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-destructive cursor-pointer transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Eliminar documento
@@ -1651,6 +1718,7 @@ export default function DocView() {
                   onConvertType={convertBlockType}
                   onMoveBlock={moveBlock}
                   resolvedUrls={resolvedUrls}
+                  readOnly={isLockedByOther}
                 />
               </div>
             );
@@ -1658,8 +1726,9 @@ export default function DocView() {
             
             {/* Empty area click to add block at end */}
             <div 
-              className="min-h-[200px] cursor-text"
+              className={`min-h-[200px] ${isLockedByOther ? 'cursor-default' : 'cursor-text'}`}
               onClick={() => {
+                if (isLockedByOther) return;
                 const lastBlock = blocks[blocks.length - 1];
                 if (lastBlock && lastBlock.content === '') {
                   setFocusedBlockId(lastBlock.id);
@@ -1674,7 +1743,8 @@ export default function DocView() {
         <div className="flex-1 overflow-hidden flex flex-col">
           <textarea
             ref={codeTextareaRef}
-            className="flex-1 w-full bg-card text-foreground p-6 text-xs font-mono focus:outline-none resize-none leading-relaxed"
+            disabled={isLockedByOther}
+            className="flex-1 w-full bg-card text-foreground p-6 text-xs font-mono focus:outline-none resize-none leading-relaxed disabled:opacity-60"
             style={{ tabSize: 2 }}
             value={blocksToMarkdown(blocks)}
             onChange={(e) => {
