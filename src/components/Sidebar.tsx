@@ -23,11 +23,11 @@ import {
   Info,
   RefreshCw,
   ImageIcon,
-  Settings,
   AlertTriangle,
   Download,
   X,
   Trash2,
+  LayoutDashboard,
   ChevronLeft,
   Trash as TrashIcon
 } from 'lucide-react';
@@ -51,8 +51,6 @@ export default function Sidebar() {
     setSearchOpen,
     showMediaExplorer,
     setShowMediaExplorer,
-    showProjectSettings,
-    setShowProjectSettings,
     showAbout,
     setShowAbout,
     adapter,
@@ -240,6 +238,23 @@ export default function Sidebar() {
 
       {/* Navigation Groups */}
       <div className="flex-1 overflow-y-auto px-2 py-3 space-y-6">
+
+        {/* DASHBOARD HOME LINK */}
+        <div>
+          <div className="space-y-0.5">
+            <button
+              onClick={() => setSelectedList(null)}
+              className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
+                !selectedListId && !selectedDocId && !showTrash && !showMediaExplorer && !showAbout
+                  ? 'bg-bento-purple-light text-bento-purple border-l-2 border-bento-purple font-bold'
+                  : 'hover:bg-accent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <LayoutDashboard className="w-3.5 h-3.5 shrink-0" />
+              <span className="text-xs font-semibold">Inicio</span>
+            </button>
+          </div>
+        </div>
         
         {/* LISTS GROUP */}
         <div>
@@ -434,23 +449,6 @@ export default function Sidebar() {
                   {trashItems.length}
                 </span>
               )}
-            </button>
-          </div>
-        </div>
-
-        {/* PROJECT SETTINGS */}
-        <div>
-          <div className="space-y-0.5">
-            <button
-              onClick={() => setShowProjectSettings(true)}
-              className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
-                showProjectSettings
-                  ? 'bg-bento-purple-light text-bento-purple border-l-2 border-bento-purple font-bold'
-                  : 'hover:bg-accent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Settings className="w-3.5 h-3.5 shrink-0" />
-              <span className="text-xs font-semibold">Configuración</span>
             </button>
           </div>
         </div>
