@@ -1541,7 +1541,7 @@ export default function DocView() {
               <ChevronDown className="w-3 h-3" />
             </button>
             {showAttachMenu && (
-              <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-xl shadow-card-hover py-1 z-50 min-w-[200px]">
+              <div className="absolute top-full mt-1 left-0 sm:right-0 sm:left-auto bg-card border border-border rounded-xl shadow-card-hover py-1 z-50 min-w-[200px]">
                 <label className="flex items-center gap-2 px-3 py-2 text-xs text-foreground hover:bg-accent cursor-pointer transition-colors">
                   <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
                   Desde archivo

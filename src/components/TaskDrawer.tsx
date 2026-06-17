@@ -9,6 +9,7 @@ import { useProjectStore } from '../store';
 import { Task, SystemUser } from '../types';
 import { MarkdownPreview } from '../lib/markdown';
 import MobileNotesDrawer from './MobileNotesDrawer';
+import CustomSelect from './CustomSelect';
 import { 
   X, 
   Trash2, 
@@ -423,16 +424,29 @@ export default function TaskDrawer() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Estado de Tarea</span>
-                      <select disabled={isLockedByOther} className="form-select w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring cursor-pointer shadow-card font-semibold" value={task.statusId} onChange={(e) => updateTask({ ...task, statusId: e.target.value })}>
-                        {activeList.statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
+                      <CustomSelect
+                        disabled={isLockedByOther}
+                        className="w-full"
+                        value={task.statusId}
+                        onChange={(value) => updateTask({ ...task, statusId: value })}
+                        options={activeList.statuses.map(s => ({ value: s.id, label: s.name }))}
+                      />
                     </div>
 
                     <div className="space-y-1.5">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Prioridad</span>
-                      <select disabled={isLockedByOther} className="form-select w-full bg-card border border-input text-xs text-foreground py-2 pl-3 rounded-xl focus:outline-none focus:border-ring cursor-pointer font-semibold shadow-card" value={task.priority} onChange={(e) => updateTask({ ...task, priority: e.target.value as Task['priority'] })}>
-                        <option value="low">Baja</option><option value="medium">Media</option><option value="high">Alta</option><option value="urgent">Urgente</option>
-                      </select>
+                      <CustomSelect
+                        disabled={isLockedByOther}
+                        className="w-full"
+                        value={task.priority}
+                        onChange={(value) => updateTask({ ...task, priority: value as Task['priority'] })}
+                        options={[
+                          { value: 'low', label: 'Baja' },
+                          { value: 'medium', label: 'Media' },
+                          { value: 'high', label: 'Alta' },
+                          { value: 'urgent', label: 'Urgente' },
+                        ]}
+                      />
                     </div>
 
                     <div className="space-y-1.5">
