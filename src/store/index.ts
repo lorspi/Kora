@@ -123,6 +123,7 @@ interface ProjectState {
 
 // Helper to save/load persistence state
 const PERSISTENCE_KEY = 'gestor-de-proyectos-state';
+const SAVED_SESSION_KEY = 'gestor-de-proyectos-saved-session';
 type PersistenceState = {
   hasActiveProject: boolean;
   fsMode: FsMode;
@@ -328,12 +329,27 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         lists.sort((a, b) => a.createdAt - b.createdAt);
         tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
 
+        // Check for saved session (remember me)
+        let activeUser: SystemUser | null = null;
+        try {
+          const savedRaw = localStorage.getItem(SAVED_SESSION_KEY);
+          if (savedRaw) {
+            const saved = JSON.parse(savedRaw);
+            const matchedUser = users.find(u => u.username === saved.username);
+            if (matchedUser) {
+              activeUser = matchedUser;
+            }
+          }
+        } catch (e) {
+          // Invalid or missing saved session
+        }
+
         set({
           adapter,
           projectMeta,
           projectConfig,
           users,
-          activeUser: null, // Always require login
+          activeUser, // null if no saved session, auto-login if remember me was checked
           lists,
           tasks,
           docs,
@@ -1285,12 +1301,17 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
     },
 
     logoutUser: () => {
+      // Clear saved session (remember me)
+      try {
+        localStorage.removeItem(SAVED_SESSION_KEY);
+      } catch (e) {}
       set({ activeUser: null, selectedTaskId: null, selectedDocId: null });
     },
 
     closeProject: async () => {
       // Clear persistence state and stored FSA handle
       localStorage.removeItem(PERSISTENCE_KEY);
+      localStorage.removeItem(SAVED_SESSION_KEY);
       await clearDirectoryHandle();
       
       // If in VIRTUAL mode, clear IndexedDB
