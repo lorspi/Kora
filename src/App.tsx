@@ -12,6 +12,7 @@ import Sidebar from './components/Sidebar';
 import ListViews from './components/ListViews';
 import DocView from './components/DocView';
 import MediaExplorer from './components/MediaExplorer';
+import TrashView from './components/TrashView';
 import ProjectSettings from './components/ProjectSettings';
 import AboutKora from './components/AboutKora';
 import TaskDrawer from './components/TaskDrawer';
@@ -78,6 +79,7 @@ export default function App() {
     showMediaExplorer,
     showProjectSettings,
     showAbout,
+    showTrash,
     backgroundReload,
     logs,
     initialize,
@@ -167,6 +169,8 @@ export default function App() {
           <div className="flex-1 flex flex-col overflow-hidden">
             {showAbout ? (
               <AboutKora />
+            ) : showTrash ? (
+              <TrashView />
             ) : showProjectSettings ? (
               <ProjectSettings />
             ) : showMediaExplorer ? (

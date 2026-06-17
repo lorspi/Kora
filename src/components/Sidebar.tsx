@@ -28,7 +28,8 @@ import {
   Download,
   X,
   Trash2,
-  ChevronLeft
+  ChevronLeft,
+  Trash as TrashIcon
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 
@@ -56,7 +57,10 @@ export default function Sidebar() {
     setShowAbout,
     adapter,
     sidebarOpen,
-    setSidebarOpen
+    setSidebarOpen,
+    showTrash,
+    setShowTrash,
+    trashItems
   } = useProjectStore();
   const { toast, confirm } = useUI();
   const { updateAvailable } = useUpdateCheck();
@@ -408,6 +412,28 @@ export default function Sidebar() {
             >
               <ImageIcon className="w-3.5 h-3.5 shrink-0" />
               <span className="text-xs font-semibold">Explorador de Medios</span>
+            </button>
+          </div>
+        </div>
+
+        {/* TRASH */}
+        <div>
+          <div className="space-y-0.5">
+            <button
+              onClick={() => setShowTrash(true)}
+              className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
+                showTrash
+                  ? 'bg-destructive/10 text-destructive border-l-2 border-destructive font-bold'
+                  : 'hover:bg-accent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <TrashIcon className="w-3.5 h-3.5 shrink-0" />
+              <span className="text-xs font-semibold flex-1">Papelera</span>
+              {trashItems.length > 0 && (
+                <span className="text-[9px] font-bold bg-destructive/20 text-destructive border border-destructive/30 px-1.5 py-0.5 rounded-full">
+                  {trashItems.length}
+                </span>
+              )}
             </button>
           </div>
         </div>

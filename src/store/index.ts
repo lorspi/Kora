@@ -15,7 +15,8 @@ import {
   ProjectLocks, 
   TaskStatus, 
   Subtask,
-  TaskLock
+  TaskLock,
+  TrashItem
 } from '../types';
 import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDirectoryHandle, clearDirectoryHandle, dbClear } from '../lib/fs';
 import { hashPassword } from '../lib/crypto';
@@ -105,9 +106,18 @@ interface ProjectState {
   uploadAttachment: (file: File) => Promise<{ path: string; name: string }>;
   resolveAttachmentUrl: (path: string) => Promise<string>;
   
+  // Trash system
+  trashItems: TrashItem[];
+  showTrash: boolean;
+  restoreFromTrash: (trashItemId: string) => Promise<void>;
+  permanentDeleteItem: (trashItemId: string) => Promise<void>;
+  emptyTrash: () => Promise<void>;
+  deleteMediaFile: (path: string, name: string, mediaType: 'image' | 'video') => Promise<void>;
+  
   // General view toggle
   showMediaExplorer: boolean;
   setShowMediaExplorer: (show: boolean) => void;
+  setShowTrash: (show: boolean) => void;
   setSelectedList: (listId: string | null) => void;
   setSelectedTask: (taskId: string | null) => void;
   setSelectedDoc: (docId: string | null) => void;
@@ -226,6 +236,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     selectedDocId: null,
     searchQuery: '',
     isSearchOpen: false,
+    showTrash: false,
+    trashItems: [],
     showMediaExplorer: false,
 
     // Read full project contents on load
@@ -338,6 +350,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           // Logs empty or failure
         }
 
+        // Load trash items
+        let trashItems: TrashItem[] = [];
+        try {
+          if (await adapter.fileExists('/trash/items.json')) {
+            const trashRaw = await adapter.readTextFile('/trash/items.json');
+            trashItems = JSON.parse(trashRaw);
+          }
+        } catch (e) {
+          // Trash might not exist yet
+        }
+
         // Sort structures
         lists.sort((a, b) => a.createdAt - b.createdAt);
         tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
@@ -368,6 +391,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           docs,
           locks,
           logs,
+          trashItems,
           selectedListId: lists[0]?.id || null,
           selectedTaskId: null,
           selectedDocId: null,
@@ -489,6 +513,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       await adapter.writeTextFile('/docs/info.json', JSON.stringify([], null, 2));
       await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
       await adapter.writeTextFile('/activity/logs.json', JSON.stringify([], null, 2));
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
 
       // Standard list creation
       set({
@@ -504,6 +529,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         selectedListId: null,
         selectedTaskId: null,
         selectedDocId: null,
+        showTrash: false,
+        trashItems: [],
         showMediaExplorer: false
       });
 
@@ -542,6 +569,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       await adapter.writeTextFile('/docs/info.json', JSON.stringify([], null, 2));
       await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
       await adapter.writeTextFile('/activity/logs.json', JSON.stringify([], null, 2));
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
 
       if (useSampleData) {
         // Seed with sample data (using similar structure to seedSampleProject but adapted)
@@ -564,6 +592,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           selectedListId: blankList.id,
           selectedTaskId: null,
           selectedDocId: null,
+          showTrash: false,
+          trashItems: [],
           showMediaExplorer: false
         });
       }
@@ -814,6 +844,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       await adapter.writeTextFile(`/docs/${docA.filename}`, docAContent);
       await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
       await adapter.writeTextFile('/activity/logs.json', JSON.stringify(logs, null, 2));
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
 
       // Individual task writes
       for (const t of tasks) {
@@ -835,6 +866,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
         docs: docsCatalog,
         locks: {},
         logs,
+        trashItems: [],
         isOnboarding: false,
         selectedListId: listAId,
         selectedTaskId: null,
@@ -1113,6 +1145,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       await adapter.writeTextFile(`/docs/${docA.filename}`, docAContent);
       await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
       await adapter.writeTextFile('/activity/logs.json', JSON.stringify(logs, null, 2));
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
 
       // Individual task writes
       for (const t of tasks) {
@@ -1144,6 +1177,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
         docs: docsCatalog,
         locks: {},
         logs,
+        trashItems: [],
         selectedListId: listAId,
         selectedTaskId: null,
         selectedDocId: null
@@ -1222,6 +1256,13 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
           logs = JSON.parse(logsRaw);
         }
 
+        // Re-read trash
+        let trashItems: TrashItem[] = [];
+        if (await adapter.fileExists('/trash/items.json')) {
+          const trashRaw = await adapter.readTextFile('/trash/items.json');
+          trashItems = JSON.parse(trashRaw);
+        }
+
         // Read users list to see if new user got registered
         let users = get().users;
         if (await adapter.fileExists('/users/users.json')) {
@@ -1244,6 +1285,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
           locks: cleanedLocks,
           users,
           activeUser,
+          trashItems,
           isPolling: false
         });
       } catch (err) {
@@ -1350,6 +1392,8 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
         selectedTaskId: null,
         selectedDocId: null,
         showMediaExplorer: false,
+        showTrash: false,
+        trashItems: [],
         isLoading: false
       });
     },
@@ -1514,22 +1558,21 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       }
     },
 
-    // Delete task file and associations
+    // Move task to trash instead of permanently deleting
     deleteTask: async (taskId) => {
-      const { adapter, tasks } = get();
-      if (!adapter) return;
+      const { adapter, tasks, trashItems, activeUser } = get();
+      if (!adapter || !activeUser) return;
 
-      // Delete file
-      await adapter.deleteFile(`/tasks/task-${taskId}.json`);
+      const task = tasks.find(t => t.id === taskId);
+      if (!task) return;
 
-      // Filter tasks state and remove dependencies mapping
+      // Remove dependencies
       const updatedTasks = tasks
         .filter(t => t.id !== taskId)
         .map(t => {
           if (t.dependencies.includes(taskId)) {
             const cleanDep = t.dependencies.filter(id => id !== taskId);
             const revised = { ...t, dependencies: cleanDep };
-            // Save corrected file dependency
             adapter.writeTextFile(`/tasks/task-${t.id}.json`, JSON.stringify(revised, null, 2));
             return revised;
           }
@@ -1545,7 +1588,25 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
         set({ locks: cleanedLocks });
       }
 
-      set({ tasks: updatedTasks, selectedTaskId: null });
+      // Delete file from disk
+      await adapter.deleteFile(`/tasks/task-${taskId}.json`);
+
+      // Add to trash
+      const trashItem: TrashItem = {
+        id: crypto.randomUUID(),
+        type: 'task',
+        originalData: task,
+        deletedAt: Date.now(),
+        deletedBy: activeUser.id,
+        deletedByName: activeUser.name,
+        label: task.title,
+        metadata: { taskCode: task.taskCode }
+      };
+
+      const updatedTrash = [trashItem, ...trashItems];
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify(updatedTrash, null, 2));
+
+      set({ tasks: updatedTasks, trashItems: updatedTrash, selectedTaskId: null });
     },
 
     // Subtask quick helpers
@@ -1747,12 +1808,21 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       set({ docs: updatedDocs });
     },
 
+    // Move doc to trash instead of permanently deleting
     deleteDoc: async (docId) => {
-      const { adapter, docs, projectConfig } = get();
-      if (!adapter) return;
+      const { adapter, docs, activeUser, trashItems } = get();
+      if (!adapter || !activeUser) return;
 
       const doc = docs.find(d => d.id === docId);
       if (!doc) return;
+
+      // Read doc content before deleting so we can restore it later
+      let docContent = '';
+      try {
+        docContent = await adapter.readTextFile(`/docs/${doc.filename}`);
+      } catch (e) {
+        // File might not exist, that's ok
+      }
 
       const updatedDocs = docs.filter(d => d.id !== docId);
 
@@ -1772,11 +1842,26 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
 
       if (JSON.stringify(updatedUsers) !== JSON.stringify(allUsers)) {
         await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
-        const activeUser = updatedUsers.find(u => u.id === get().activeUser?.id) || null;
-        set({ users: updatedUsers, activeUser });
+        const activeUserObj = updatedUsers.find(u => u.id === get().activeUser?.id) || null;
+        set({ users: updatedUsers, activeUser: activeUserObj });
       }
 
-      set({ docs: updatedDocs, selectedDocId: null });
+      // Add to trash with content saved
+      const trashItem: TrashItem = {
+        id: crypto.randomUUID(),
+        type: 'document',
+        originalData: { ...doc, content: docContent },
+        deletedAt: Date.now(),
+        deletedBy: activeUser.id,
+        deletedByName: activeUser.name,
+        label: doc.title,
+        metadata: { docFilename: doc.filename }
+      };
+
+      const updatedTrash = [trashItem, ...trashItems];
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify(updatedTrash, null, 2));
+
+      set({ docs: updatedDocs, trashItems: updatedTrash, selectedDocId: null });
     },
 
     scanDocuments: async () => {
@@ -2016,6 +2101,155 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       }
     },
 
+    // ─── Trash System Methods ─────────────────────────────────────────────────
+
+    setShowTrash: (show) => {
+      const state = get();
+      if (show && state.docHasUnsavedChanges && state.selectedDocId) {
+        set({
+          pendingNavigationAction: () => {
+            const currentState = get();
+            if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
+            set({ showTrash: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+          }
+        });
+        return;
+      }
+      set({ showTrash: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+    },
+
+    deleteMediaFile: async (path: string, name: string, mediaType: 'image' | 'video') => {
+      const { adapter, trashItems, activeUser } = get();
+      if (!adapter || !activeUser) return;
+
+      // Move the file to /trash/media/ instead of embedding binary in JSON
+      let trashFilePath: string | null = null;
+      try {
+        const blob = await adapter.readBinaryFile(path);
+        const trashFilename = `${Date.now()}_${name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        trashFilePath = `/trash/media/${trashFilename}`;
+        await adapter.writeBinaryFile(trashFilePath, blob);
+      } catch (e) {
+        console.warn(`Could not read binary file for trash: ${path}`, e);
+      }
+
+      // Delete the actual file from its original location
+      await adapter.deleteFile(path);
+
+      // Add to trash with reference to the moved file
+      const trashItem: TrashItem = {
+        id: crypto.randomUUID(),
+        type: 'media',
+        originalData: { path, name, mediaType, trashFilePath },
+        originalPath: path,
+        deletedAt: Date.now(),
+        deletedBy: activeUser.id,
+        deletedByName: activeUser.name,
+        label: name,
+        metadata: { mediaType }
+      };
+
+      const updatedTrash = [trashItem, ...trashItems];
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify(updatedTrash, null, 2));
+      set({ trashItems: updatedTrash });
+    },
+
+    restoreFromTrash: async (trashItemId) => {
+      const { adapter, trashItems, tasks, docs } = get();
+      if (!adapter) return;
+
+      const item = trashItems.find(t => t.id === trashItemId);
+      if (!item) return;
+
+      const updatedTrash = trashItems.filter(t => t.id !== trashItemId);
+
+      switch (item.type) {
+        case 'task': {
+          const task = item.originalData as Task;
+          // Restore task file
+          await adapter.writeTextFile(`/tasks/task-${task.id}.json`, JSON.stringify(task, null, 2));
+          // Add back to tasks state
+          const updatedTasks = [...tasks, task].sort((a, b) => a.taskCode.localeCompare(b.taskCode));
+          set({ tasks: updatedTasks });
+          break;
+        }
+        case 'document': {
+          const { content: docContent, ...docMeta } = item.originalData as any;
+          // Restore doc metadata to catalog (without the content property)
+          const updatedDocs = [...docs, docMeta as DocMetadata];
+          await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
+          // Restore the actual .md file content if available
+          if (docContent) {
+            await adapter.writeTextFile(`/docs/${docMeta.filename}`, docContent);
+          }
+          set({ docs: updatedDocs });
+          break;
+        }
+        case 'media': {
+          const mediaData = item.originalData as { path: string; name: string; mediaType: string; trashFilePath?: string | null };
+          if (mediaData.trashFilePath) {
+            try {
+              const blob = await adapter.readBinaryFile(mediaData.trashFilePath);
+              await adapter.writeBinaryFile(mediaData.path, blob);
+              // Clean up the trash file after successful restore
+              await adapter.deleteFile(mediaData.trashFilePath);
+            } catch (e) {
+              console.warn(`Could not restore media file from trash: ${mediaData.trashFilePath}`, e);
+            }
+          }
+          break;
+        }
+      }
+
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify(updatedTrash, null, 2));
+      set({ trashItems: updatedTrash });
+    },
+
+    permanentDeleteItem: async (trashItemId) => {
+      const { adapter, trashItems } = get();
+      if (!adapter) return;
+
+      const item = trashItems.find(t => t.id === trashItemId);
+
+      // If it's a media item with a trash file, delete the trash file too
+      if (item?.type === 'media') {
+        const mediaData = item.originalData as { trashFilePath?: string | null };
+        if (mediaData.trashFilePath) {
+          try {
+            await adapter.deleteFile(mediaData.trashFilePath);
+          } catch (e) {
+            console.warn(`Could not delete trash media file: ${mediaData.trashFilePath}`, e);
+          }
+        }
+      }
+
+      const updatedTrash = trashItems.filter(t => t.id !== trashItemId);
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify(updatedTrash, null, 2));
+      set({ trashItems: updatedTrash });
+    },
+
+    emptyTrash: async () => {
+      const { adapter, trashItems } = get();
+      if (!adapter) return;
+
+      // Delete all trash media files
+      for (const item of trashItems) {
+        if (item.type === 'media') {
+          const mediaData = item.originalData as { trashFilePath?: string | null };
+          if (mediaData.trashFilePath) {
+            try {
+              await adapter.deleteFile(mediaData.trashFilePath);
+            } catch (e) {
+              console.warn(`Could not delete trash media file: ${mediaData.trashFilePath}`, e);
+            }
+          }
+        }
+      }
+
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
+      set({ trashItems: [] });
+    },
+
     // Navigation and quick search parameters
     setShowMediaExplorer: (show) => {
       const state = get();
@@ -2024,12 +2258,12 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
           pendingNavigationAction: () => {
             const currentState = get();
             if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
-            set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+            set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showTrash: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
           }
         });
         return;
       }
-      set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+      set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showTrash: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
     },
     setSelectedList: (listId) => {
       const state = get();
@@ -2038,19 +2272,19 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
           pendingNavigationAction: () => {
             const currentState = get();
             if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
-            set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+            set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
           }
         });
         return;
       }
-      set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+      set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
     },
     setSelectedTask: (taskId) => {
       const prevTaskId = get().selectedTaskId;
       if (prevTaskId && prevTaskId !== taskId) {
         get().unlockTask(prevTaskId);
       }
-      set({ selectedTaskId: taskId, selectedDocId: null });
+      set({ selectedTaskId: taskId, selectedDocId: null, showTrash: false });
     },
     setDocHasUnsavedChanges: (has) => set({ docHasUnsavedChanges: has }),
 
@@ -2073,7 +2307,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
         set({
           pendingNavigationAction: () => {
             if (prevDocId && prevDocId !== docId) get().unlockDoc(prevDocId);
-            set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+            set({ selectedDocId: docId, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
           }
         });
         return;
@@ -2082,7 +2316,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       if (prevDocId && prevDocId !== docId) {
         get().unlockDoc(prevDocId);
       }
-      set({ selectedDocId: docId, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+      set({ selectedDocId: docId, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
     },
     setSearchQuery: (query) => set({ searchQuery: query }),
     setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen }),
@@ -2096,12 +2330,12 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
           pendingNavigationAction: () => {
             const currentState = get();
             if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
-            set({ showProjectSettings: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showMediaExplorer: false, showAbout: false, sidebarOpen: false });
+            set({ showProjectSettings: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showAbout: false, sidebarOpen: false });
           }
         });
         return;
       }
-      set({ showProjectSettings: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showMediaExplorer: false, showAbout: false, sidebarOpen: false });
+      set({ showProjectSettings: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showAbout: false, sidebarOpen: false });
     },
 
     // Project Administration
@@ -2151,12 +2385,12 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
           pendingNavigationAction: () => {
             const currentState = get();
             if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
-            set({ showAbout: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, sidebarOpen: false });
+            set({ showAbout: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, sidebarOpen: false });
           }
         });
         return;
       }
-      set({ showAbout: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showMediaExplorer: false, showProjectSettings: false, sidebarOpen: false });
+      set({ showAbout: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, sidebarOpen: false });
     },
 
     // Mobile sidebar
