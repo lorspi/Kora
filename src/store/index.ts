@@ -154,6 +154,7 @@ interface ProjectState {
 // Helper to save/load persistence state
 const PERSISTENCE_KEY = 'gestor-de-proyectos-state';
 const SAVED_SESSION_KEY = 'gestor-de-proyectos-saved-session';
+const LAST_OPENED_PROJECT_KEY = 'kora-last-opened-project';
 type PersistenceState = {
   hasActiveProject: boolean;
   fsMode: FsMode;
@@ -219,6 +220,31 @@ function _saveSavedSessions(sessions: SavedSessions) {
     localStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify(sessions));
   } catch (e) {
     console.warn('Could not save saved sessions', e);
+  }
+}
+
+function saveLastOpenedProjectId(projectId: string) {
+  try {
+    localStorage.setItem(LAST_OPENED_PROJECT_KEY, projectId);
+  } catch (e) {
+    console.warn('Could not save last opened project', e);
+  }
+}
+
+function loadLastOpenedProjectId(): string | null {
+  try {
+    return localStorage.getItem(LAST_OPENED_PROJECT_KEY);
+  } catch (e) {
+    console.warn('Could not load last opened project', e);
+    return null;
+  }
+}
+
+function clearLastOpenedProjectId() {
+  try {
+    localStorage.removeItem(LAST_OPENED_PROJECT_KEY);
+  } catch (e) {
+    console.warn('Could not clear last opened project', e);
   }
 }
 
@@ -356,8 +382,6 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         if (!configExists) {
           // New folder setup! Enable onboarding flow instead of seeding automatically
           set({ adapter, isOnboarding: true });
-          // Save persistence state with mode
-          savePersistenceState({ hasActiveProject: true, fsMode: mode });
           set({ isLoading: false });
           return;
         }
@@ -505,7 +529,6 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         });
 
         await saveDirectoryHandle(handle);
-        savePersistenceState({ hasActiveProject: true, fsMode: mode });
 
         // Update registered project name with real name from project.json
         const loadedId = get().loadedProjectId;
@@ -530,8 +553,28 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       // Try migration from old single-project system (old PERSISTENCE_KEY)
       const migrated = migrateOldProject();
       if (migrated.length > 0) {
-        set({ registeredProjects: migrated, isLoading: false });
-        return;
+        set({ registeredProjects: migrated });
+        // COMENTARIO: No retornamos aqui — continuamos para intentar
+        // auto-cargar el ultimo proyecto abierto.
+      }
+
+      // Check if there's a last opened project to auto-restore on reload
+      const lastOpenedId = loadLastOpenedProjectId();
+      if (lastOpenedId) {
+        const projectExists = get().registeredProjects.some(p => p.id === lastOpenedId);
+        if (projectExists) {
+          try {
+            await get().loadProjectById(lastOpenedId);
+            return; // loadProjectById sets isLoading to false
+          } catch (e) {
+            console.warn('Could not auto-load last project', e);
+            // Clear the stale reference so we don't keep trying
+            clearLastOpenedProjectId();
+          }
+        } else {
+          // Project no longer registered, clean up
+          clearLastOpenedProjectId();
+        }
       }
 
       // Projects are already loaded synchronously in the initial state from localStorage
@@ -1277,6 +1320,7 @@ graph TD
       // Clear persistence state and stored FSA handle
       localStorage.removeItem(PERSISTENCE_KEY);
       localStorage.removeItem(SAVED_SESSION_KEY);
+      clearLastOpenedProjectId();
       await clearDirectoryHandle();
       
       // Clear IndexedDB (legacy virtual data, safe to clean)
@@ -1314,6 +1358,7 @@ graph TD
       const project = { id: projectId, name, type, createdAt: Date.now(), pathHint };
       const projects = [...get().registeredProjects, project];
       saveRegisteredProjects(projects);
+      saveLastOpenedProjectId(projectId);
       set({ registeredProjects: projects, loadedProjectId: projectId });
       return projectId;
     },
@@ -1362,6 +1407,9 @@ graph TD
           }
           await get().loadProjectDirectory(handle, 'FSA_API');
         }
+
+        // Save this project as the last opened one for auto-restore on reload
+        saveLastOpenedProjectId(projectId);
       } catch (err) {
         console.error('Failed to load project', err);
         set({ adapter: null, isLoading: false, loadedProjectId: null });
@@ -1371,6 +1419,7 @@ graph TD
 
     goToProjectBrowser: () => {
       localStorage.removeItem(PERSISTENCE_KEY);
+      clearLastOpenedProjectId();
       clearDirectoryHandle();
 
       // Re-read registered projects from localStorage to ensure the list is current
