@@ -53,6 +53,11 @@
 - **Prevención de tareas duplicadas al hacer clic múltiple en "Agregar"**
   Se agregó un bloqueo de estado (`creatingTask`) que evita la creación de tareas duplicadas cuando el usuario hace clic repetidamente en el botón "Agregar" mientras se está procesando la primera solicitud. El botón se deshabilita visualmente durante la operación.
 
+### Changed
+
+- **Vista Kanban: columnas flexibles al ancho de pantalla**
+  Las columnas del Kanban ahora tienen un ancho mínimo de 288px (`w-72`) pero se expanden automáticamente para llenar el ancho disponible de la pantalla, en lugar de tener un ancho fijo.
+
 ### Removed
 
 - **Funcionalidad de disco virtual**

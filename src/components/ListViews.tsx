@@ -449,7 +449,7 @@ export default function ListViews() {
               return (
                 <div
                   key={status.id}
-                  className={`w-72 bg-card border border-border rounded-xl p-3 shrink-0 flex flex-col max-h-[85vh] shadow-card ${dragOverStatusId === status.id ? 'border-primary border-2 bg-primary/5' : ''}`}
+                  className={`min-w-72 flex-1 bg-card border border-border rounded-xl p-3 flex flex-col max-h-[85vh] shadow-card ${dragOverStatusId === status.id ? 'border-primary border-2 bg-primary/5' : ''}`}
                   onDragOver={(e) => handleStatusDragOver(e, status.id)}
                   onDragLeave={() => handleStatusDragLeave(status.id)}
                   onDrop={(e) => handleStatusDrop(e, status.id)}
