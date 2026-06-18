@@ -78,7 +78,7 @@ export default function Sidebar() {
   
   const { registeredProjects, registerProject, unregisterProject, goToProjectBrowser, loadedProjectId, loadProjectById } = useProjectStore();
 
-  // Update auth statuses
+  // Update auth statuses — solely from localStorage (persisted sessions)
   useEffect(() => {
     const sessions = loadSavedSessions();
     const statuses: Record<string, boolean> = {};

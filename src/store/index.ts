@@ -470,7 +470,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         lists.sort((a, b) => a.createdAt - b.createdAt);
         tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
 
-        // Check for saved session (remember me) — per-project first, then old global key
+        // Check for saved session (remember me) — per-project only
         let activeUser: SystemUser | null = null;
         const currentProjectId = get().loadedProjectId;
         try {
@@ -478,14 +478,6 @@ export const useProjectStore = create<ProjectState>((set, get) => {
             const sessions = _loadSavedSessions();
             const saved = sessions[currentProjectId];
             if (saved) {
-              const matchedUser = users.find(u => u.username === saved.username);
-              if (matchedUser) activeUser = matchedUser;
-            }
-          }
-          if (!activeUser) {
-            const savedRaw = localStorage.getItem(SAVED_SESSION_KEY);
-            if (savedRaw) {
-              const saved = JSON.parse(savedRaw);
               const matchedUser = users.find(u => u.username === saved.username);
               if (matchedUser) activeUser = matchedUser;
             }
@@ -1342,6 +1334,11 @@ graph TD
           await deleteDirectoryHandleByKey('fsa-handle-' + projectId);
         } catch (e) { /* ignore */ }
       })();
+
+      // If the unregistered project is the currently loaded one, go back to home
+      if (get().loadedProjectId === projectId) {
+        get().goToProjectBrowser();
+      }
     },
 
     loadProjectById: async (projectId) => {
