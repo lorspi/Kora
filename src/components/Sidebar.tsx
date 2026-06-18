@@ -86,7 +86,7 @@ export default function Sidebar() {
   const projectManagerRef = useRef<HTMLDivElement>(null);
   const [authStatuses, setAuthStatuses] = useState<Record<string, boolean>>({});
   
-  const { registeredProjects, unregisterProject, goToProjectBrowser, loadedProjectId } = useProjectStore();
+  const { registeredProjects, unregisterProject, goToProjectBrowser, loadedProjectId, loadProjectById } = useProjectStore();
 
   // Update auth statuses
   useEffect(() => {
@@ -547,8 +547,17 @@ export default function Sidebar() {
                   return (
                     <div
                       key={project.id}
-                      className={`flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 transition-colors ${
-                        isCurrent ? 'bg-accent' : 'hover:bg-accent/50'
+                      onClick={async () => {
+                        if (isCurrent) return;
+                        setShowProjectManager(false);
+                        try {
+                          await loadProjectById(project.id);
+                        } catch (e: any) {
+                          toast(e?.message || 'Error al cambiar de proyecto', 'error');
+                        }
+                      }}
+                      className={`flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 transition-colors cursor-pointer ${
+                        isCurrent ? 'bg-accent cursor-default' : 'hover:bg-accent/50'
                       }`}
                     >
                       <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${

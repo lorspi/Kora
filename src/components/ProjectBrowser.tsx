@@ -17,10 +17,12 @@ import ThemeToggle from './ThemeToggle';
 import VersionBadge from './VersionBadge';
 import { useUpdateCheck } from '../hooks/useVersion';
 import { loadSavedSessions } from '../store/sessions';
+import { useUI } from '../lib/ui';
 
 export default function ProjectBrowser() {
   const { registeredProjects, registerProject, loadProjectById, isLoading, unregisterProject } = useProjectStore();
   const { updateAvailable, remoteVersion, localVersion, performUpdate } = useUpdateCheck();
+  const { confirm } = useUI();
   const [fsaSupported] = useState<boolean>(() => 'showDirectoryPicker' in window);
 
   const [showNewProject, setShowNewProject] = useState(false);
@@ -368,9 +370,16 @@ export default function ProjectBrowser() {
                         )}
                         {/* Unlink button */}
                         <button
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            if (confirm(`¿Desvincular "${project.name}"? Los datos del proyecto no se eliminarán, solo se quitará de la lista.`)) {
+                            const confirmed = await confirm({
+                              title: 'Desvincular proyecto',
+                              message: `¿Estás seguro de que deseas desvincular "${project.name}"? Los datos del proyecto no se eliminarán, solo se quitará de la lista.`,
+                              confirmLabel: 'Desvincular',
+                              cancelLabel: 'Cancelar',
+                              variant: 'danger'
+                            });
+                            if (confirmed) {
                               unregisterProject(project.id);
                             }
                           }}
@@ -404,7 +413,7 @@ export default function ProjectBrowser() {
             <div className="flex items-center justify-center gap-4 pt-4 text-xs text-muted-foreground font-mono border-t border-border">
               <span className="flex items-center gap-2">
                 <HelpCircle className="w-4 h-4 text-bento-blue/70" />
-                100% privado
+                Es 100% privado. Ningún dato viaja a servidores externos.
               </span>
               <a 
                 href="https://github.com/lorspi/Kora" 
