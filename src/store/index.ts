@@ -681,6 +681,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         set({ loadedProjectId: registeredId });
       }
 
+      // Save session for the new project so it shows 'Sesión activa'
+      const loadedId = get().loadedProjectId;
+      if (loadedId) {
+        const sessions = _loadSavedSessions();
+        sessions[loadedId] = { username: firstUser.username, savedAt: Date.now() };
+        _saveSavedSessions(sessions);
+      }
+
       if (useSampleData) {
         // Seed with sample data (using similar structure to seedSampleProject but adapted)
         await get().seedSampleProjectOnboarding(projectMeta, config, firstUser);
@@ -1212,6 +1220,16 @@ graph TD
       const updatedUsers = [...users, newUser];
       await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
 
+      // Save session for this project so it shows 'Sesión activa'
+      try {
+        const loadedProjectId = get().loadedProjectId;
+        if (loadedProjectId) {
+          const sessions = _loadSavedSessions();
+          sessions[loadedProjectId] = { username: newUser.username, savedAt: Date.now() };
+          _saveSavedSessions(sessions);
+        }
+      } catch (e) {}
+
       set({ users: updatedUsers, activeUser: newUser });
       return newUser;
     },
@@ -1236,16 +1254,6 @@ graph TD
           config.lastOpenedBy = user.id;
           config.lastModified = Date.now();
           await adapter.writeTextFile('/config.json', JSON.stringify(config, null, 2));
-        } catch (e) {}
-
-        // Save per-project session
-        try {
-          const loadedProjectId = get().loadedProjectId;
-          if (loadedProjectId) {
-            const sessions = _loadSavedSessions();
-            sessions[loadedProjectId] = { username: user.username, savedAt: Date.now() };
-            _saveSavedSessions(sessions);
-          }
         } catch (e) {}
 
         set({ activeUser: user });

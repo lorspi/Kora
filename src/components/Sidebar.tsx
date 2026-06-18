@@ -538,9 +538,9 @@ export default function Sidebar() {
                         <HardDrive className="w-3.5 h-3.5" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold text-foreground truncate flex items-center gap-1.5">
-                          {project.name}
-                          {isCurrent && <span className="text-[9px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full font-bold leading-none">ACTUAL</span>}
+                        <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <span className="truncate">{project.name}</span>
+                          {isCurrent && <span className="text-[9px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full font-bold leading-none shrink-0">ACTUAL</span>}
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-[10px] text-muted-foreground">
