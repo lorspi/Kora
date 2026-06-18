@@ -31,7 +31,7 @@
 ### Fixed
 
 - **Render de tablas en documentos**
-  Los documentos ahora soportan tablas Markdown estilo pipe (`| col1 | col2 |`). Se agregó detección y conversión a `<table>` HTML tanto en la vista previa (`markdown.tsx`) como en el editor por bloques (`DocView.tsx`), incluyendo un editor de código colapsable tipo mermaid y un comando `/table` en el menú de bloques.
+  Los documentos ahora soportan tablas Markdown estilo pipe (`| col1 | col2 |`). Se agregó detección y conversión a `table` HTML tanto en la vista previa (`markdown.tsx`) como en el editor por bloques (`DocView.tsx`), incluyendo un editor de código colapsable tipo mermaid y un comando `/table` en el menú de bloques.
 
 - **Agregados nuevos tipos de contenidos en datos de ejemplo**
   Se agregaron al seed de datos de ejemplo: un nuevo documento Markdown con diagrama Mermaid y referencia a imagen (`og-image.png`), una nota de tarea con imagen adjunta (`mobile-icon.png`), y cuatro imágenes copiadas desde `public/` a la biblioteca de medios (`og-image.png`, `mobile-icon.png`, `logo-dark.svg`, `logo-light.svg`).
@@ -67,5 +67,4 @@
 ### Removed
 
 - **Funcionalidad de disco virtual**
-  Se eliminó el modo de disco virtual (IndexedDB) debido a bugs persistentes y problemas de compatibilidad entre navegadores. La aplicación ahora opera exclusivamente con acceso directo al sistema de archivos local.- **Render de tablas en documentos**
-  Los documentos ahora soportan tablas Markdown estilo pipe (`| col1 | col2 |`). Se agregó detección y conversión a `<table>` HTML tanto en la vista previa (`markdown.tsx`) como en el editor por bloques (`DocView.tsx`), incluyendo un editor de código colapsable tipo mermaid y un comando `/table` en el menú de bloques.
+  Se eliminó el modo de disco virtual (IndexedDB) debido a bugs persistentes y problemas de compatibilidad entre navegadores. La aplicación ahora opera exclusivamente con acceso directo al sistema de archivos local.
