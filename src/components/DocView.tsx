@@ -751,42 +751,33 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
     }
   }, [tableCodeExpanded, block.type]);
 
-  // Drag state
-  const dragRef = useRef<{ isDragging: boolean; startY: number; blockId: string } | null>(null);
-
   // Handle grip mousedown for drag
   const handleGripMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    const startY = e.clientY;
+    let startY = e.clientY;
     let moved = false;
 
     const handleMouseMove = (ev: MouseEvent) => {
-      const delta = Math.abs(ev.clientY - startY);
-      if (delta > 8) {
+      const delta = ev.clientY - startY;
+      if (Math.abs(delta) > 8) {
         moved = true;
-        // Move block up or down based on drag direction
-        if (ev.clientY < startY - 30) {
-          onMoveBlock(block.id, 'up');
-          // Reset start position
-          cleanup();
-        } else if (ev.clientY > startY + 30) {
-          onMoveBlock(block.id, 'down');
-          cleanup();
-        }
+      }
+      if (delta > 30) {
+        onMoveBlock(block.id, 'down');
+        startY = ev.clientY; // Reset for continuous dragging
+      } else if (delta < -30) {
+        onMoveBlock(block.id, 'up');
+        startY = ev.clientY; // Reset for continuous dragging
       }
     };
 
     const handleMouseUp = (ev: MouseEvent) => {
-      cleanup();
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
       if (!moved) {
         // Single click — show context menu
         setContextMenu({ top: ev.clientY, left: ev.clientX });
       }
-    };
-
-    const cleanup = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
     };
 
     document.addEventListener('mousemove', handleMouseMove);

@@ -53,6 +53,9 @@
 - **Prevención de tareas duplicadas al hacer clic múltiple en "Agregar"**
   Se agregó un bloqueo de estado (`creatingTask`) que evita la creación de tareas duplicadas cuando el usuario hace clic repetidamente en el botón "Agregar" mientras se está procesando la primera solicitud. El botón se deshabilita visualmente durante la operación.
 
+- **Arrastre continuo de bloques en el editor de documentos**
+  Al arrastrar un bloque con el grip, ahora se mueve continuamente mientras se mantiene el mouse presionado, en lugar de moverse solo una vez por arrastre.
+
 ### Changed
 
 - **Vista Kanban: columnas flexibles al ancho de pantalla**
