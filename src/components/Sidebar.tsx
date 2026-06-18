@@ -3,17 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useUI } from '../lib/ui';
 import { useUpdateCheck } from '../hooks/useVersion';
 import { useProjectStore } from '../store';
 import { 
   ProjectMetadata, 
   TaskList, 
-  DocMetadata 
+  DocMetadata,
+  RegisteredProject
 } from '../types';
-import { dbGetAllKeys, dbGet } from '../lib/fs';
-import JSZip from 'jszip';
+
 import { 
   LogOut, 
   Plus, 
@@ -23,15 +23,17 @@ import {
   Info,
   RefreshCw,
   ImageIcon,
-  AlertTriangle,
-  Download,
   X,
-  Trash2,
   LayoutDashboard,
   ChevronLeft,
-  Trash as TrashIcon
+  Trash as TrashIcon,
+  FolderOpen,
+  HardDrive,
+  ArrowRight,
+  Home
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
+import { loadSavedSessions } from '../store/sessions';
 
 export default function Sidebar() {
   const { 
@@ -58,7 +60,9 @@ export default function Sidebar() {
     setSidebarOpen,
     showTrash,
     setShowTrash,
-    trashItems
+    trashItems,
+    tasks,
+    logs
   } = useProjectStore();
   const { toast, confirm } = useUI();
   const { updateAvailable } = useUpdateCheck();
@@ -66,48 +70,57 @@ export default function Sidebar() {
   const [showAddList, setShowAddList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [newListColor, setNewListColor] = useState('#8b5cf6');
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteConfirmChecked, setDeleteConfirmChecked] = useState(false);
-  const [isExportingZip, setIsExportingZip] = useState(false);
+  
+  // Project manager dropdown
+  const [showProjectManager, setShowProjectManager] = useState(false);
+  const projectManagerRef = useRef<HTMLDivElement>(null);
+  const [authStatuses, setAuthStatuses] = useState<Record<string, boolean>>({});
+  
+  const { registeredProjects, registerProject, unregisterProject, goToProjectBrowser, loadedProjectId, loadProjectById } = useProjectStore();
 
-  const isVirtualMode = adapter?.getMode() === 'VIRTUAL';
+  // Update auth statuses — solely from localStorage (persisted sessions)
+  useEffect(() => {
+    const sessions = loadSavedSessions();
+    const statuses: Record<string, boolean> = {};
+    for (const p of registeredProjects) {
+      statuses[p.id] = !!sessions[p.id];
+    }
+    setAuthStatuses(statuses);
+  }, [registeredProjects, showProjectManager]);
 
-  const handleExportZipFromModal = async () => {
-    setIsExportingZip(true);
+  // Handle adding a new project directly from the dropdown
+  const handleAddNewProject = async () => {
+    setShowProjectManager(false);
     try {
-      const zip = new JSZip();
-      const state = useProjectStore.getState();
-      if (!state.adapter) return;
-
-      const keys = await dbGetAllKeys();
-      for (const key of keys) {
-        const entry = await dbGet(key);
-        if (entry) {
-          const cleanPath = key.replace(/^\//, '');
-          if (entry.isBinary) {
-            zip.file(cleanPath, entry.content as Blob);
-          } else {
-            zip.file(cleanPath, entry.content as string);
-          }
-        }
+      if (!('showDirectoryPicker' in window)) {
+        toast('Tu navegador no es compatible con la API de Acceso a Archivos Locales.', 'error');
+        return;
       }
-
-      const content = await zip.generateAsync({ type: 'blob' });
-      const url = URL.createObjectURL(content);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${projectMeta?.name?.replace(/[^\w\u00C0-\u024F\s-]/g, '').replace(/\s+/g, '_') || 'Kora_Offline'}_workspace.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      toast('Respaldo ZIP descargado exitosamente', 'success');
+      const directoryHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+      const { saveDirectoryHandleWithKey } = await import('../lib/fs');
+      
+      const projId = registerProject('Cargando...', 'FSA_API');
+      await saveDirectoryHandleWithKey(directoryHandle, `fsa-handle-${projId}`);
+      await loadProjectById(projId);
     } catch (err: any) {
-      toast('No se pudo generar el ZIP: ' + err.message, 'error');
-    } finally {
-      setIsExportingZip(false);
+      if (err.name !== 'AbortError') {
+        toast(err?.message || 'Error al agregar proyecto', 'error');
+      }
     }
   };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (projectManagerRef.current && !projectManagerRef.current.contains(e.target as Node)) {
+        setShowProjectManager(false);
+      }
+    };
+    if (showProjectManager) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showProjectManager]);
 
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
@@ -139,6 +152,23 @@ export default function Sidebar() {
     }
   };
   
+  // Compute unread notes count per list
+  const unreadNotesByList = useMemo(() => {
+    if (!activeUser) return new Map<string, number>();
+    const readNotes = activeUser.readNotes || {};
+    const counts = new Map<string, number>();
+    for (const log of logs) {
+      if (!log.comment) continue;
+      if (log.userId === activeUser.id) continue;
+      if (readNotes[log.id]) continue;
+      const task = tasks.find(t => t.id === log.taskId);
+      if (!task) continue;
+      const current = counts.get(task.listId) || 0;
+      counts.set(task.listId, current + 1);
+    }
+    return counts;
+  }, [logs, activeUser?.readNotes, tasks]);
+
   const handleScanDocuments = async () => {
     try {
       const newDocs = await scanDocuments();
@@ -181,7 +211,7 @@ export default function Sidebar() {
           <div className="leading-tight overflow-hidden">
             <span className="text-xs font-bold text-foreground block truncate font-heading">{projectMeta?.name || 'Kora Workspace'}</span>
             <span className="text-[10px] text-muted-foreground block font-mono truncate">
-              {adapter?.getMode() === 'VIRTUAL' ? 'Disco Virtual' : 'Carpeta Local'}
+              Carpeta Local
             </span>
           </div>
         </div>
@@ -328,10 +358,19 @@ export default function Sidebar() {
                     : 'hover:bg-accent text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <div className="flex items-center gap-2 truncate">
+                <div className="flex items-center gap-2 truncate min-w-0">
                   <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: l.color }}></div>
                   <span className="text-xs font-semibold truncate">{l.name}</span>
                 </div>
+                {(() => {
+                  const count = unreadNotesByList.get(l.id) || 0;
+                  if (count === 0) return null;
+                  return (
+                    <span className="text-[9px] font-bold bg-bento-blue text-white px-1.5 py-0.5 rounded-full leading-none shrink-0 animate-pulse" title={`${count} nota${count !== 1 ? 's' : ''} sin leer`}>
+                      {count}
+                    </span>
+                  );
+                })()}
               </button>
             ))}
             {lists.length === 0 && (
@@ -456,7 +495,115 @@ export default function Sidebar() {
       </div>
 
       {/* Utilities */}
-      <div className="p-3 border-t border-border bg-secondary mt-auto flex flex-col gap-2">
+      <div className="p-3 border-t border-border bg-secondary mt-auto flex flex-col gap-2 relative">
+        {/* Project Manager Dropdown */}
+        <div className="relative" ref={projectManagerRef}>
+          <button
+            onClick={() => setShowProjectManager(!showProjectManager)}
+            className="w-full px-3 py-2 bg-card hover:bg-accent border border-border rounded-xl text-foreground text-[11px] transition-all flex items-center justify-center gap-1.5 cursor-pointer font-semibold shadow-card"
+          >
+            <FolderOpen className="w-3.5 h-3.5" />
+            Administrar Proyectos
+            <ChevronLeft className={`w-3 h-3 transition-transform ${showProjectManager ? '-rotate-90' : ''}`} />
+          </button>
+
+          {showProjectManager && (
+            <div className="absolute bottom-full left-0 right-0 mb-1 bg-card border border-border rounded-xl shadow-card-hover z-50 overflow-hidden animate-fade-in">
+              {/* Current project indicator */}
+              <div className="p-3 border-b border-border">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Proyectos Vinculados</span>
+              </div>
+
+              <div className="max-h-60 overflow-y-auto">
+                {registeredProjects.map(project => {
+                  const isAuthenticated = !!authStatuses[project.id];
+                  const isCurrent = project.id === loadedProjectId;
+                  return (
+                    <div
+                      key={project.id}
+                      onClick={async () => {
+                        if (isCurrent) return;
+                        setShowProjectManager(false);
+                        try {
+                          await loadProjectById(project.id);
+                        } catch (e: any) {
+                          toast(e?.message || 'Error al cambiar de proyecto', 'error');
+                        }
+                      }}
+                      className={`flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 transition-colors cursor-pointer ${
+                        isCurrent ? 'bg-accent cursor-default' : 'hover:bg-accent/50'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-bento-blue-light text-bento-blue">
+                        <HardDrive className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                          <span className="truncate">{project.name}</span>
+                          {isCurrent && <span className="text-[9px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full font-bold leading-none shrink-0">ACTUAL</span>}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] text-muted-foreground">
+                            Carpeta Local
+                          </span>
+                          {/* Auth indicator dot */}
+                          <span className={`inline-block w-1.5 h-1.5 rounded-full ${isAuthenticated ? 'bg-bento-green' : 'bg-muted-foreground'}`} 
+                            title={isAuthenticated ? 'Sesión activa' : 'Sin sesión'} />
+                        </div>
+                      </div>
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const confirmed = await confirm({
+                            title: 'Desvincular proyecto',
+                            message: `¿Estás seguro de que deseas desvincular "${project.name}"? Los datos del proyecto no se eliminarán, solo se quitará de la lista.`,
+                            confirmLabel: 'Desvincular',
+                            cancelLabel: 'Cancelar',
+                            variant: 'danger'
+                          });
+                          if (confirmed) {
+                            unregisterProject(project.id);
+                          }
+                        }}
+                        className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                        title="Desvincular proyecto"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+                {registeredProjects.length === 0 && (
+                  <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                    No hay proyectos vinculados
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="border-t border-border p-2 flex flex-col gap-1">
+                <button
+                  onClick={handleAddNewProject}
+                  className="w-full px-3 py-1.5 bg-primary hover:opacity-90 rounded-lg text-[11px] font-bold text-primary-foreground transition-colors flex items-center gap-1.5 justify-center"
+                >
+                  <Plus className="w-3 h-3" />
+                  Vincular Nuevo Proyecto
+                </button>
+                <button
+                  onClick={() => {
+                    setShowProjectManager(false);
+                    goToProjectBrowser();
+                  }}
+                  className="w-full px-3 py-1.5 bg-secondary hover:bg-accent rounded-lg text-[11px] font-semibold text-foreground transition-colors flex items-center gap-1.5 justify-center"
+                >
+                  <Home className="w-3 h-3" />
+                  Volver al inicio
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         <button
           onClick={() => setShowAbout(true)}
           className="relative w-full px-3 py-2 bg-card hover:bg-accent border border-border rounded-xl text-foreground text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer font-semibold leading-none shadow-card"
@@ -468,117 +615,9 @@ export default function Sidebar() {
             <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-destructive rounded-full" />
           )}
         </button>
-
-        <button 
-          onClick={async () => {
-            if (isVirtualMode) {
-              setDeleteConfirmChecked(false);
-              setShowDeleteModal(true);
-            } else {
-              const ok = await confirm({ title: 'Cambiar de carpeta', message: '¿Seguro que deseas salir del proyecto local actual? Se cerrará la sesión de la carpeta.', confirmLabel: 'Salir', variant: 'danger' });
-              if (ok) closeProject();
-            }
-          }}
-          className="w-full px-3 py-2 bg-card hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-border hover:border-destructive/30 rounded-xl text-[11px] transition-all flex items-center justify-center gap-1 mt-1 cursor-pointer"
-        >
-          {isVirtualMode ? (
-            <>
-              <Trash2 className="w-3.5 h-3.5" />
-              Borrar datos / Salir
-            </>
-          ) : (
-            <>
-              <LogOut className="w-3.5 h-3.5" />
-              Cambiar de Carpeta / Salir
-            </>
-          )}
-        </button>
       </div>
 
     </aside>
-
-    {/* Modal: Borrar datos del Disco Virtual — fuera del aside para cubrir pantalla completa */}
-    {showDeleteModal && (
-      <div
-        className="fixed inset-0 z-[9998] flex items-center justify-center bg-foreground/20 backdrop-blur-[2px] animate-fade-in"
-        onClick={() => setShowDeleteModal(false)}
-      >
-        <div
-          className="bg-card border border-border rounded-2xl shadow-card-hover w-full max-w-md mx-4 overflow-hidden"
-          onClick={e => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-5 pb-3">
-            <div className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-destructive shrink-0" />
-              <h2 className="text-sm font-bold text-foreground font-heading">Borrar datos del Disco Virtual</h2>
-            </div>
-            <button
-              onClick={() => setShowDeleteModal(false)}
-              className="p-1 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Body */}
-          <div className="px-5 pb-4 space-y-3">
-            <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-3">
-              <p className="text-xs text-destructive font-semibold leading-relaxed">
-                ⚠️ Esta acción es permanente e irreversible. Todos los datos almacenados en el Disco Virtual del navegador (listas, tareas, documentos y archivos multimedia) serán eliminados definitivamente.
-              </p>
-            </div>
-
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Antes de continuar, te recomendamos descargar una copia de seguridad de tu proyecto en formato ZIP.
-            </p>
-
-            {/* Download ZIP button */}
-            <button
-              onClick={handleExportZipFromModal}
-              disabled={isExportingZip}
-              className="w-full px-4 py-2.5 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Download className="w-4 h-4" />
-              {isExportingZip ? 'Generando ZIP...' : 'Descargar copia de seguridad (.zip)'}
-            </button>
-
-            {/* Confirmation checkbox */}
-            <label className="flex items-start gap-2.5 cursor-pointer pt-2 border-t border-border">
-              <input
-                type="checkbox"
-                checked={deleteConfirmChecked}
-                onChange={e => setDeleteConfirmChecked(e.target.checked)}
-                className="mt-0.5 w-4 h-4 app-checkbox app-checkbox--danger shrink-0"
-              />
-              <span className="text-xs text-foreground leading-relaxed select-none">
-                Entiendo que todos mis datos serán borrados permanentemente y que esta acción no se puede deshacer.
-              </span>
-            </label>
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-2 px-5 pb-5 justify-end">
-            <button
-              onClick={() => setShowDeleteModal(false)}
-              className="px-4 py-2 text-xs font-semibold rounded-xl bg-secondary hover:bg-accent border border-border text-foreground transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={() => {
-                setShowDeleteModal(false);
-                closeProject();
-              }}
-              disabled={!deleteConfirmChecked}
-              className="px-4 py-2 text-xs font-bold rounded-xl bg-destructive hover:opacity-90 text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Borrar todo y salir
-            </button>
-          </div>
-        </div>
-      </div>
-    )}
 
     </>
   );

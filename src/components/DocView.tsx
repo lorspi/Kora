@@ -38,14 +38,15 @@ import {
   MoreVertical,
   FileCode,
   ShieldAlert,
-  GitBranch
+  GitBranch,
+  Table
 } from 'lucide-react';
 
 // ─── Block Types ────────────────────────────────────────────────────────────────
 
 interface Block {
   id: string;
-  type: 'paragraph' | 'h1' | 'h2' | 'h3' | 'bullet' | 'numbered' | 'quote' | 'code' | 'divider' | 'checklist' | 'mermaid';
+  type: 'paragraph' | 'h1' | 'h2' | 'h3' | 'bullet' | 'numbered' | 'quote' | 'code' | 'divider' | 'checklist' | 'mermaid' | 'table';
   content: string;
   checked?: boolean;
 }
@@ -62,6 +63,7 @@ const SLASH_COMMANDS = [
   { type: 'code', label: 'Código', icon: Code, shortcut: '```', description: 'Bloque de código' },
   { type: 'divider', label: 'Divisor', icon: Minus, shortcut: '---', description: 'Línea horizontal' },
   { type: 'mermaid', label: 'Diagrama Mermaid', icon: GitBranch, shortcut: '```mermaid', description: 'Diagrama de flujo, secuencia, Gantt...' },
+  { type: 'table', label: 'Tabla', icon: Table, shortcut: '|', description: 'Tabla de columnas y filas' },
 ] as const;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -129,6 +131,15 @@ function markdownToBlocks(markdown: string): Block[] {
       blocks.push({ id: generateId(), type: 'code', content: codeLines.join('\n') });
     } else if (line.trim() === '---' || line.trim() === '***') {
       blocks.push({ id: generateId(), type: 'divider', content: '' });
+    } else if (line.startsWith('|') && i + 1 < lines.length && /^\|[-:| +]+\|$/.test(lines[i + 1])) {
+      // Table block: collect consecutive | lines
+      const tableLines: string[] = [line];
+      i++;
+      while (i < lines.length && lines[i].startsWith('|')) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      blocks.push({ id: generateId(), type: 'table', content: tableLines.join('\n') });
     } else {
       blocks.push({ id: generateId(), type: 'paragraph', content: line });
     }
@@ -147,6 +158,7 @@ function blocksToMarkdown(blocks: Block[]): string {
       case 'bullet': return `- ${block.content}`;
       case 'numbered': return `${getNumberedDisplayIndex(blocks, idx)}. ${block.content}`;
       case 'quote': return `> ${block.content}`;
+      case 'table': return block.content;
       case 'mermaid': return `\`\`\`mermaid\n${block.content}\n\`\`\``;
       case 'code': return `\`\`\`\n${block.content}\n\`\`\``;
       case 'divider': return '---';
@@ -724,50 +736,48 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
   const contentRef = useRef(block.content);
   const [contextMenu, setContextMenu] = useState<{ top: number; left: number } | null>(null);
   const [mermaidCodeExpanded, setMermaidCodeExpanded] = useState(false);
+  const [tableCodeExpanded, setTableCodeExpanded] = useState(false);
 
-  // Auto-focus mermaid textarea when expanded
+  // Auto-focus mermaid/table textarea when expanded
   useEffect(() => {
     if (block.type === 'mermaid' && mermaidCodeExpanded && codeRef.current) {
       codeRef.current.focus();
     }
   }, [mermaidCodeExpanded, block.type]);
 
-  // Drag state
-  const dragRef = useRef<{ isDragging: boolean; startY: number; blockId: string } | null>(null);
+  useEffect(() => {
+    if (block.type === 'table' && tableCodeExpanded && codeRef.current) {
+      codeRef.current.focus();
+    }
+  }, [tableCodeExpanded, block.type]);
 
   // Handle grip mousedown for drag
   const handleGripMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
-    const startY = e.clientY;
+    let startY = e.clientY;
     let moved = false;
 
     const handleMouseMove = (ev: MouseEvent) => {
-      const delta = Math.abs(ev.clientY - startY);
-      if (delta > 8) {
+      const delta = ev.clientY - startY;
+      if (Math.abs(delta) > 8) {
         moved = true;
-        // Move block up or down based on drag direction
-        if (ev.clientY < startY - 30) {
-          onMoveBlock(block.id, 'up');
-          // Reset start position
-          cleanup();
-        } else if (ev.clientY > startY + 30) {
-          onMoveBlock(block.id, 'down');
-          cleanup();
-        }
+      }
+      if (delta > 30) {
+        onMoveBlock(block.id, 'down');
+        startY = ev.clientY; // Reset for continuous dragging
+      } else if (delta < -30) {
+        onMoveBlock(block.id, 'up');
+        startY = ev.clientY; // Reset for continuous dragging
       }
     };
 
     const handleMouseUp = (ev: MouseEvent) => {
-      cleanup();
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
       if (!moved) {
         // Single click — show context menu
         setContextMenu({ top: ev.clientY, left: ev.clientX });
       }
-    };
-
-    const cleanup = () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -816,7 +826,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
     if (focused) {
       if (block.type === 'code') {
         codeRef.current?.focus();
-      } else if (block.type !== 'divider' && !isImageBlock(block.content) && !isVideoBlock(block.content)) {
+      } else if (block.type !== 'divider' && block.type !== 'table' && !isImageBlock(block.content) && !isVideoBlock(block.content)) {
         const el = inputRef.current;
         if (el && document.activeElement !== el) {
           // Switch to raw text mode for editing
@@ -1014,11 +1024,7 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
           {/* Diagram preview */}
           <div className="flex-1 min-w-0">
             <div className="bg-card border border-border rounded-lg p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1.5">
-                  <GitBranch className="w-3.5 h-3.5 text-bento-blue" />
-                  <span className="text-[10px] font-mono font-bold text-muted-foreground">mermaid</span>
-                </div>
+              <div className="flex items-center justify-end mb-2">
                 {!readOnly && (
                   <button
                     onClick={() => setMermaidCodeExpanded(!mermaidCodeExpanded)}
@@ -1047,6 +1053,104 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
                     onFocus={() => onFocus(block.id)}
                     onKeyDown={handleKeyDownInner}
                     placeholder="graph TD\n  A[Inicio] --> B[Fin]"
+                    rows={Math.max(3, Math.min(10, lineCount))}
+                    style={{ fontFamily: 'JetBrains Mono, Fira Code, monospace' }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        {contextMenu && (
+          <BlockContextMenu
+            position={contextMenu}
+            onDelete={() => onDelete(block.id)}
+            onDuplicate={() => onDuplicate(block.id)}
+            onConvert={(type) => onConvertType(block.id, type)}
+            onClose={() => setContextMenu(null)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Render table blocks with collapsible code editor (like mermaid)
+  if (block.type === 'table') {
+    const lines = block.content.split('\n');
+    const isExpanded = block.content.trim() ? tableCodeExpanded : true;
+    const lineCount = lines.length;
+
+    return (
+      <div className="group flex flex-col gap-2 py-2">
+        <div className="flex items-start gap-2">
+          {!readOnly && (
+          <div className="hidden sm:flex opacity-0 group-hover:opacity-100 items-center gap-0.5 transition-opacity pt-2 shrink-0">
+            <button
+              onClick={() => onAddBelow(block.id)}
+              className="p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+            </button>
+            {renderGripHandle()}
+          </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="bg-card border border-border rounded-lg p-3">
+              <div className="flex items-center justify-end mb-2">
+                {!readOnly && (
+                  <button
+                    onClick={() => setTableCodeExpanded(!tableCodeExpanded)}
+                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                    title={isExpanded ? 'Colapsar código' : 'Editar código'}
+                  >
+                    {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}
+                  </button>
+                )}
+              </div>
+              {/* Rendered table */}
+              {lines.length >= 2 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse bg-card text-xs">
+                    <thead>
+                      <tr>
+                        {lines[0].split('|').slice(1, -1).map((h, i) => (
+                          <th key={i} className="border-b border-border bg-secondary px-3 py-2 font-bold uppercase tracking-wider text-foreground text-left whitespace-nowrap">{h.trim()}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.slice(2).map((row, ri) => (
+                        <tr key={ri} className={ri % 2 === 0 ? 'bg-card' : 'bg-secondary/30'}>
+                          {row.split('|').slice(1, -1).map((cell, ci) => (
+                            <td key={ci} className="px-3 py-2 text-muted-foreground border-b border-border whitespace-nowrap">{cell.trim()}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-6 text-[10px] text-muted-foreground italic">
+                  Escribe código de tabla Markdown para visualizarla
+                </div>
+              )}
+            </div>
+            {/* Collapsible code editor */}
+            {!readOnly && (
+              <div className={`overflow-hidden transition-all duration-200 ${isExpanded ? 'max-h-[500px] opacity-100 mt-2' : 'max-h-0 opacity-0'}`}>
+                <div className="bg-secondary border border-border rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between px-3 py-1.5 bg-accent border-b border-border">
+                    <span className="text-[10px] font-mono font-bold text-muted-foreground">Código fuente</span>
+                    <span className="text-[9px] font-mono text-muted-foreground">{lineCount} línea{lineCount !== 1 ? 's' : ''}</span>
+                  </div>
+                  <textarea
+                    ref={codeRef}
+                    className="w-full bg-transparent p-3 text-xs font-mono text-foreground focus:outline-none resize-none"
+                    value={block.content}
+                    onChange={(e) => onUpdate(block.id, { content: e.target.value })}
+                    onFocus={() => onFocus(block.id)}
+                    onKeyDown={handleKeyDownInner}
+                    placeholder={`| Col 1 | Col 2 | Col 3 |\n|---|---|---|\n| A | B | C |`}
                     rows={Math.max(3, Math.min(10, lineCount))}
                     style={{ fontFamily: 'JetBrains Mono, Fira Code, monospace' }}
                   />
@@ -1483,7 +1587,7 @@ export default function DocView() {
     if (!block) return;
 
     if (e.key === 'Enter' && !e.shiftKey) {
-      if (block.type === 'code' || block.type === 'mermaid') return; // Allow newlines in code/mermaid blocks
+      if (block.type === 'code' || block.type === 'mermaid' || block.type === 'table') return; // Allow newlines in code/mermaid/table blocks
       e.preventDefault();
       // If slash menu is open, let it handle Enter
       if (slashMenu) return;
@@ -1572,7 +1676,10 @@ export default function DocView() {
   const handleSlashSelect = useCallback((type: string) => {
     if (!slashMenu) return;
     const { blockId } = slashMenu;
-    updateBlock(blockId, { type: type as Block['type'], content: '' });
+    const defaultContent = type === 'table'
+      ? '| Columna 1 | Columna 2 | Columna 3 |\n|----------|----------|----------|\n| Celda 1   | Celda 2   | Celda 3   |\n| Celda 4   | Celda 5   | Celda 6   |'
+      : '';
+    updateBlock(blockId, { type: type as Block['type'], content: defaultContent });
     setSlashMenu(null);
     if (type === 'divider') {
       addBlockBelow(blockId);

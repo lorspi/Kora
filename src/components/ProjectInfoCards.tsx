@@ -7,7 +7,6 @@ import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../store';
 import { useUI } from '../lib/ui';
 import { SystemUser } from '../types';
-import { dbGetAllKeys, dbGet } from '../lib/fs';
 import JSZip from 'jszip';
 import {
   Save,
@@ -215,21 +214,9 @@ export default function ProjectInfoCards() {
       if (!state.adapter) return;
       const fileAdapter = state.adapter;
 
-      if (fileAdapter.getMode() === 'VIRTUAL') {
-        const keys = await dbGetAllKeys();
-        for (const key of keys) {
-          const entry = await dbGet(key);
-          if (entry) {
-            const cleanPath = key.replace(/^\//, '');
-            if (entry.isBinary) {
-              zip.file(cleanPath, entry.content as Blob);
-            } else {
-              zip.file(cleanPath, entry.content as string);
-            }
-          }
-        }
-      } else {
-        zip.file('config.json', JSON.stringify({ projectId: state.projectMeta?.id, projectName: state.projectMeta?.name, lastOpenedBy: state.activeUser?.id, lastModified: Date.now() }, null, 2));
+      // Read project files directly from the file system
+      // (always FSA_API mode since Virtual mode was removed)
+      zip.file('config.json', JSON.stringify({ projectId: state.projectMeta?.id, projectName: state.projectMeta?.name, lastOpenedBy: state.activeUser?.id, lastModified: Date.now() }, null, 2));
         zip.file('project.json', JSON.stringify(state.projectMeta, null, 2));
         zip.file('users/users.json', JSON.stringify(state.users, null, 2));
         zip.file('activity/logs.json', JSON.stringify(state.logs, null, 2));
@@ -247,7 +234,6 @@ export default function ProjectInfoCards() {
             zip.file(`docs/${doc.filename}`, md);
           } catch (e) {}
         }
-      }
 
       const content = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(content);

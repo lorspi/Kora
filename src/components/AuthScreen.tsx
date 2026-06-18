@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { useProjectStore } from '../store';
 import { KeyRound, UserPlus, LogIn, ChevronRight, User, Sparkles, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { saveSessionForProject } from '../store/sessions';
 import ThemeToggle from './ThemeToggle';
 import VersionBadge from './VersionBadge';
 
@@ -43,13 +44,19 @@ export default function AuthScreen() {
     try {
       await loginUser(username, password);
       if (rememberMe) {
+        const normalizedUsername = username.trim().toLowerCase();
         try {
           localStorage.setItem(SAVED_SESSION_KEY, JSON.stringify({
-            username: username.trim().toLowerCase(),
+            username: normalizedUsername,
             savedAt: Date.now()
           }));
         } catch (e) {
           // localStorage may be unavailable
+        }
+        // Also save per-project session
+        const state = useProjectStore.getState();
+        if (state.loadedProjectId) {
+          saveSessionForProject(state.loadedProjectId, normalizedUsername);
         }
       }
     } catch (err: any) {
@@ -76,7 +83,7 @@ export default function AuthScreen() {
 
 
   return (
-    <div id="auth-screen" className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 font-body relative">
+    <div id="auth-screen" className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center px-4 sm:px-6 py-6 pt-14 sm:pt-6 pb-14 sm:pb-6 font-body relative">
       {/* Theme toggle top-right */}
       <div className="absolute top-4 right-4">
         <ThemeToggle />
@@ -90,14 +97,14 @@ export default function AuthScreen() {
         <ArrowLeft className="w-5 h-5" />
       </button>
 
-      <div className="max-w-md w-full bg-card backdrop-blur-md rounded-2xl p-8 border border-border shadow-card-hover animate-scale-in">
+      <div className="max-w-md w-full bg-card backdrop-blur-md rounded-2xl p-5 sm:p-8 border border-border shadow-card-hover animate-scale-in">
         
         {/* Project Header context */}
         <div className="text-center mb-6">
           <span className="text-[10px] uppercase font-mono tracking-wider bg-bento-blue-light text-bento-blue px-3 py-1 rounded-full font-bold">
             Carpeta Abierta con éxito 📁
           </span>
-          <h2 className="text-xl font-bold mt-2 text-foreground truncate pb-1 font-heading">
+          <h2 className="text-lg sm:text-xl font-bold mt-2 text-foreground truncate pb-1 font-heading">
             {projectMeta?.name || 'Cargando Proyecto...'}
           </h2>
           <p className="text-xs text-muted-foreground mt-1 truncate">

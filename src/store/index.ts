@@ -16,9 +16,10 @@ import {
   TaskStatus, 
   Subtask,
   TaskLock,
-  TrashItem
+  TrashItem,
+  RegisteredProject
 } from '../types';
-import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDirectoryHandle, clearDirectoryHandle, dbClear } from '../lib/fs';
+import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDirectoryHandle, clearDirectoryHandle, saveDirectoryHandleWithKey, loadDirectoryHandleByKey, deleteDirectoryHandleByKey, dbClear } from '../lib/fs';
 import { hashPassword } from '../lib/crypto';
 
 interface ProjectState {
@@ -59,7 +60,7 @@ interface ProjectState {
   loadProjectDirectory: (handle: FileSystemDirectoryHandle | null, mode: FsMode) => Promise<void>;
   initialize: () => Promise<void>;
   createBlankProject: (name: string, desc: string) => Promise<void>;
-  seedSampleProject: () => Promise<void>;
+
   initializeNewProject: (projectName: string, projectDesc: string, firstUser: SystemUser, useSampleData: boolean) => Promise<void>;
   createListDirect: (name: string, color: string) => Promise<TaskList>;
   seedSampleProjectOnboarding: (projectMeta: ProjectMetadata, config: ProjectConfig, firstUser: SystemUser) => Promise<void>;
@@ -103,6 +104,7 @@ interface ProjectState {
   addComment: (taskId: string, commentText: string, attachments?: string[]) => Promise<void>;
   editComment: (logId: string, newText: string) => Promise<void>;
   deleteComment: (logId: string) => Promise<void>;
+  markNoteAsRead: (logId: string) => Promise<void>;
   uploadAttachment: (file: File) => Promise<{ path: string; name: string }>;
   resolveAttachmentUrl: (path: string) => Promise<string>;
   
@@ -139,11 +141,20 @@ interface ProjectState {
   // Mobile sidebar
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
+  
+  // Multi-project browser
+  registeredProjects: RegisteredProject[];
+  loadedProjectId: string | null;
+  loadProjectById: (projectId: string) => Promise<void>;
+  registerProject: (name: string, type: 'FSA_API', pathHint?: string) => string;
+  unregisterProject: (projectId: string) => void;
+  goToProjectBrowser: () => void;
 }
 
 // Helper to save/load persistence state
 const PERSISTENCE_KEY = 'gestor-de-proyectos-state';
 const SAVED_SESSION_KEY = 'gestor-de-proyectos-saved-session';
+const LAST_OPENED_PROJECT_KEY = 'kora-last-opened-project';
 type PersistenceState = {
   hasActiveProject: boolean;
   fsMode: FsMode;
@@ -166,7 +177,123 @@ function loadPersistenceState(): PersistenceState {
   } catch (e) {
     console.warn('Could not load persistence state', e);
   }
-  return { hasActiveProject: false, fsMode: 'VIRTUAL' };
+  return { hasActiveProject: false, fsMode: 'FSA_API' };
+}
+
+// ── Multi-project persistence helpers ─────────────────────────────────────────
+
+const REGISTERED_PROJECTS_KEY = 'kora-registered-projects';
+const SAVED_SESSIONS_KEY = 'kora-saved-sessions';
+
+type SavedSessions = Record<string, { username: string; savedAt: number }>;
+
+function loadRegisteredProjects(): RegisteredProject[] {
+  try {
+    const raw = localStorage.getItem(REGISTERED_PROJECTS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn('Could not load registered projects', e);
+  }
+  return [];
+}
+
+function saveRegisteredProjects(projects: RegisteredProject[]) {
+  try {
+    localStorage.setItem(REGISTERED_PROJECTS_KEY, JSON.stringify(projects));
+  } catch (e) {
+    console.warn('Could not save registered projects', e);
+  }
+}
+
+function _loadSavedSessions(): SavedSessions {
+  try {
+    const raw = localStorage.getItem(SAVED_SESSIONS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn('Could not load saved sessions', e);
+  }
+  return {};
+}
+
+function _saveSavedSessions(sessions: SavedSessions) {
+  try {
+    localStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify(sessions));
+  } catch (e) {
+    console.warn('Could not save saved sessions', e);
+  }
+}
+
+function saveLastOpenedProjectId(projectId: string) {
+  try {
+    localStorage.setItem(LAST_OPENED_PROJECT_KEY, projectId);
+  } catch (e) {
+    console.warn('Could not save last opened project', e);
+  }
+}
+
+function loadLastOpenedProjectId(): string | null {
+  try {
+    return localStorage.getItem(LAST_OPENED_PROJECT_KEY);
+  } catch (e) {
+    console.warn('Could not load last opened project', e);
+    return null;
+  }
+}
+
+function clearLastOpenedProjectId() {
+  try {
+    localStorage.removeItem(LAST_OPENED_PROJECT_KEY);
+  } catch (e) {
+    console.warn('Could not clear last opened project', e);
+  }
+}
+
+/** Migrate old single-project persistence to the new multi-project system */
+function migrateOldProject(): RegisteredProject[] {
+  const persistence = loadPersistenceState();
+  if (!persistence.hasActiveProject) return [];
+
+  const existing = loadRegisteredProjects();
+  if (existing.length > 0) return existing;
+
+  const projectId = crypto.randomUUID();
+  const projName = 'Mi Proyecto Local';
+  const project: RegisteredProject = {
+    id: projectId,
+    name: projName,
+    type: persistence.fsMode,
+    createdAt: Date.now()
+  };
+
+  // Migrate saved session
+  try {
+    const oldSessionRaw = localStorage.getItem(SAVED_SESSION_KEY);
+    if (oldSessionRaw) {
+      const oldSession = JSON.parse(oldSessionRaw);
+      const sessions = _loadSavedSessions();
+      sessions[projectId] = { username: oldSession.username, savedAt: oldSession.savedAt || Date.now() };
+      _saveSavedSessions(sessions);
+    }
+  } catch (e) { /* ignore */ }
+
+  const projects = [project];
+  saveRegisteredProjects(projects);
+
+  // Migrate FSA handle if needed (fire and forget - will complete before user clicks)
+  if (persistence.fsMode === 'FSA_API') {
+    (async () => {
+      try {
+        const handle = await loadDirectoryHandle();
+        if (handle) {
+          await saveDirectoryHandleWithKey(handle, `fsa-handle-${projectId}`);
+        }
+      } catch (e) {
+        console.warn('Could not migrate FSA handle', e);
+      }
+    })();
+  }
+
+  return projects;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => {
@@ -211,7 +338,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   return {
     // Engine State
     adapter: null,
-    fsMode: 'VIRTUAL',
+    fsMode: 'FSA_API',
     isLoading: true, // Start loading to check persistence
     isPolling: false,
     
@@ -240,6 +367,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     trashItems: [],
     showMediaExplorer: false,
 
+    // Multi-project browser state
+    registeredProjects: loadRegisteredProjects(),
+    loadedProjectId: null,
+
     // Read full project contents on load
     loadProjectDirectory: async (handle, mode) => {
       set({ isLoading: true });
@@ -251,8 +382,6 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         if (!configExists) {
           // New folder setup! Enable onboarding flow instead of seeding automatically
           set({ adapter, isOnboarding: true });
-          // Save persistence state with mode
-          savePersistenceState({ hasActiveProject: true, fsMode: mode });
           set({ isLoading: false });
           return;
         }
@@ -365,15 +494,16 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         lists.sort((a, b) => a.createdAt - b.createdAt);
         tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
 
-        // Check for saved session (remember me)
+        // Check for saved session (remember me) — per-project only
         let activeUser: SystemUser | null = null;
+        const currentProjectId = get().loadedProjectId;
         try {
-          const savedRaw = localStorage.getItem(SAVED_SESSION_KEY);
-          if (savedRaw) {
-            const saved = JSON.parse(savedRaw);
-            const matchedUser = users.find(u => u.username === saved.username);
-            if (matchedUser) {
-              activeUser = matchedUser;
+          if (currentProjectId) {
+            const sessions = _loadSavedSessions();
+            const saved = sessions[currentProjectId];
+            if (saved) {
+              const matchedUser = users.find(u => u.username === saved.username);
+              if (matchedUser) activeUser = matchedUser;
             }
           }
         } catch (e) {
@@ -398,12 +528,18 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           isLoading: false
         });
 
-        if (mode === 'FSA_API') {
-          await saveDirectoryHandle(handle);
-        } else {
-          await clearDirectoryHandle();
+        await saveDirectoryHandle(handle);
+
+        // Update registered project name with real name from project.json
+        const loadedId = get().loadedProjectId;
+        if (loadedId && projectMeta) {
+          const currentProjects = loadRegisteredProjects();
+          const updatedProjects = currentProjects.map(p =>
+            p.id === loadedId ? { ...p, name: projectMeta.name } : p
+          );
+          saveRegisteredProjects(updatedProjects);
+          set({ registeredProjects: updatedProjects });
         }
-        savePersistenceState({ hasActiveProject: true, fsMode: mode });
 
       } catch (err) {
         console.error('Failed to load project from folder', err);
@@ -412,45 +548,37 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
-    // Auto-initialize on app load
+    // Auto-initialize on app load — migrate old single-project to multi-project browser
     initialize: async () => {
-      const persistence = loadPersistenceState();
-      if (persistence.hasActiveProject) {
-        // Try to load the project with persisted mode
-        try {
-          if (persistence.fsMode === 'FSA_API') {
-            const savedHandle = await loadDirectoryHandle();
-            if (!savedHandle) {
-              throw new Error('No stored File System Access handle disponible.');
-            }
-            // Verify permissions before attempting to load.
-            // After closing a tab, the browser revokes FSA permissions and
-            // requires a new user gesture to re-grant them. queryPermission
-            // lets us detect this without triggering the error.
-            const permState = await (savedHandle as any).queryPermission({ mode: 'readwrite' });
-            if (permState !== 'granted') {
-              // Permissions lost — go back to LoadFolderScreen so the user
-              // can re-select the folder (which provides the user gesture needed).
-              console.info('FSA permissions not granted after tab restore, showing folder selection.');
-              savePersistenceState({ hasActiveProject: false, fsMode: 'VIRTUAL' });
-              await clearDirectoryHandle();
-              set({ isLoading: false });
-              return;
-            }
-            await get().loadProjectDirectory(savedHandle, 'FSA_API');
-          } else {
-            await get().loadProjectDirectory(null, 'VIRTUAL');
-          }
-        } catch (e) {
-          console.warn('Failed to auto-load persisted project', e);
-          // Clear invalid state
-          savePersistenceState({ hasActiveProject: false, fsMode: 'VIRTUAL' });
-          await clearDirectoryHandle();
-          set({ isLoading: false });
-        }
-      } else {
-        set({ isLoading: false });
+      // Try migration from old single-project system (old PERSISTENCE_KEY)
+      const migrated = migrateOldProject();
+      if (migrated.length > 0) {
+        set({ registeredProjects: migrated });
+        // COMENTARIO: No retornamos aqui — continuamos para intentar
+        // auto-cargar el ultimo proyecto abierto.
       }
+
+      // Check if there's a last opened project to auto-restore on reload
+      const lastOpenedId = loadLastOpenedProjectId();
+      if (lastOpenedId) {
+        const projectExists = get().registeredProjects.some(p => p.id === lastOpenedId);
+        if (projectExists) {
+          try {
+            await get().loadProjectById(lastOpenedId);
+            return; // loadProjectById sets isLoading to false
+          } catch (e) {
+            console.warn('Could not auto-load last project', e);
+            // Clear the stale reference so we don't keep trying
+            clearLastOpenedProjectId();
+          }
+        } else {
+          // Project no longer registered, clean up
+          clearLastOpenedProjectId();
+        }
+      }
+
+      // Projects are already loaded synchronously in the initial state from localStorage
+      set({ isLoading: false });
     },
 
     saveProjectConfig: async (config) => {
@@ -535,7 +663,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       });
 
       // Quick seed a initial list
-      await get().createList('Lista General 📋', '#3b82f6');
+      await get().createList('Lista General', '#3b82f6');
     },
 
     // Initialize new project from onboarding wizard
@@ -571,12 +699,37 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       await adapter.writeTextFile('/activity/logs.json', JSON.stringify([], null, 2));
       await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
 
+      // Use existing loadedProjectId from initial registration (handleSelectVirtual/FSA)
+      // Update its name/type instead of creating a duplicate registration
+      const existingId = get().loadedProjectId;
+      if (existingId) {
+        const projects = loadRegisteredProjects();
+        const updated = projects.map(p =>
+          p.id === existingId ? { ...p, name: projectName } : p
+        );
+        saveRegisteredProjects(updated);
+        set({ registeredProjects: updated, loadedProjectId: existingId });
+      } else {
+        // Fallback: create new registration (should not happen)
+        const { fsMode } = get();
+        const registeredId = get().registerProject(projectName, fsMode);
+        set({ loadedProjectId: registeredId });
+      }
+
+      // Save session for the new project so it shows 'Sesión activa'
+      const loadedId = get().loadedProjectId;
+      if (loadedId) {
+        const sessions = _loadSavedSessions();
+        sessions[loadedId] = { username: firstUser.username, savedAt: Date.now() };
+        _saveSavedSessions(sessions);
+      }
+
       if (useSampleData) {
         // Seed with sample data (using similar structure to seedSampleProject but adapted)
         await get().seedSampleProjectOnboarding(projectMeta, config, firstUser);
       } else {
         // Initialize blank project with one empty list
-        const blankList = await get().createListDirect('Lista General 📋', '#3b82f6');
+        const blankList = await get().createListDirect('Lista General', '#3b82f6');
         
         set({
           projectMeta,
@@ -799,7 +952,61 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
 > **Importante:** Al editar en paralelo, el sistema bloqueará archivos que estén siendo leídos y editados por otros compañeros utilizando la sincronización local en el archivo locks.json.
 `;
 
-      const docsCatalog = [docA];
+      const docB: DocMetadata = {
+        id: 'doc-diagrama-id',
+        title: 'Diagrama de Arquitectura del Proyecto',
+        filename: 'diagrama-arquitectura.md',
+        editedBy: firstUser.id,
+        editedAt: Date.now(),
+        createdAt: Date.now() - 3600000 * 1
+      };
+
+      const docBContent = `# Diagrama de Arquitectura del Proyecto
+
+Este documento describe la arquitectura general del sistema **Kora** y cómo fluyen los datos a través de sus componentes principales.
+
+## Diagrama de Flujo de Datos
+
+\`\`\`mermaid
+graph TD
+    A[Usuario] --> B[Interfaz UI - React + Tailwind]
+    B --> C[Zustand Store - Estado Global]
+    C --> D[FileSystemAdapter - Capa de Persistencia]
+    D --> E[(Virtual FS - IndexedDB)]
+    D --> F[(Local FS - File System Access API)]
+    C --> G[Sistema de Locks - Control de Edición Concurrente]
+    G --> H[activitylocks.json]
+    C --> I[Documentos Markdown]
+    I --> J[docs/ - Archivos .md]
+    C --> K[Tareas JSON]
+    K --> L[tasks/ - Archivos .json]
+    C --> M[Actividad y Comentarios]
+    M --> N[activity/logs.json]
+    C --> O[Explorador de Medios]
+    O --> P[attachments/ - Imágenes y Videos]
+    C --> Q[Papelera de Reciclaje]
+    Q --> R[trash/items.json]
+\`\`\`
+
+## Componentes Clave
+
+| Componente        | Tecnología     | Propósito                              |
+|-------------------|----------------|----------------------------------------|
+| UI Frontend       | React + TSX    | Interfaz de usuario interactiva        |
+| Estado            | Zustand        | Manejo de estado global centralizado   |
+| Persistencia      | FSA API / IDB  | Lectura/escritura de archivos locales  |
+| Documentos        | Markdown       | Documentación y notas del proyecto     |
+| Tareas            | JSON           | Gestión de tareas y subtareas          |
+| Medios            | Archivos       | Adjuntos multimedia del proyecto       |
+
+## Vista Previa del Proyecto
+
+![Vista previa del proyecto Kora](attachments/images/og-image.png)
+
+*Imagen promocional del proyecto, ubicada en la carpeta pública de la aplicación.*
+`;
+
+      const docsCatalog = [docA, docB];
 
       // 4. Activity logs
       const logs: TaskActivityLog[] = [
@@ -833,6 +1040,22 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
             text: 'He revisado el flujo. Creo que escribir latidos en `/activity/locks.json` cada 5 a 10 segundos es la forma offline de simular sincronización en tiempo real sin sobrecargar el almacenamiento ni la red local.',
             createdAt: Date.now() - 3600000 * 2
           }
+        },
+        {
+          id: 'log-4',
+          taskId: task3Id,
+          userId: firstUser.id,
+          username: firstUser.name,
+          action: 'adjuntó el icono móvil del proyecto',
+          timestamp: Date.now() - 3600000 * 1,
+          comment: {
+            id: 'comment-2',
+            userId: firstUser.id,
+            username: firstUser.name,
+            text: 'Aquí está el icono que usaremos para la aplicación móvil. ¿Qué opinan del diseño?',
+            createdAt: Date.now() - 3600000 * 1,
+            attachments: ['/attachments/images/mobile-icon.png']
+          }
         }
       ];
 
@@ -842,6 +1065,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       await adapter.writeTextFile('/users/users.json', JSON.stringify(users, null, 2));
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(docsCatalog, null, 2));
       await adapter.writeTextFile(`/docs/${docA.filename}`, docAContent);
+      await adapter.writeTextFile(`/docs/${docB.filename}`, docBContent);
       await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
       await adapter.writeTextFile('/activity/logs.json', JSON.stringify(logs, null, 2));
       await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
@@ -854,6 +1078,27 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       // Individual lists writes
       await adapter.writeTextFile(`/lists/${listA.id}.json`, JSON.stringify(listA, null, 2));
       await adapter.writeTextFile(`/lists/${listB.id}.json`, JSON.stringify(listB, null, 2));
+
+      // Copy images from public folder to attachments for demo purposes
+      const copyPublicImage = async (publicPath: string, destPath: string) => {
+        try {
+          const response = await fetch(publicPath);
+          if (response.ok) {
+            const blob = await response.blob();
+            await adapter.writeBinaryFile(destPath, blob);
+          } else {
+            console.warn(`Image ${publicPath} not found, skipping`);
+          }
+        } catch (e) {
+          console.warn(`Could not copy public image: ${publicPath}`, e);
+        }
+      };
+
+      // Copy demo images from public assets to project attachments
+      await copyPublicImage('/og-image.png', '/attachments/images/og-image.png');
+      await copyPublicImage('/mobile-icon.png', '/attachments/images/mobile-icon.png');
+      await copyPublicImage('/logo-dark.svg', '/attachments/images/logo-dark.svg');
+      await copyPublicImage('/logo-light.svg', '/attachments/images/logo-light.svg');
 
       // Update state
       set({
@@ -876,318 +1121,6 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
     },
 
     // Seed beautiful demo project data for full interaction review out-of-the-box
-    seedSampleProject: async () => {
-      const { adapter } = get();
-      if (!adapter) return;
-
-      const projectId = crypto.randomUUID();
-      const projectMeta: ProjectMetadata = {
-        id: projectId,
-        name: 'Sprint de Integración',
-        description: 'Proyecto de demostración de nuestro gestor de proyectos totalmente offline-first con File System Access API.',
-        created: Date.now() - 3600000 * 24, // 1 day ago
-        tags: ['Lanzamiento', 'Frontend', 'Tauri']
-      };
-
-      const config: ProjectConfig = {
-        projectId,
-        projectName: projectMeta.name,
-        lastModified: Date.now()
-      };
-
-      // 1. Seed simulated users (Juan Pérez, Carlos Gómez, María López, Sofia Castro)
-      // Standard password is 'demo123' for easy testing
-      const salt1 = '7a29e4b7c';
-      const salt2 = '9df231f82';
-      const salt3 = 'cbe32462e';
-      const pHash1 = await hashPassword('demo123', salt1);
-      const pHash2 = await hashPassword('demo123', salt2);
-      const pHash3 = await hashPassword('demo123', salt3);
-
-      const users: SystemUser[] = [
-        {
-          id: 'user-juan-id',
-          username: 'juan',
-          name: 'Juan Pérez (Coordinador)',
-          avatarColor: '#ea580c', // Orange
-          passwordHash: pHash1,
-          salt: salt1,
-          createdAt: Date.now()
-        },
-        {
-          id: 'user-maria-id',
-          username: 'maria',
-          name: 'María López (Diseñadora)',
-          avatarColor: '#db2777', // Pink
-          passwordHash: pHash2,
-          salt: salt2,
-          createdAt: Date.now()
-        },
-        {
-          id: 'user-carlos-id',
-          username: 'carlos',
-          name: 'Carlos Gómez (Desarrollador)',
-          avatarColor: '#2563eb', // Blue
-          passwordHash: pHash3,
-          salt: salt3,
-          createdAt: Date.now()
-        }
-      ];
-
-      // 2. Seed default workflow list (Sprint Active & Product Backlog)
-      const listAId = 'list-sprint-id';
-      const listStatusesA: TaskStatus[] = [
-        { id: 'todo', name: 'Por Hacer', color: '#d1d5db', isCompleted: false },
-        { id: 'inprogress', name: 'En Desarrollo', color: '#2563eb', isCompleted: false },
-        { id: 'review', name: 'Revisión / QA', color: '#eab308', isCompleted: false },
-        { id: 'done', name: 'Listo / Desplegado', color: '#10b981', isCompleted: true }
-      ];
-      const listA: TaskList = {
-        id: listAId,
-        name: 'Sprint Core Active',
-        color: '#8b5cf6', // Indigo
-        statuses: listStatusesA,
-        createdAt: Date.now() - 3600000 * 50
-      };
-
-      const listBId = 'list-backlog-id';
-      const listStatusesB: TaskStatus[] = [
-        { id: 'backlog', name: 'Backlog Ideas', color: '#6b7280', isCompleted: false },
-        { id: 'selected', name: 'Para Próximo Sprint', color: '#0ea5e9', isCompleted: false },
-        { id: 'closed', name: 'Archivado', color: '#9ca3af', isCompleted: true }
-      ];
-      const listB: TaskList = {
-        id: listBId,
-        name: 'Product Backlog',
-        color: '#f59e0b', // Amber
-        statuses: listStatusesB,
-        createdAt: Date.now() - 3600000 * 48
-      };
-
-      // 3. Seed mock tasks
-      const task1Id = 'task-001-id';
-      const task2Id = 'task-002-id';
-      const task3Id = 'task-003-id';
-      const task4Id = 'task-004-id';
-
-      const tasks: Task[] = [
-        {
-          id: task1Id,
-          taskCode: 'TSK-001',
-          listId: listAId,
-          title: 'Implementar Persistencia con File System Access API',
-          description: `### Objetivo
-Desarrollar la capa de persistencia directa en el navegador para que lea y escriba directamente sobre la carpeta local seleccionada.
-
-### Requerimientos de formato
-Adherirse estricto al siguiente formato de JSON de almacenamiento:
-- \`config.json\` en la raíz.
-- Guardar tareas individuales en nombres secuenciales dentro de \`/tasks/\`.
-
-### Notas de implementación
-- La File System Access API requiere permisos de escritura del usuario.
-- Siempre tener un plan de escape virtual para navegadores embebidos como el iframe de AI Studio (usar IndexedDB).
-`,
-          statusId: 'inprogress',
-          dueDate: new Date(Date.now() + 3600000 * 24 * 3).toISOString().split('T')[0], // 3 days layout
-          assignees: ['user-carlos-id'],
-          priority: 'high',
-          tags: ['File System', 'TypeScript', 'Durable'],
-          dependencies: [],
-          subtasks: [
-            { id: 'subtask-1-1', title: 'Crear adapter con soporte FSA API', isCompleted: true, createdAt: Date.now() },
-            { id: 'subtask-1-2', title: 'Crear fallback transparente en IndexedDB', isCompleted: true, createdAt: Date.now() },
-            { id: 'subtask-1-3', title: 'Exportar/Importar estructura como archivo .zip', isCompleted: false, createdAt: Date.now() }
-          ],
-          lastEditedBy: 'user-carlos-id',
-          lastEditedAt: Date.now()
-        },
-        {
-          id: task2Id,
-          taskCode: 'TSK-002',
-          listId: listAId,
-          title: 'Diseñar Interfaz Minimalista & Altamente Interactiva',
-          description: `### Concepto de diseño
-Queremos un aspecto ultra profesional, limpio, denso y responsivo con colores sobrios y elegantes.
-- **Lista agrupada por estados** con capacidad colapsable.
-- **Vista de tablero Kanban** completo con tarjetas arrastrables.
-- **Vista de tabla estructurada** con edición rápida de campos.
-
-### Tipografía recomendada
-- Encabezados modernos y limpios.
-- JetBrains Mono para códigos de tareas e indicadores.
-`,
-          statusId: 'done',
-          dueDate: new Date(Date.now() - 3600000 * 24).toISOString().split('T')[0], // yesterday
-          assignees: ['user-maria-id'],
-          priority: 'medium',
-          tags: ['UI/UX', 'Tailwind', 'Framer Motion'],
-          dependencies: [],
-          subtasks: [
-            { id: 'subtask-2-1', title: 'Definir paleta de colores de estados', isCompleted: true, createdAt: Date.now() },
-            { id: 'subtask-2-2', title: 'Crear componentes de lista reactivos', isCompleted: true, createdAt: Date.now() }
-          ],
-          lastEditedBy: 'user-maria-id',
-          lastEditedAt: Date.now()
-        },
-        {
-          id: task3Id,
-          taskCode: 'TSK-003',
-          listId: listAId,
-          title: 'Sistema de Locks (Bloqueos de Coflicto de Edición)',
-          description: `### Caso de uso
-Cuando el **Usuario A** está editando una tarea, el **Usuario B** que comparte la misma carpeta de Drive sincronizada no debe poder guardarle cambios ni editar esa tarea simultáneamente.
-
-### Implementación
-- Escribir en un archivo temporal o en \`/activity/locks.json\`.
-- Cada bloqueo expira automáticamente tras un período de inactividad (e.g. 10 segundos de latido offline).
-`,
-          statusId: 'todo',
-          dueDate: new Date(Date.now() + 3600000 * 24 * 7).toISOString().split('T')[0], // 7 days layout
-          assignees: ['user-juan-id', 'user-carlos-id'],
-          priority: 'urgent',
-          tags: ['Locks', 'Sincronización', 'Drive'],
-          dependencies: [task1Id], // Depends on Task 1!
-          subtasks: [
-            { id: 'subtask-3-1', title: 'Simulador multiusuario interactivo', isCompleted: false, createdAt: Date.now() },
-            { id: 'subtask-3-2', title: 'Escribir locks.json en el disco', isCompleted: false, createdAt: Date.now() }
-          ],
-          lastEditedBy: 'user-juan-id',
-          lastEditedAt: Date.now()
-        },
-        {
-          id: task4Id,
-          taskCode: 'TSK-004',
-          listId: listBId,
-          title: 'Compilar Ejecutable de Escritorio con Tauri',
-          description: `### Escalar en el futuro
-Este MVP se diseña pensando en empaquetarse en el futuro usando **Tauri** para exportar ejecutables nativos sumamente livianos en Windows, macOS y Linux.
-`,
-          statusId: 'backlog',
-          dueDate: '',
-          assignees: [],
-          priority: 'low',
-          tags: ['Tauri', 'Desktop', 'Escalabilidad'],
-          dependencies: [],
-          subtasks: [],
-          lastEditedBy: 'user-juan-id',
-          lastEditedAt: Date.now()
-        }
-      ];
-
-      // 4. Docs catalog & contents
-      const docA: DocMetadata = {
-        id: 'doc-guia-id',
-        title: 'Guía de Arquitectura de Almacenamiento',
-        filename: 'guia.md',
-        editedBy: 'user-juan-id',
-        editedAt: Date.now(),
-        createdAt: Date.now() - 3600000 * 2
-      };
-      
-      const docAContent = `# Guía - Almacenamiento de Datos del Proyecto
-
-Este proyecto está diseñado para funcionar de manera **totalmente local y privada**. No hay un servidor de base de datos intermedio.
-
-## ¿Cómo funciona la sincronización?
-Tú eres dueño de tus datos. El directorio elegido contiene archivos con formatos legibles por humanos:
-- Las tareas e información del proyecto se almacenan como archivos **JSON** (ej., \`tasks/task-001.json\`).
-- Los documentos son archivos **Markdown (.md)** estándar.
-
-## Sincronización en la Nube
-Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **Google Drive, Dropbox, OneDrive o repositorios Git** en tu computadora. La aplicación detectará los cambios de forma automática gracias al escaneo en segundo plano.
-
-> **Importante:** Al editar en paralelo, el sistema bloqueará archivos que estén siendo leídos y editados por otros compañeros utilizando la sincronización local en el archivo locks.json.
-`;
-
-      const docsCatalog = [docA];
-
-      // 5. Audit logs
-      const logs: TaskActivityLog[] = [
-        {
-          id: 'log-1',
-          taskId: task1Id,
-          userId: 'user-carlos-id',
-          username: 'Carlos Gómez',
-          action: 'creó la tarea de persistencia FSA',
-          timestamp: Date.now() - 3600000 * 4
-        },
-        {
-          id: 'log-2',
-          taskId: task2Id,
-          userId: 'user-maria-id',
-          username: 'María López',
-          action: 'completó el diseño de la interfaz Kanban y Lists',
-          timestamp: Date.now() - 3600000 * 3
-        },
-        {
-          id: 'log-3',
-          taskId: task3Id,
-          userId: 'user-juan-id',
-          username: 'Juan Pérez',
-          action: 'comentó sobre la lógica del archivo locks.json',
-          timestamp: Date.now() - 3600000 * 2,
-          comment: {
-            id: 'comment-1',
-            userId: 'user-juan-id',
-            username: 'Juan Pérez',
-            text: 'He revisado el flujo. Creo que escribir latidos en `/activity/locks.json` cada 5 a 10 segundos es la forma offline de simular sincronización en tiempo real sin sobrecargar el almacenamiento ni la red local.',
-            createdAt: Date.now() - 3600000 * 2
-          }
-        }
-      ];
-
-      // 6. Write ALL files to directory layout
-      await adapter.writeTextFile('/config.json', JSON.stringify(config, null, 2));
-      await adapter.writeTextFile('/project.json', JSON.stringify(projectMeta, null, 2));
-      await adapter.writeTextFile('/users/users.json', JSON.stringify(users, null, 2));
-      await adapter.writeTextFile('/docs/info.json', JSON.stringify(docsCatalog, null, 2));
-      await adapter.writeTextFile(`/docs/${docA.filename}`, docAContent);
-      await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
-      await adapter.writeTextFile('/activity/logs.json', JSON.stringify(logs, null, 2));
-      await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
-
-      // Individual task writes
-      for (const t of tasks) {
-        await adapter.writeTextFile(`/tasks/task-${t.id}.json`, JSON.stringify(t, null, 2));
-      }
-
-      // Individual lists writes
-      await adapter.writeTextFile(`/lists/${listA.id}.json`, JSON.stringify(listA, null, 2));
-      await adapter.writeTextFile(`/lists/${listB.id}.json`, JSON.stringify(listB, null, 2));
-
-      // Mock image attachment block for visuals
-      const mockSvgImg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="150" viewBox="0 0 300 150">
-        <rect width="100%" height="100%" fill="#eff6ff" />
-        <circle cx="150" cy="75" r="40" fill="#3b82f6" opacity="0.3" />
-        <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="'Inter', sans-serif" font-size="14" font-weight="600" fill="#1e40af">Kora Offline System</text>
-        <text x="50%" y="68%" dominant-baseline="middle" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10" fill="#2563eb">attachments/images/diagrama.png</text>
-      </svg>`;
-      const svgBlob = new Blob([mockSvgImg], { type: 'image/svg+xml' });
-      await adapter.writeBinaryFile('/attachments/images/diagrama.png', svgBlob);
-
-      // Now update the local react state!
-      set({
-        projectMeta,
-        projectConfig: config,
-        users,
-        activeUser: null, // Don't auto-login, let user choose/register
-        lists: [listA, listB],
-        tasks,
-        docs: docsCatalog,
-        locks: {},
-        logs,
-        trashItems: [],
-        selectedListId: listAId,
-        selectedTaskId: null,
-        selectedDocId: null
-      });
-
-      // Save persistence state for virtual mode
-      await clearDirectoryHandle();
-      savePersistenceState({ hasActiveProject: true, fsMode: 'VIRTUAL' });
-    },
-
     // Background interval check to load recent updates from syncing folders
     backgroundReload: async () => {
       const { adapter, isPolling } = get();
@@ -1322,6 +1255,16 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       const updatedUsers = [...users, newUser];
       await adapter.writeTextFile('/users/users.json', JSON.stringify(updatedUsers, null, 2));
 
+      // Save session for this project so it shows 'Sesión activa'
+      try {
+        const loadedProjectId = get().loadedProjectId;
+        if (loadedProjectId) {
+          const sessions = _loadSavedSessions();
+          sessions[loadedProjectId] = { username: newUser.username, savedAt: Date.now() };
+          _saveSavedSessions(sessions);
+        }
+      } catch (e) {}
+
       set({ users: updatedUsers, activeUser: newUser });
       return newUser;
     },
@@ -1339,7 +1282,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
 
       const hashToVerify = await hashPassword(password, user.salt);
       if (hashToVerify === user.passwordHash) {
-        // Save last opended session in config
+        // Save last opened session in config
         try {
           const configRaw = await adapter.readTextFile('/config.json');
           const config: ProjectConfig = JSON.parse(configRaw);
@@ -1356,30 +1299,39 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
     },
 
     logoutUser: () => {
-      // Clear saved session (remember me)
+      // Clear per-project saved session
+      const { loadedProjectId } = get();
+      if (loadedProjectId) {
+        const sessions = _loadSavedSessions();
+        if (sessions[loadedProjectId]) {
+          delete sessions[loadedProjectId];
+          _saveSavedSessions(sessions);
+        }
+      }
+      // Also clear old global session key
       try {
         localStorage.removeItem(SAVED_SESSION_KEY);
       } catch (e) {}
-      set({ activeUser: null, selectedTaskId: null, selectedDocId: null });
+      // Go back to project browser so the user sees the project list
+      get().goToProjectBrowser();
     },
 
     closeProject: async () => {
       // Clear persistence state and stored FSA handle
       localStorage.removeItem(PERSISTENCE_KEY);
       localStorage.removeItem(SAVED_SESSION_KEY);
+      clearLastOpenedProjectId();
       await clearDirectoryHandle();
       
-      // If in VIRTUAL mode, clear IndexedDB
-      const { fsMode } = get();
-      if (fsMode === 'VIRTUAL') {
-        await dbClear();
-      }
+      // Clear IndexedDB (legacy virtual data, safe to clean)
+      await dbClear();
       
-      // Reset all state
+      // Reset all state but keep registered projects (they're persisted separately)
       set({
         adapter: null,
-        fsMode: 'VIRTUAL',
+        fsMode: 'FSA_API',
         projectMeta: null,
+        projectConfig: null,
         users: [],
         activeUser: null,
         lists: [],
@@ -1394,7 +1346,107 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
         showMediaExplorer: false,
         showTrash: false,
         trashItems: [],
-        isLoading: false
+        isLoading: false,
+        loadedProjectId: null
+      });
+    },
+
+    // ─── Multi-Project Browser Methods ─────────────────────────────────────
+
+    registerProject: (name, type, pathHint?) => {
+      const projectId = crypto.randomUUID();
+      const project = { id: projectId, name, type, createdAt: Date.now(), pathHint };
+      const projects = [...get().registeredProjects, project];
+      saveRegisteredProjects(projects);
+      saveLastOpenedProjectId(projectId);
+      set({ registeredProjects: projects, loadedProjectId: projectId });
+      return projectId;
+    },
+
+    unregisterProject: (projectId) => {
+      const projects = get().registeredProjects.filter(p => p.id !== projectId);
+      saveRegisteredProjects(projects);
+      set({ registeredProjects: projects });
+
+      const sessions = _loadSavedSessions();
+      if (sessions[projectId]) {
+        delete sessions[projectId];
+        _saveSavedSessions(sessions);
+      }
+
+      (async () => {
+        try {
+          await deleteDirectoryHandleByKey('fsa-handle-' + projectId);
+        } catch (e) { /* ignore */ }
+      })();
+
+      // If the unregistered project is the currently loaded one, go back to home
+      if (get().loadedProjectId === projectId) {
+        get().goToProjectBrowser();
+      }
+    },
+
+    loadProjectById: async (projectId) => {
+      const project = get().registeredProjects.find(p => p.id === projectId);
+      if (!project) {
+        console.error('Project not found', projectId);
+        return;
+      }
+
+      set({ loadedProjectId: projectId, isLoading: true });
+
+      try {
+        if (project.type === 'FSA_API') {
+          const handle = await loadDirectoryHandleByKey('fsa-handle-' + projectId);
+          if (!handle) {
+            throw new Error('No se pudo recuperar el manejador de la carpeta.');
+          }
+          const permState = await (handle).queryPermission({ mode: 'readwrite' });
+          if (permState !== 'granted') {
+            throw new Error('Permisos de carpeta perdidos.');
+          }
+          await get().loadProjectDirectory(handle, 'FSA_API');
+        }
+
+        // Save this project as the last opened one for auto-restore on reload
+        saveLastOpenedProjectId(projectId);
+      } catch (err) {
+        console.error('Failed to load project', err);
+        set({ adapter: null, isLoading: false, loadedProjectId: null });
+        throw err;
+      }
+    },
+
+    goToProjectBrowser: () => {
+      localStorage.removeItem(PERSISTENCE_KEY);
+      clearLastOpenedProjectId();
+      clearDirectoryHandle();
+
+      // Re-read registered projects from localStorage to ensure the list is current
+      const savedProjects = loadRegisteredProjects();
+
+      set({
+        registeredProjects: savedProjects,
+        adapter: null,
+        fsMode: 'FSA_API',
+        projectMeta: null,
+        projectConfig: null,
+        users: [],
+        activeUser: null,
+        lists: [],
+        tasks: [],
+        docs: [],
+        locks: {},
+        logs: [],
+        isOnboarding: false,
+        selectedListId: null,
+        selectedTaskId: null,
+        selectedDocId: null,
+        showMediaExplorer: false,
+        showTrash: false,
+        trashItems: [],
+        isLoading: false,
+        loadedProjectId: null
       });
     },
 
@@ -2066,6 +2118,64 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       await saveLogsAndRefresh(adapter, updatedLogs);
     },
 
+    // Mark a note as read with debounce to avoid excessive disk writes on hover
+    markNoteAsRead: (() => {
+      let pendingIds: Set<string> = new Set();
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const flush = async () => {
+        const { adapter, activeUser, users } = get();
+        if (!adapter || !activeUser || pendingIds.size === 0) {
+          pendingIds = new Set();
+          return;
+        }
+
+        const idsToFlush = pendingIds;
+        pendingIds = new Set();
+
+        const updatedReadNotes = { ...(activeUser.readNotes || {}) };
+        let hasNew = false;
+        idsToFlush.forEach(id => {
+          if (!updatedReadNotes[id]) {
+            updatedReadNotes[id] = Date.now();
+            hasNew = true;
+          }
+        });
+
+        if (!hasNew) return;
+
+        const updatedUser: SystemUser = {
+          ...activeUser,
+          readNotes: updatedReadNotes
+        };
+
+        const updatedUsers = users.map(u =>
+          u.id === updatedUser.id ? updatedUser : u
+        );
+
+        await adapter.writeTextFile(
+          '/users/users.json',
+          JSON.stringify(updatedUsers, null, 2)
+        );
+
+        set({ activeUser: updatedUser, users: updatedUsers });
+      };
+
+      return async (logId: string) => {
+        const { activeUser } = get();
+        if (!activeUser) return;
+
+        // Skip if already marked as read
+        if (activeUser.readNotes?.[logId]) return;
+
+        pendingIds.add(logId);
+
+        // Debounce: reset timer on each call, flush after 2s of inactivity
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(flush, 2000);
+      };
+    })(),
+
     // Handle user attachment uploaded local files
     // Saves them directly into attachments/images/ or attachments/videos/ inside their local project workspace!
     uploadAttachment: async (file: File) => {
@@ -2286,6 +2396,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       }
       set({ selectedTaskId: taskId, selectedDocId: null, showTrash: false });
     },
+    setFsMode: (mode) => set({ fsMode: mode }),
     setDocHasUnsavedChanges: (has) => set({ docHasUnsavedChanges: has }),
 
     confirmPendingNavigation: () => {

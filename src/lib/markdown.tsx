@@ -47,6 +47,31 @@ export function markdownToHtml(
     </div>`;
   });
 
+  // Tables: convert markdown pipe tables to HTML tables
+  html = html.replace(/^(\|.*\|)\n(\|[-:| +]+\|)\n((?:\|.*\|\n?)*)/gm, (_match, headerRow, _sepRow, dataRows) => {
+    const headers = headerRow.split('|').slice(1, -1).map(h => h.trim());
+    const rows = dataRows.trim().split('\n').map(row =>
+      row.split('|').slice(1, -1).map(c => c.trim())
+    );
+
+    let tableHtml = '<div class="overflow-x-auto my-4 border border-border rounded-lg">';
+    tableHtml += '<table class="w-full border-collapse bg-card text-xs">';
+    tableHtml += '<thead><tr>';
+    headers.forEach(h => {
+      tableHtml += `<th class="border-b border-border bg-secondary px-3 py-2 font-bold uppercase tracking-wider text-foreground text-left">${h}</th>`;
+    });
+    tableHtml += '</tr></thead><tbody>';
+    rows.forEach((row, ri) => {
+      tableHtml += `<tr class="${ri % 2 === 0 ? 'bg-card' : 'bg-secondary/30'}">`;
+      row.forEach(c => {
+        tableHtml += `<td class="px-3 py-2 text-muted-foreground border-b border-border">${c}</td>`;
+      });
+      tableHtml += '</tr>';
+    });
+    tableHtml += '</tbody></table></div>';
+    return tableHtml;
+  });
+
   const lines = html.split('\n');
   return lines.map(line => {
     const trimmed = line.trim();

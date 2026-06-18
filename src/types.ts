@@ -13,6 +13,7 @@ export interface SystemUser {
   createdAt: number;
   isSuperAdmin?: boolean; // First user of a new project is marked as superadmin
   docViewModes?: Record<string, 'edit' | 'preview' | 'split'>;
+  readNotes?: Record<string, number>; // { [logId]: timestamp_when_read } - tracks which notes the user has read
 }
 
 export interface ProjectConfig {
@@ -132,4 +133,16 @@ export interface TrashItem {
 
 export interface ProjectLocks {
   [taskId: string]: TaskLock;
+}
+
+/**
+ * A project registered in the project browser.
+ */
+export interface RegisteredProject {
+  id: string;
+  name: string;
+  type: 'FSA_API';
+  createdAt: number;
+  /** Path hint for display purposes (FSA only) */
+  pathHint?: string;
 }
