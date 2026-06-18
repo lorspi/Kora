@@ -800,7 +800,61 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
 > **Importante:** Al editar en paralelo, el sistema bloqueará archivos que estén siendo leídos y editados por otros compañeros utilizando la sincronización local en el archivo locks.json.
 `;
 
-      const docsCatalog = [docA];
+      const docB: DocMetadata = {
+        id: 'doc-diagrama-id',
+        title: 'Diagrama de Arquitectura del Proyecto',
+        filename: 'diagrama-arquitectura.md',
+        editedBy: firstUser.id,
+        editedAt: Date.now(),
+        createdAt: Date.now() - 3600000 * 1
+      };
+
+      const docBContent = `# Diagrama de Arquitectura del Proyecto
+
+Este documento describe la arquitectura general del sistema **Kora** y cómo fluyen los datos a través de sus componentes principales.
+
+## Diagrama de Flujo de Datos
+
+\`\`\`mermaid
+graph TD
+    A[Usuario] --> B[Interfaz UI - React + Tailwind]
+    B --> C[Zustand Store - Estado Global]
+    C --> D[FileSystemAdapter - Capa de Persistencia]
+    D --> E[(Virtual FS - IndexedDB)]
+    D --> F[(Local FS - File System Access API)]
+    C --> G[Sistema de Locks - Control de Edición Concurrente]
+    G --> H[activitylocks.json]
+    C --> I[Documentos Markdown]
+    I --> J[docs/ - Archivos .md]
+    C --> K[Tareas JSON]
+    K --> L[tasks/ - Archivos .json]
+    C --> M[Actividad y Comentarios]
+    M --> N[activity/logs.json]
+    C --> O[Explorador de Medios]
+    O --> P[attachments/ - Imágenes y Videos]
+    C --> Q[Papelera de Reciclaje]
+    Q --> R[trash/items.json]
+\`\`\`
+
+## Componentes Clave
+
+| Componente        | Tecnología     | Propósito                              |
+|-------------------|----------------|----------------------------------------|
+| UI Frontend       | React + TSX    | Interfaz de usuario interactiva        |
+| Estado            | Zustand        | Manejo de estado global centralizado   |
+| Persistencia      | FSA API / IDB  | Lectura/escritura de archivos locales  |
+| Documentos        | Markdown       | Documentación y notas del proyecto     |
+| Tareas            | JSON           | Gestión de tareas y subtareas          |
+| Medios            | Archivos       | Adjuntos multimedia del proyecto       |
+
+## Vista Previa del Proyecto
+
+![Vista previa del proyecto Kora](attachments/images/og-image.png)
+
+*Imagen promocional del proyecto, ubicada en la carpeta pública de la aplicación.*
+`;
+
+      const docsCatalog = [docA, docB];
 
       // 4. Activity logs
       const logs: TaskActivityLog[] = [
@@ -834,6 +888,22 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
             text: 'He revisado el flujo. Creo que escribir latidos en `/activity/locks.json` cada 5 a 10 segundos es la forma offline de simular sincronización en tiempo real sin sobrecargar el almacenamiento ni la red local.',
             createdAt: Date.now() - 3600000 * 2
           }
+        },
+        {
+          id: 'log-4',
+          taskId: task3Id,
+          userId: firstUser.id,
+          username: firstUser.name,
+          action: 'adjuntó el icono móvil del proyecto',
+          timestamp: Date.now() - 3600000 * 1,
+          comment: {
+            id: 'comment-2',
+            userId: firstUser.id,
+            username: firstUser.name,
+            text: 'Aquí está el icono que usaremos para la aplicación móvil. ¿Qué opinan del diseño?',
+            createdAt: Date.now() - 3600000 * 1,
+            attachments: ['/attachments/images/mobile-icon.png']
+          }
         }
       ];
 
@@ -843,6 +913,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       await adapter.writeTextFile('/users/users.json', JSON.stringify(users, null, 2));
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(docsCatalog, null, 2));
       await adapter.writeTextFile(`/docs/${docA.filename}`, docAContent);
+      await adapter.writeTextFile(`/docs/${docB.filename}`, docBContent);
       await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
       await adapter.writeTextFile('/activity/logs.json', JSON.stringify(logs, null, 2));
       await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
@@ -855,6 +926,27 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       // Individual lists writes
       await adapter.writeTextFile(`/lists/${listA.id}.json`, JSON.stringify(listA, null, 2));
       await adapter.writeTextFile(`/lists/${listB.id}.json`, JSON.stringify(listB, null, 2));
+
+      // Copy images from public folder to attachments for demo purposes
+      const copyPublicImage = async (publicPath: string, destPath: string) => {
+        try {
+          const response = await fetch(publicPath);
+          if (response.ok) {
+            const blob = await response.blob();
+            await adapter.writeBinaryFile(destPath, blob);
+          } else {
+            console.warn(`Image ${publicPath} not found, skipping`);
+          }
+        } catch (e) {
+          console.warn(`Could not copy public image: ${publicPath}`, e);
+        }
+      };
+
+      // Copy demo images from public assets to project attachments
+      await copyPublicImage('/og-image.png', '/attachments/images/og-image.png');
+      await copyPublicImage('/mobile-icon.png', '/attachments/images/mobile-icon.png');
+      await copyPublicImage('/logo-dark.svg', '/attachments/images/logo-dark.svg');
+      await copyPublicImage('/logo-light.svg', '/attachments/images/logo-light.svg');
 
       // Update state
       set({
@@ -1101,7 +1193,61 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
 > **Importante:** Al editar en paralelo, el sistema bloqueará archivos que estén siendo leídos y editados por otros compañeros utilizando la sincronización local en el archivo locks.json.
 `;
 
-      const docsCatalog = [docA];
+      const docB: DocMetadata = {
+        id: 'doc-diagrama-id',
+        title: 'Diagrama de Arquitectura del Proyecto',
+        filename: 'diagrama-arquitectura.md',
+        editedBy: 'user-maria-id',
+        editedAt: Date.now(),
+        createdAt: Date.now() - 3600000 * 1
+      };
+
+      const docBContent = `# Diagrama de Arquitectura del Proyecto
+
+Este documento describe la arquitectura general del sistema **Kora** y cómo fluyen los datos a través de sus componentes principales.
+
+## Diagrama de Flujo de Datos
+
+\`\`\`mermaid
+graph TD
+    A[Usuario] --> B[Interfaz UI - React + Tailwind]
+    B --> C[Zustand Store - Estado Global]
+    C --> D[FileSystemAdapter - Capa de Persistencia]
+    D --> E[(Virtual FS - IndexedDB)]
+    D --> F[(Local FS - File System Access API)]
+    C --> G[Sistema de Locks - Control de Edición Concurrente]
+    G --> H[activitylocks.json]
+    C --> I[Documentos Markdown]
+    I --> J[docs/ - Archivos .md]
+    C --> K[Tareas JSON]
+    K --> L[tasks/ - Archivos .json]
+    C --> M[Actividad y Comentarios]
+    M --> N[activity/logs.json]
+    C --> O[Explorador de Medios]
+    O --> P[attachments/ - Imágenes y Videos]
+    C --> Q[Papelera de Reciclaje]
+    Q --> R[trash/items.json]
+\`\`\`
+
+## Componentes Clave
+
+| Componente        | Tecnología     | Propósito                              |
+|-------------------|----------------|----------------------------------------|
+| UI Frontend       | React + TSX    | Interfaz de usuario interactiva        |
+| Estado            | Zustand        | Manejo de estado global centralizado   |
+| Persistencia      | FSA API / IDB  | Lectura/escritura de archivos locales  |
+| Documentos        | Markdown       | Documentación y notas del proyecto     |
+| Tareas            | JSON           | Gestión de tareas y subtareas          |
+| Medios            | Archivos       | Adjuntos multimedia del proyecto       |
+
+## Vista Previa del Proyecto
+
+![Vista previa del proyecto Kora](attachments/images/og-image.png)
+
+*Imagen promocional del proyecto, ubicada en la carpeta pública de la aplicación.*
+`;
+
+      const docsCatalog = [docA, docB];
 
       // 5. Audit logs
       const logs: TaskActivityLog[] = [
@@ -1135,6 +1281,22 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
             text: 'He revisado el flujo. Creo que escribir latidos en `/activity/locks.json` cada 5 a 10 segundos es la forma offline de simular sincronización en tiempo real sin sobrecargar el almacenamiento ni la red local.',
             createdAt: Date.now() - 3600000 * 2
           }
+        },
+        {
+          id: 'log-4',
+          taskId: task3Id,
+          userId: 'user-maria-id',
+          username: 'María López',
+          action: 'adjuntó el icono móvil del proyecto',
+          timestamp: Date.now() - 3600000 * 1,
+          comment: {
+            id: 'comment-2',
+            userId: 'user-maria-id',
+            username: 'María López',
+            text: 'Aquí está el icono que usaremos para la aplicación móvil. ¿Qué opinan del diseño?',
+            createdAt: Date.now() - 3600000 * 1,
+            attachments: ['/attachments/images/mobile-icon.png']
+          }
         }
       ];
 
@@ -1144,6 +1306,7 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       await adapter.writeTextFile('/users/users.json', JSON.stringify(users, null, 2));
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(docsCatalog, null, 2));
       await adapter.writeTextFile(`/docs/${docA.filename}`, docAContent);
+      await adapter.writeTextFile(`/docs/${docB.filename}`, docBContent);
       await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
       await adapter.writeTextFile('/activity/logs.json', JSON.stringify(logs, null, 2));
       await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
@@ -1157,15 +1320,26 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       await adapter.writeTextFile(`/lists/${listA.id}.json`, JSON.stringify(listA, null, 2));
       await adapter.writeTextFile(`/lists/${listB.id}.json`, JSON.stringify(listB, null, 2));
 
-      // Mock image attachment block for visuals
-      const mockSvgImg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="150" viewBox="0 0 300 150">
-        <rect width="100%" height="100%" fill="#eff6ff" />
-        <circle cx="150" cy="75" r="40" fill="#3b82f6" opacity="0.3" />
-        <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="'Inter', sans-serif" font-size="14" font-weight="600" fill="#1e40af">Kora Offline System</text>
-        <text x="50%" y="68%" dominant-baseline="middle" text-anchor="middle" font-family="'JetBrains Mono', monospace" font-size="10" fill="#2563eb">attachments/images/diagrama.png</text>
-      </svg>`;
-      const svgBlob = new Blob([mockSvgImg], { type: 'image/svg+xml' });
-      await adapter.writeBinaryFile('/attachments/images/diagrama.png', svgBlob);
+      // Copy images from public folder to attachments for demo purposes
+      const copyPublicImage = async (publicPath: string, destPath: string) => {
+        try {
+          const response = await fetch(publicPath);
+          if (response.ok) {
+            const blob = await response.blob();
+            await adapter.writeBinaryFile(destPath, blob);
+          } else {
+            console.warn(`Image ${publicPath} not found, skipping`);
+          }
+        } catch (e) {
+          console.warn(`Could not copy public image: ${publicPath}`, e);
+        }
+      };
+
+      // Copy demo images from public assets to project attachments
+      await copyPublicImage('/og-image.png', '/attachments/images/og-image.png');
+      await copyPublicImage('/mobile-icon.png', '/attachments/images/mobile-icon.png');
+      await copyPublicImage('/logo-dark.svg', '/attachments/images/logo-dark.svg');
+      await copyPublicImage('/logo-light.svg', '/attachments/images/logo-light.svg');
 
       // Now update the local react state!
       set({

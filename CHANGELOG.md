@@ -25,3 +25,18 @@
 
 - **Sistema de notas no leídas por usuario**
   Cada usuario puede identificar visualmente qué notas de tareas no ha leído. Las notas sin leer muestran un punto azul pulsante en la tarea, el panel de notas y el sidebar. Al pasar el mouse sobre una nota se marca automáticamente como leída (con debounce de 2s para evitar escrituras excesivas). Las notas propias nunca aparecen como no leídas para su autor.
+
+## [0.1.24-beta] — 2026-06-17
+
+### Fixed
+
+- **Render de tablas en documentos**
+  Los documentos ahora soportan tablas Markdown estilo pipe (`| col1 | col2 |`). Se agregó detección y conversión a `<table>` HTML tanto en la vista previa (`markdown.tsx`) como en el editor por bloques (`DocView.tsx`), incluyendo un editor de código colapsable tipo mermaid y un comando `/table` en el menú de bloques.
+
+- **Agregados nuevos tipos de contenidos en datos de ejemplo**
+  Se agregaron al seed de datos de ejemplo: un nuevo documento Markdown con diagrama Mermaid y referencia a imagen (`og-image.png`), una nota de tarea con imagen adjunta (`mobile-icon.png`), y cuatro imágenes copiadas desde `public/` a la biblioteca de medios (`og-image.png`, `mobile-icon.png`, `logo-dark.svg`, `logo-light.svg`).
+
+### Changed
+
+- **Quitado encabezado de los diagramas y tablas**
+  Se eliminaron las etiquetas "mermaid" y "tabla (X filas)" del encabezado de los bloques de diagrama y tabla en el editor. El botón de edición ahora se alinea a la derecha.
