@@ -58,6 +58,12 @@
 - **Vista Kanban: columnas flexibles al ancho de pantalla**
   Las columnas del Kanban ahora tienen un ancho mínimo de 288px (`w-72`) pero se expanden automáticamente para llenar el ancho disponible de la pantalla, en lugar de tener un ancho fijo.
 
+- **Ajustes responsive en pantallas de inicio, onboarding y autenticación**
+  Se agregó padding superior e inferior (`pt-14`/`pb-14`) en móvil para que el botón de tema y el texto de versión no se solapen con el contenido. El texto de versión (`VersionBadge`) dejó de ser `fixed` y ahora fluye en el flujo normal debajo de todo.
+
+- **Textos y márgenes reducidos en móvil para pantallas iniciales**
+  En las pantallas de carga, navegador de proyectos, autenticación y onboarding se redujeron: título principal (`text-3xl → text-2xl`), logo (`h-12 → h-10`), descripción (`text-sm → text-xs`), padding de la tarjeta (`p-8 → p-5`), márgenes laterales (`px-6 → px-4`) y espaciado general de formularios. Los tamaños originales se restauran en desktop mediante breakpoints `sm:`.
+
 ### Removed
 
 - **Funcionalidad de disco virtual**

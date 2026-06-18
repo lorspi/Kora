@@ -122,8 +122,8 @@ export default function ProjectOnboarding() {
   };
 
   return (
-    <div id="onboarding-screen" className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 font-body relative">
-      <div className="max-w-2xl w-full bg-card backdrop-blur-md rounded-2xl p-8 border border-border shadow-card-hover animate-scale-in">
+    <div id="onboarding-screen" className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center px-4 sm:px-6 py-6 pt-14 sm:pt-6 pb-14 sm:pb-6 font-body relative">
+      <div className="max-w-2xl w-full bg-card backdrop-blur-md rounded-2xl p-5 sm:p-8 border border-border shadow-card-hover animate-scale-in">
         
         {/* Progress indicator */}
         <div className="flex items-center gap-2 mb-8 justify-center">
@@ -150,14 +150,14 @@ export default function ProjectOnboarding() {
 
         {/* Step 1: User Registration */}
         {step === 'user' && (
-          <form onSubmit={handleUserRegister} className="space-y-5 animate-fade-in">
+          <form onSubmit={handleUserRegister} className="space-y-4 sm:space-y-5 animate-fade-in">
             <div className="text-center mb-6">
               <div className="flex justify-center mb-3">
                 <div className="w-12 h-12 rounded-xl bg-bento-orange-light flex items-center justify-center text-bento-orange">
                   <UserPlus className="w-6 h-6" />
                 </div>
               </div>
-              <h2 className="text-xl font-bold text-foreground font-heading">Crear Primer Usuario</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-foreground font-heading">Crear Primer Usuario</h2>
               <p className="text-xs text-muted-foreground mt-2">Este usuario será el super administrador del proyecto</p>
             </div>
 
@@ -237,14 +237,14 @@ export default function ProjectOnboarding() {
 
         {/* Step 2: Project Details */}
         {step === 'project' && (
-          <form onSubmit={handleProjectData} className="space-y-5 animate-fade-in">
+          <form onSubmit={handleProjectData} className="space-y-4 sm:space-y-5 animate-fade-in">
             <div className="text-center mb-6">
               <div className="flex justify-center mb-3">
                 <div className="w-12 h-12 rounded-xl bg-bento-blue-light flex items-center justify-center text-bento-blue">
                   <FileText className="w-6 h-6" />
                 </div>
               </div>
-              <h2 className="text-xl font-bold text-foreground font-heading">Datos del Proyecto</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-foreground font-heading">Datos del Proyecto</h2>
               <p className="text-xs text-muted-foreground mt-2">Define el nombre y descripción de tu proyecto</p>
             </div>
 
@@ -292,14 +292,14 @@ export default function ProjectOnboarding() {
 
         {/* Step 3: Template Selection */}
         {step === 'template' && (
-          <div className="space-y-5 animate-fade-in">
+          <div className="space-y-4 sm:space-y-5 animate-fade-in">
             <div className="text-center mb-6">
               <div className="flex justify-center mb-3">
                 <div className="w-12 h-12 rounded-xl bg-bento-green-light flex items-center justify-center text-bento-green">
                   <Sparkles className="w-6 h-6" />
                 </div>
               </div>
-              <h2 className="text-xl font-bold text-foreground font-heading">Elige un Punto de Partida</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-foreground font-heading">Elige un Punto de Partida</h2>
               <p className="text-xs text-muted-foreground mt-2">¿Cómo deseas iniciar tu proyecto?</p>
             </div>
 

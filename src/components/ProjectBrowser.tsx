@@ -94,27 +94,27 @@ export default function ProjectBrowser() {
   }
 
   return (
-    <div id="project-browser" className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6 select-none font-body relative">
+    <div id="project-browser" className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center px-4 sm:px-6 py-6 pt-14 sm:pt-6 pb-14 sm:pb-6 select-none font-body relative">
       {/* Theme toggle top-right */}
       <div className="absolute top-4 right-4">
         <ThemeToggle />
       </div>
 
-      <div className="max-w-3xl w-full bg-card backdrop-blur-md rounded-2xl p-8 border border-border shadow-card-hover relative overflow-hidden">
+      <div className="max-w-3xl w-full bg-card backdrop-blur-md rounded-2xl p-5 sm:p-8 border border-border shadow-card-hover relative overflow-hidden">
         {/* Decorative Background Glows */}
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-bento-blue/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-bento-orange/10 rounded-full blur-3xl pointer-events-none"></div>
         
         {/* Product Heading */}
-        <div className="text-center mb-8 relative">
-          <div className="inline-flex items-center justify-center mb-4">
-            <img src="/logo-light.svg?v=2" alt="Kora" className="h-12 dark:hidden" />
-            <img src="/logo-dark.svg?v=2" alt="Kora" className="h-12 hidden dark:block" />
+        <div className="text-center mb-5 sm:mb-8 relative">
+          <div className="inline-flex items-center justify-center mb-3 sm:mb-4">
+            <img src="/logo-light.svg?v=2" alt="Kora" className="h-10 sm:h-12 dark:hidden" />
+            <img src="/logo-dark.svg?v=2" alt="Kora" className="h-10 sm:h-12 hidden dark:block" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground font-heading">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground font-heading">
             Gestor de Proyectos Offline-First
           </h1>
-          <p className="mt-2 text-muted-foreground text-sm max-w-md mx-auto">
+          <p className="mt-2 text-muted-foreground text-xs sm:text-sm max-w-md mx-auto">
             Edita, organiza y colabora sobre tus tareas con almacenamiento local y privado. Tus datos permanecen en tu control.
           </p>
           {updateAvailable && (
