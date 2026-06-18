@@ -32,6 +32,7 @@ interface MobileNotesDrawerProps {
   setEditingText: (text: string) => void;
   editComment: (logId: string, text: string) => Promise<void>;
   deleteComment: (logId: string) => Promise<void>;
+  markNoteAsRead: (logId: string) => Promise<void>;
   confirm: (opts: any) => Promise<boolean>;
   resolvedMedia: Record<string, string>;
   setPreviewMediaUrl: (url: string | null) => void;
@@ -60,6 +61,7 @@ export default function MobileNotesDrawer({
   setEditingText,
   editComment,
   deleteComment,
+  markNoteAsRead,
   confirm,
   resolvedMedia,
   setPreviewMediaUrl,
@@ -174,11 +176,19 @@ export default function MobileNotesDrawer({
                   const canDeleteComment = isOwnComment || activeUser?.isSuperAdmin;
                   const canEditComment = isOwnComment && !isLockedByOther;
                   const isEditing = editingLogId === log.id;
+                  const isUnread = log.userId !== activeUser?.id && !activeUser?.readNotes?.[log.id];
                   return (
-                    <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2">
+                    <div 
+                      key={log.id} 
+                      onMouseEnter={() => { if (isUnread) markNoteAsRead(log.id); }}
+                      className="text-left text-[11px] leading-relaxed border-b border-border pb-2 transition-colors"
+                    >
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}>{log.username.charAt(0)}</span>
                         <strong className="text-foreground font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
+                        {isUnread && (
+                          <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Nota sin leer" />
+                        )}
                         <div className="ml-auto flex items-center gap-0.5">
                           {isEditing ? (
                             <>

@@ -46,7 +46,9 @@ export default function ListViews() {
     updateListConfig, 
     deleteList, 
     setSelectedTask,
-    locks
+    locks,
+    logs,
+    activeUser
   } = useProjectStore();
   const { toast, confirm, prompt: uiPrompt } = useUI();
 
@@ -58,6 +60,19 @@ export default function ListViews() {
   const [dragOverStatusId, setDragOverStatusId] = useState<string | null>(null);
 
   const activeList = lists.find(l => l.id === selectedListId);
+
+  // Compute unread notes per task for the active user
+  const unreadNotesByTask = React.useMemo(() => {
+    if (!activeUser) return new Set<string>();
+    const readNotes = activeUser.readNotes || {};
+    const unreadTasks = new Set<string>();
+    for (const log of logs) {
+      if (log.comment && log.userId !== activeUser.id && !readNotes[log.id]) {
+        unreadTasks.add(log.taskId);
+      }
+    }
+    return unreadTasks;
+  }, [logs, activeUser?.readNotes]);
 
   if (!activeList) {
     return (
@@ -256,6 +271,7 @@ export default function ListViews() {
                         const completeCount = task.subtasks.filter(s => s.isCompleted).length;
                         const totalCount = task.subtasks.length;
                         const pendingBlocked = task.dependencies.length > 0;
+                        const hasUnreadNotes = unreadNotesByTask.has(task.id);
 
                         return (
                           <div 
@@ -298,10 +314,13 @@ export default function ListViews() {
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <h4 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue truncate ${
+                                    <h4 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue truncate inline-flex items-center gap-1.5 ${
                                       status.isCompleted ? 'line-through text-muted-foreground group-hover:text-muted-foreground' : ''
                                     }`}>
                                       {task.title}
+                                      {hasUnreadNotes && (
+                                        <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Tiene notas sin leer" />
+                                      )}
                                     </h4>
                                     <div className="flex items-center gap-2 ml-auto shrink-0">
                                       {totalCount > 0 && (
@@ -350,13 +369,16 @@ export default function ListViews() {
                                       <span className="text-[9px] bg-bento-yellow-light text-bento-yellow font-mono px-1.5 py-0.5 rounded flex items-center gap-0.5 border border-border">
                                         <FolderLock className="w-2.5 h-2.5" /> En Edición: @{locks[task.id].username}
                                       </span>
-                                    )}
+                                    )                                    }
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <h4 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue truncate ${
+                                    <h4 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue truncate inline-flex items-center gap-1.5 ${
                                       status.isCompleted ? 'line-through text-muted-foreground group-hover:text-muted-foreground' : ''
                                     }`}>
                                       {task.title}
+                                      {hasUnreadNotes && (
+                                        <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Tiene notas sin leer" />
+                                      )}
                                     </h4>
                                     <div className="flex -space-x-1.5 shrink-0">
                                       {task.assignees.map(userId => {
@@ -435,9 +457,9 @@ export default function ListViews() {
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto space-y-2 mb-3 pr-1 min-h-[150px]">
-                    {statusTasks.map(task => {
+                  <div className="flex-1 overflow-y-auto space-y-2 mb-3 pr-1 min-h-[150px]">                      {statusTasks.map(task => {
                       const isLocked = locks[task.id] && Date.now() < locks[task.id].expiresAt;
+                      const hasUnreadNotesKanban = unreadNotesByTask.has(task.id);
                       return (
                         <div 
                           key={task.id}
@@ -453,10 +475,13 @@ export default function ListViews() {
                               {getPriorityLabel(task.priority)}
                             </span>
                           </div>
-                          <h5 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue leading-snug break-words ${
+                          <h5 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue leading-snug break-words inline-flex items-center gap-1.5 ${
                             status.isCompleted ? 'line-through text-muted-foreground' : ''
                           }`}>
                             {task.title}
+                            {hasUnreadNotesKanban && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Tiene notas sin leer" />
+                            )}
                           </h5>
                           {isLocked && (
                             <span className="text-[8px] text-bento-yellow bg-bento-yellow-light p-1 rounded font-semibold inline-flex items-center gap-1 border border-border">
@@ -540,12 +565,20 @@ export default function ListViews() {
                 <tbody className="divide-y divide-border bg-card">
                   {listTasks.map(task => {
                     const isLocked = locks[task.id] && Date.now() < locks[task.id].expiresAt;
+                    const hasUnreadNotesTable = unreadNotesByTask.has(task.id);
                     return (
                       <tr key={task.id} className="hover:bg-accent/50 transition-colors">
-                        <td className="p-3 font-mono text-[10px] font-bold text-muted-foreground text-center">{task.taskCode}</td>
+                        <td className="p-3 font-mono text-[10px] font-bold text-muted-foreground text-center">
+                          {task.taskCode}
+                        </td>
                         <td className="p-3">
                           <button onClick={() => setSelectedTask(task.id)} className="font-semibold text-foreground hover:text-bento-blue text-left truncate hover:underline block cursor-pointer">
-                            {task.title}
+                            <span className="inline-flex items-center gap-1.5">
+                              {task.title}
+                              {hasUnreadNotesTable && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Tiene notas sin leer" />
+                              )}
+                            </span>
                           </button>
                           {isLocked && (
                             <span className="text-[8px] bg-bento-yellow-light text-bento-yellow rounded px-1.5 py-0.5 mt-0.5 inline-block border border-border">

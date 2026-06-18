@@ -23,3 +23,4 @@ remoteconfig.template.json
 functions/node_modules/
 functions/.runtimeconfig.json
 .commits/
+.investigación/

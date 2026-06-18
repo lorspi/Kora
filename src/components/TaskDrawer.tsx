@@ -54,6 +54,7 @@ export default function TaskDrawer() {
     addComment, 
     editComment,
     deleteComment,
+    markNoteAsRead,
     uploadAttachment, 
     resolveAttachmentUrl,
     lockTask,
@@ -585,11 +586,19 @@ export default function TaskDrawer() {
                     const canDeleteComment = isOwnComment || activeUser?.isSuperAdmin;
                     const canEditComment = isOwnComment && !isLockedByOther;
                     const isEditing = editingLogId === log.id;
+                    const isUnread = log.userId !== activeUser?.id && !activeUser?.readNotes?.[log.id];
                     return (
-                      <div key={log.id} className="text-left text-[11px] leading-relaxed border-b border-border pb-2 group/log">
+                      <div 
+                        key={log.id} 
+                        onMouseEnter={() => { if (isUnread) markNoteAsRead(log.id); }}
+                        className={`text-left text-[11px] leading-relaxed border-b border-border pb-2 group/log transition-colors`}
+                      >
                         <div className="flex items-center gap-1.5 text-muted-foreground">
                           <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}>{log.username.charAt(0)}</span>
                           <strong className="text-foreground font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
+                          {isUnread && (
+                            <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Nota sin leer" />
+                          )}
                           {(canEditComment || canDeleteComment) && (
                             <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/log:opacity-100 transition-opacity">
                               {isEditing ? (
@@ -746,6 +755,7 @@ export default function TaskDrawer() {
           setEditingText={setEditingText}
           editComment={editComment}
           deleteComment={deleteComment}
+          markNoteAsRead={markNoteAsRead}
           confirm={confirm}
           resolvedMedia={resolvedMedia}
           setPreviewMediaUrl={setPreviewMediaUrl}

@@ -103,6 +103,7 @@ interface ProjectState {
   addComment: (taskId: string, commentText: string, attachments?: string[]) => Promise<void>;
   editComment: (logId: string, newText: string) => Promise<void>;
   deleteComment: (logId: string) => Promise<void>;
+  markNoteAsRead: (logId: string) => Promise<void>;
   uploadAttachment: (file: File) => Promise<{ path: string; name: string }>;
   resolveAttachmentUrl: (path: string) => Promise<string>;
   
@@ -2065,6 +2066,64 @@ Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **G
       const updatedLogs = logs.filter(log => log.id !== logId);
       await saveLogsAndRefresh(adapter, updatedLogs);
     },
+
+    // Mark a note as read with debounce to avoid excessive disk writes on hover
+    markNoteAsRead: (() => {
+      let pendingIds: Set<string> = new Set();
+      let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+      const flush = async () => {
+        const { adapter, activeUser, users } = get();
+        if (!adapter || !activeUser || pendingIds.size === 0) {
+          pendingIds = new Set();
+          return;
+        }
+
+        const idsToFlush = pendingIds;
+        pendingIds = new Set();
+
+        const updatedReadNotes = { ...(activeUser.readNotes || {}) };
+        let hasNew = false;
+        idsToFlush.forEach(id => {
+          if (!updatedReadNotes[id]) {
+            updatedReadNotes[id] = Date.now();
+            hasNew = true;
+          }
+        });
+
+        if (!hasNew) return;
+
+        const updatedUser: SystemUser = {
+          ...activeUser,
+          readNotes: updatedReadNotes
+        };
+
+        const updatedUsers = users.map(u =>
+          u.id === updatedUser.id ? updatedUser : u
+        );
+
+        await adapter.writeTextFile(
+          '/users/users.json',
+          JSON.stringify(updatedUsers, null, 2)
+        );
+
+        set({ activeUser: updatedUser, users: updatedUsers });
+      };
+
+      return async (logId: string) => {
+        const { activeUser } = get();
+        if (!activeUser) return;
+
+        // Skip if already marked as read
+        if (activeUser.readNotes?.[logId]) return;
+
+        pendingIds.add(logId);
+
+        // Debounce: reset timer on each call, flush after 2s of inactivity
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(flush, 2000);
+      };
+    })(),
 
     // Handle user attachment uploaded local files
     // Saves them directly into attachments/images/ or attachments/videos/ inside their local project workspace!

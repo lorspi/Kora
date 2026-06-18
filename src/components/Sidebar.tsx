@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useUI } from '../lib/ui';
 import { useUpdateCheck } from '../hooks/useVersion';
 import { useProjectStore } from '../store';
@@ -58,7 +58,9 @@ export default function Sidebar() {
     setSidebarOpen,
     showTrash,
     setShowTrash,
-    trashItems
+    trashItems,
+    tasks,
+    logs
   } = useProjectStore();
   const { toast, confirm } = useUI();
   const { updateAvailable } = useUpdateCheck();
@@ -139,6 +141,23 @@ export default function Sidebar() {
     }
   };
   
+  // Compute unread notes count per list
+  const unreadNotesByList = useMemo(() => {
+    if (!activeUser) return new Map<string, number>();
+    const readNotes = activeUser.readNotes || {};
+    const counts = new Map<string, number>();
+    for (const log of logs) {
+      if (!log.comment) continue;
+      if (log.userId === activeUser.id) continue;
+      if (readNotes[log.id]) continue;
+      const task = tasks.find(t => t.id === log.taskId);
+      if (!task) continue;
+      const current = counts.get(task.listId) || 0;
+      counts.set(task.listId, current + 1);
+    }
+    return counts;
+  }, [logs, activeUser?.readNotes, tasks]);
+
   const handleScanDocuments = async () => {
     try {
       const newDocs = await scanDocuments();
@@ -328,10 +347,19 @@ export default function Sidebar() {
                     : 'hover:bg-accent text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <div className="flex items-center gap-2 truncate">
+                <div className="flex items-center gap-2 truncate min-w-0">
                   <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: l.color }}></div>
                   <span className="text-xs font-semibold truncate">{l.name}</span>
                 </div>
+                {(() => {
+                  const count = unreadNotesByList.get(l.id) || 0;
+                  if (count === 0) return null;
+                  return (
+                    <span className="text-[9px] font-bold bg-bento-blue text-white px-1.5 py-0.5 rounded-full leading-none shrink-0 animate-pulse" title={`${count} nota${count !== 1 ? 's' : ''} sin leer`}>
+                      {count}
+                    </span>
+                  );
+                })()}
               </button>
             ))}
             {lists.length === 0 && (
