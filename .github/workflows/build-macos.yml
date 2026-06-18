@@ -1,0 +1,55 @@
+name: Build macOS Portable DMG
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [tauri]
+  pull_request:
+    branches: [tauri]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        target:
+          - aarch64-apple-darwin    # Apple Silicon (M1/M2/M3/M4)
+          - x86_64-apple-darwin     # Intel
+
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri"
+
+      - name: Build macOS app (${{ matrix.target }})
+        run: npx tauri build --target ${{ matrix.target }} --bundles dmg
+        env:
+          # Ad-hoc signing — evita el error "app damaged" sin necesitar cuenta Apple Developer
+          TAURI_SIGNING_IDENTITY: "-"
+
+      - name: Upload DMG artifact (${{ matrix.target }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kora-${{ matrix.target }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          compression-level: 0
+          if-no-files-found: error
