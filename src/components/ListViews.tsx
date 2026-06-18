@@ -55,6 +55,7 @@ export default function ListViews() {
   const [activeTab, setActiveTab] = useState<ActiveViewTab>('list');
   const [quickTitle, setQuickTitle] = useState('');
   const [quickPriority, setQuickPriority] = useState<Task['priority']>('medium');
+  const [creatingTask, setCreatingTask] = useState(false);
   const [collapsedStatuses, setCollapsedStatuses] = useState<Record<string, boolean>>({});
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverStatusId, setDragOverStatusId] = useState<string | null>(null);
@@ -88,12 +89,15 @@ export default function ListViews() {
 
   const handleQuickTaskAdd = async (statusId: string, customTitle?: string) => {
     const titleVal = customTitle || quickTitle;
-    if (!titleVal.trim()) return;
+    if (!titleVal.trim() || creatingTask) return;
+    setCreatingTask(true);
     try {
       await createTask(titleVal, activeList.id, statusId, quickPriority);
       if (!customTitle) setQuickTitle('');
     } catch (e) {
       toast('Error al crear tarea', 'error');
+    } finally {
+      setCreatingTask(false);
     }
   };
 
@@ -203,7 +207,8 @@ export default function ListViews() {
               />
               <button 
                 onClick={() => handleQuickTaskAdd(activeList.statuses[0].id)}
-                className="bg-primary hover:opacity-90 text-primary-foreground font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0 shadow-card"
+                disabled={creatingTask}
+                className={`bg-primary hover:opacity-90 text-primary-foreground font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0 shadow-card ${creatingTask ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
                 <Plus className="w-3.5 h-3.5" /> Agregar
               </button>

@@ -50,6 +50,9 @@
 
 ### Fixed
 
+- **Prevención de tareas duplicadas al hacer clic múltiple en "Agregar"**
+  Se agregó un bloqueo de estado (`creatingTask`) que evita la creación de tareas duplicadas cuando el usuario hace clic repetidamente en el botón "Agregar" mientras se está procesando la primera solicitud. El botón se deshabilita visualmente durante la operación.
+
 ### Removed
 
 - **Funcionalidad de disco virtual**
