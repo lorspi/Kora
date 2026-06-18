@@ -5,15 +5,14 @@
 
 import React, { useState } from 'react';
 import { useProjectStore } from '../store';
-import { FolderOpen, HardDrive, HelpCircle, AlertTriangle, FileArchive, ArrowRight, Cpu, Github, Download } from 'lucide-react';
-import { FsMode, FileSystemAdapter, dbClear, dbSet, normalizePath } from '../lib/fs';
-import JSZip from 'jszip';
+import { FolderOpen, HardDrive, HelpCircle, AlertTriangle, ArrowRight, Github, Download } from 'lucide-react';
+import { FileSystemAdapter } from '../lib/fs';
 import ThemeToggle from './ThemeToggle';
 import VersionBadge from './VersionBadge';
 import { useUpdateCheck } from '../hooks/useVersion';
 
 export default function LoadFolderScreen() {
-  const { loadProjectDirectory, createBlankProject, seedSampleProject, adapter } = useProjectStore();
+  const { loadProjectDirectory, createBlankProject, adapter } = useProjectStore();
   const { updateAvailable, remoteVersion, localVersion, performUpdate } = useUpdateCheck();
   const [fsaSupported] = useState<boolean>(() => 'showDirectoryPicker' in window);
   const [loading, setLoading] = useState(false);
@@ -28,7 +27,7 @@ export default function LoadFolderScreen() {
     setLoading(true);
     try {
       if (!('showDirectoryPicker' in window)) {
-        throw new Error('Tu navegador no es compatible con la API de Acceso a Archivos Locales. Usa Chrome o Edge, o selecciona el "Disco Virtual".');
+        throw new Error('Tu navegador no es compatible con la API de Acceso a Archivos Locales. Usa Chrome o Edge.');
       }
       const directoryHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
       await loadProjectDirectory(directoryHandle, 'FSA_API');
@@ -36,20 +35,8 @@ export default function LoadFolderScreen() {
       if (err.name === 'AbortError') {
         setErrorMsg('Selección de carpeta cancelada por el usuario.');
       } else {
-        setErrorMsg('Error al abrir la carpeta. Nota: Las políticas de iframe de Chrome a veces bloquean el diálogo en previsualizaciones. Si esto falla, te sugerimos abrir en una pestaña nueva o usar "Disco Virtual en Navegador".');
+        setErrorMsg('Error al abrir la carpeta. Nota: Las políticas de iframe de Chrome a veces bloquean el diálogo en previsualizaciones. Si esto falla, te sugerimos abrir en una pestaña nueva.');
       }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSelectVirtual = async () => {
-    setErrorMsg(null);
-    setLoading(true);
-    try {
-      await loadProjectDirectory(null, 'VIRTUAL');
-    } catch (err: any) {
-      setErrorMsg('Error al cargar el entorno virtual persistente: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -65,43 +52,6 @@ export default function LoadFolderScreen() {
       setErrorMsg('Error de configuración: ' + err.message);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleZipImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    setErrorMsg(null);
-    setLoading(true);
-    try {
-      const zip = await JSZip.loadAsync(file);
-      const virtualAdapter = useProjectStore.getState().adapter || new FileSystemAdapter('VIRTUAL', null);
-      await dbClear();
-      
-      let containsConfig = false;
-      for (const [relativePath, entry] of Object.entries(zip.files)) {
-        if (entry.dir) continue;
-        const normalized = normalizePath(relativePath);
-        if (normalized.endsWith('config.json')) containsConfig = true;
-        
-        const isBinary = normalized.includes('/attachments/');
-        if (isBinary) {
-          const blob = await entry.async('blob');
-          await dbSet(normalized, { content: blob, isBinary: true, lastModified: Date.now() });
-        } else {
-          const text = await entry.async('text');
-          await dbSet(normalized, { content: text, isBinary: false, lastModified: Date.now() });
-        }
-      }
-      
-      if (!containsConfig) throw new Error('Archivo ZIP no es un proyecto compatible. Debe contener config.json en su estructura raíz.');
-      await loadProjectDirectory(null, 'VIRTUAL');
-    } catch (err: any) {
-      setErrorMsg('Error al importar el ZIP: ' + err.message);
-    } finally {
-      setLoading(false);
-      e.target.value = '';
     }
   };
 
@@ -203,9 +153,9 @@ export default function LoadFolderScreen() {
         ) : (
           <div className="space-y-6">
             {/* Action Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4">
               
-              {/* Option A: Native File System */}
+              {/* Only option: Native File System */}
               <div 
                 id="btn-fsa-access"
                 onClick={handleSelectFSA}
@@ -230,47 +180,6 @@ export default function LoadFolderScreen() {
                 </span>
               </div>
 
-              {/* Option B: Simulated Sandbox Drive */}
-              <div 
-                id="btn-virtual-access"
-                onClick={handleSelectVirtual}
-                className="group border border-border bg-card hover:border-bento-orange/60 hover:shadow-card-hover rounded-2xl p-5 cursor-pointer transition-all duration-300 flex flex-col text-left h-full"
-              >
-                <div className="w-10 h-10 rounded-xl bg-bento-orange-light flex items-center justify-center text-bento-orange mb-4 transition-colors">
-                  <Cpu className="w-5 h-5" />
-                </div>
-                <h3 className="font-semibold text-foreground text-sm font-heading">
-                  Disco Virtual en Navegador
-                </h3>
-                <p className="mt-1.5 text-muted-foreground text-xs leading-normal flex-1">
-                  Todo lo que hagas se almacenará en el <strong>almacenamiento local</strong> de tu navegador. Tus datos no salen de tu dispositivo.
-                </p>
-                <span className="mt-4 text-[11px] text-bento-orange font-medium group-hover:underline flex items-center gap-1">
-                  Crear Disco Virtual <ArrowRight className="w-3 h-3" />
-                </span>
-              </div>
-
-            </div>
-
-            {/* Extra import Actions / ZIP Backups */}
-            <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-border items-center justify-between">
-              <div className="text-left">
-                <span className="text-xs font-semibold text-foreground block">¿Tienes un backup en ZIP?</span>
-                <span className="text-[11px] text-muted-foreground block mt-0.5">Puedes importar un archivo ZIP del proyecto para restaurarlo.</span>
-              </div>
-              <label 
-                id="zip-import-label"
-                className="cursor-pointer shrink-0 inline-flex items-center gap-1.5 px-4 py-2 bg-secondary hover:bg-muted border border-border rounded-xl text-foreground text-xs font-medium transition-colors"
-              >
-                <FileArchive className="w-4 h-4 text-muted-foreground" />
-                Importar ZIP
-                <input 
-                  type="file" 
-                  accept=".zip" 
-                  className="hidden" 
-                  onChange={handleZipImport}
-                />
-              </label>
             </div>
           </div>
         )}

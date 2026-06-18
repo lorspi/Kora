@@ -49,3 +49,9 @@
   La lista de proyectos registrados ahora se guarda en `localStorage` y persiste al recargar o cerrar y volver a abrir la pestaña. Se corrigieron tres problemas: (1) `initialize()` ahora siempre relee los proyectos de `localStorage` como fallback, (2) `initializeNewProject()` ya no crea registros duplicados sino que actualiza el proyecto existente, y (3) `goToProjectBrowser()` recarga explícitamente la lista desde `localStorage` al navegar de vuelta.
 
 ### Fixed
+
+### Removed
+
+- **Funcionalidad de disco virtual**
+  Se eliminó el modo de disco virtual (IndexedDB) debido a bugs persistentes y problemas de compatibilidad entre navegadores. La aplicación ahora opera exclusivamente con acceso directo al sistema de archivos local.- **Render de tablas en documentos**
+  Los documentos ahora soportan tablas Markdown estilo pipe (`| col1 | col2 |`). Se agregó detección y conversión a `<table>` HTML tanto en la vista previa (`markdown.tsx`) como en el editor por bloques (`DocView.tsx`), incluyendo un editor de código colapsable tipo mermaid y un comando `/table` en el menú de bloques.

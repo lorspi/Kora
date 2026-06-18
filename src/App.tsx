@@ -21,7 +21,7 @@ import {
   CheckCircle2, 
   Layers, 
   FileText, 
-  Cpu, 
+  HardDrive,
   Menu
 } from 'lucide-react';
 import ThemeToggle from './components/ThemeToggle';
@@ -187,11 +187,11 @@ export default function App() {
 
                   <div className="text-xs font-mono bg-card border border-border p-3 rounded-xl shadow-card">
                     <div className="flex items-center gap-2 mb-1 text-muted-foreground">
-                      <Cpu className="w-4 h-4 text-bento-blue" />
+                      <HardDrive className="w-4 h-4 text-bento-blue" />
                       <span>Base de Datos:</span>
                     </div>
                     <strong className="text-bento-blue font-semibold uppercase font-mono text-[11px]">
-                      {adapter.getMode() === 'VIRTUAL' ? 'Carpeta Virtual (Navegador)' : 'Acceso Directo al Disco'}
+                      Acceso Directo al Disco
                     </strong>
                   </div>
                 </div>

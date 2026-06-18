@@ -60,7 +60,7 @@ interface ProjectState {
   loadProjectDirectory: (handle: FileSystemDirectoryHandle | null, mode: FsMode) => Promise<void>;
   initialize: () => Promise<void>;
   createBlankProject: (name: string, desc: string) => Promise<void>;
-  seedSampleProject: () => Promise<void>;
+
   initializeNewProject: (projectName: string, projectDesc: string, firstUser: SystemUser, useSampleData: boolean) => Promise<void>;
   createListDirect: (name: string, color: string) => Promise<TaskList>;
   seedSampleProjectOnboarding: (projectMeta: ProjectMetadata, config: ProjectConfig, firstUser: SystemUser) => Promise<void>;
@@ -146,7 +146,7 @@ interface ProjectState {
   registeredProjects: RegisteredProject[];
   loadedProjectId: string | null;
   loadProjectById: (projectId: string) => Promise<void>;
-  registerProject: (name: string, type: 'FSA_API' | 'VIRTUAL', pathHint?: string) => string;
+  registerProject: (name: string, type: 'FSA_API', pathHint?: string) => string;
   unregisterProject: (projectId: string) => void;
   goToProjectBrowser: () => void;
 }
@@ -176,7 +176,7 @@ function loadPersistenceState(): PersistenceState {
   } catch (e) {
     console.warn('Could not load persistence state', e);
   }
-  return { hasActiveProject: false, fsMode: 'VIRTUAL' };
+  return { hasActiveProject: false, fsMode: 'FSA_API' };
 }
 
 // ── Multi-project persistence helpers ─────────────────────────────────────────
@@ -231,7 +231,7 @@ function migrateOldProject(): RegisteredProject[] {
   if (existing.length > 0) return existing;
 
   const projectId = crypto.randomUUID();
-  const projName = persistence.fsMode === 'VIRTUAL' ? 'Mi Proyecto Virtual' : 'Mi Proyecto Local';
+  const projName = 'Mi Proyecto Local';
   const project: RegisteredProject = {
     id: projectId,
     name: projName,
@@ -312,7 +312,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   return {
     // Engine State
     adapter: null,
-    fsMode: 'VIRTUAL',
+    fsMode: 'FSA_API',
     isLoading: true, // Start loading to check persistence
     isPolling: false,
     
@@ -512,11 +512,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           isLoading: false
         });
 
-        if (mode === 'FSA_API') {
-          await saveDirectoryHandle(handle);
-        } else {
-          await clearDirectoryHandle();
-        }
+        await saveDirectoryHandle(handle);
         savePersistenceState({ hasActiveProject: true, fsMode: mode });
 
         // Update registered project name with real name from project.json
@@ -1082,400 +1078,6 @@ graph TD
     },
 
     // Seed beautiful demo project data for full interaction review out-of-the-box
-    seedSampleProject: async () => {
-      const { adapter } = get();
-      if (!adapter) return;
-
-      const projectId = crypto.randomUUID();
-      const projectMeta: ProjectMetadata = {
-        id: projectId,
-        name: 'Sprint de Integración',
-        description: 'Proyecto de demostración de nuestro gestor de proyectos totalmente offline-first con File System Access API.',
-        created: Date.now() - 3600000 * 24, // 1 day ago
-        tags: ['Lanzamiento', 'Frontend', 'Tauri']
-      };
-
-      const config: ProjectConfig = {
-        projectId,
-        projectName: projectMeta.name,
-        lastModified: Date.now()
-      };
-
-      // 1. Seed simulated users (Juan Pérez, Carlos Gómez, María López, Sofia Castro)
-      // Standard password is 'demo123' for easy testing
-      const salt1 = '7a29e4b7c';
-      const salt2 = '9df231f82';
-      const salt3 = 'cbe32462e';
-      const pHash1 = await hashPassword('demo123', salt1);
-      const pHash2 = await hashPassword('demo123', salt2);
-      const pHash3 = await hashPassword('demo123', salt3);
-
-      const users: SystemUser[] = [
-        {
-          id: 'user-juan-id',
-          username: 'juan',
-          name: 'Juan Pérez (Coordinador)',
-          avatarColor: '#ea580c', // Orange
-          passwordHash: pHash1,
-          salt: salt1,
-          createdAt: Date.now()
-        },
-        {
-          id: 'user-maria-id',
-          username: 'maria',
-          name: 'María López (Diseñadora)',
-          avatarColor: '#db2777', // Pink
-          passwordHash: pHash2,
-          salt: salt2,
-          createdAt: Date.now()
-        },
-        {
-          id: 'user-carlos-id',
-          username: 'carlos',
-          name: 'Carlos Gómez (Desarrollador)',
-          avatarColor: '#2563eb', // Blue
-          passwordHash: pHash3,
-          salt: salt3,
-          createdAt: Date.now()
-        }
-      ];
-
-      // 2. Seed default workflow list (Sprint Active & Product Backlog)
-      const listAId = 'list-sprint-id';
-      const listStatusesA: TaskStatus[] = [
-        { id: 'todo', name: 'Por Hacer', color: '#d1d5db', isCompleted: false },
-        { id: 'inprogress', name: 'En Desarrollo', color: '#2563eb', isCompleted: false },
-        { id: 'review', name: 'Revisión / QA', color: '#eab308', isCompleted: false },
-        { id: 'done', name: 'Listo / Desplegado', color: '#10b981', isCompleted: true }
-      ];
-      const listA: TaskList = {
-        id: listAId,
-        name: 'Sprint Core Active',
-        color: '#8b5cf6', // Indigo
-        statuses: listStatusesA,
-        createdAt: Date.now() - 3600000 * 50
-      };
-
-      const listBId = 'list-backlog-id';
-      const listStatusesB: TaskStatus[] = [
-        { id: 'backlog', name: 'Backlog Ideas', color: '#6b7280', isCompleted: false },
-        { id: 'selected', name: 'Para Próximo Sprint', color: '#0ea5e9', isCompleted: false },
-        { id: 'closed', name: 'Archivado', color: '#9ca3af', isCompleted: true }
-      ];
-      const listB: TaskList = {
-        id: listBId,
-        name: 'Product Backlog',
-        color: '#f59e0b', // Amber
-        statuses: listStatusesB,
-        createdAt: Date.now() - 3600000 * 48
-      };
-
-      // 3. Seed mock tasks
-      const task1Id = 'task-001-id';
-      const task2Id = 'task-002-id';
-      const task3Id = 'task-003-id';
-      const task4Id = 'task-004-id';
-
-      const tasks: Task[] = [
-        {
-          id: task1Id,
-          taskCode: 'TSK-001',
-          listId: listAId,
-          title: 'Implementar Persistencia con File System Access API',
-          description: `### Objetivo
-Desarrollar la capa de persistencia directa en el navegador para que lea y escriba directamente sobre la carpeta local seleccionada.
-
-### Requerimientos de formato
-Adherirse estricto al siguiente formato de JSON de almacenamiento:
-- \`config.json\` en la raíz.
-- Guardar tareas individuales en nombres secuenciales dentro de \`/tasks/\`.
-
-### Notas de implementación
-- La File System Access API requiere permisos de escritura del usuario.
-- Siempre tener un plan de escape virtual para navegadores embebidos como el iframe de AI Studio (usar IndexedDB).
-`,
-          statusId: 'inprogress',
-          dueDate: new Date(Date.now() + 3600000 * 24 * 3).toISOString().split('T')[0], // 3 days layout
-          assignees: ['user-carlos-id'],
-          priority: 'high',
-          tags: ['File System', 'TypeScript', 'Durable'],
-          dependencies: [],
-          subtasks: [
-            { id: 'subtask-1-1', title: 'Crear adapter con soporte FSA API', isCompleted: true, createdAt: Date.now() },
-            { id: 'subtask-1-2', title: 'Crear fallback transparente en IndexedDB', isCompleted: true, createdAt: Date.now() },
-            { id: 'subtask-1-3', title: 'Exportar/Importar estructura como archivo .zip', isCompleted: false, createdAt: Date.now() }
-          ],
-          lastEditedBy: 'user-carlos-id',
-          lastEditedAt: Date.now()
-        },
-        {
-          id: task2Id,
-          taskCode: 'TSK-002',
-          listId: listAId,
-          title: 'Diseñar Interfaz Minimalista & Altamente Interactiva',
-          description: `### Concepto de diseño
-Queremos un aspecto ultra profesional, limpio, denso y responsivo con colores sobrios y elegantes.
-- **Lista agrupada por estados** con capacidad colapsable.
-- **Vista de tablero Kanban** completo con tarjetas arrastrables.
-- **Vista de tabla estructurada** con edición rápida de campos.
-
-### Tipografía recomendada
-- Encabezados modernos y limpios.
-- JetBrains Mono para códigos de tareas e indicadores.
-`,
-          statusId: 'done',
-          dueDate: new Date(Date.now() - 3600000 * 24).toISOString().split('T')[0], // yesterday
-          assignees: ['user-maria-id'],
-          priority: 'medium',
-          tags: ['UI/UX', 'Tailwind', 'Framer Motion'],
-          dependencies: [],
-          subtasks: [
-            { id: 'subtask-2-1', title: 'Definir paleta de colores de estados', isCompleted: true, createdAt: Date.now() },
-            { id: 'subtask-2-2', title: 'Crear componentes de lista reactivos', isCompleted: true, createdAt: Date.now() }
-          ],
-          lastEditedBy: 'user-maria-id',
-          lastEditedAt: Date.now()
-        },
-        {
-          id: task3Id,
-          taskCode: 'TSK-003',
-          listId: listAId,
-          title: 'Sistema de Locks (Bloqueos de Coflicto de Edición)',
-          description: `### Caso de uso
-Cuando el **Usuario A** está editando una tarea, el **Usuario B** que comparte la misma carpeta de Drive sincronizada no debe poder guardarle cambios ni editar esa tarea simultáneamente.
-
-### Implementación
-- Escribir en un archivo temporal o en \`/activity/locks.json\`.
-- Cada bloqueo expira automáticamente tras un período de inactividad (e.g. 10 segundos de latido offline).
-`,
-          statusId: 'todo',
-          dueDate: new Date(Date.now() + 3600000 * 24 * 7).toISOString().split('T')[0], // 7 days layout
-          assignees: ['user-juan-id', 'user-carlos-id'],
-          priority: 'urgent',
-          tags: ['Locks', 'Sincronización', 'Drive'],
-          dependencies: [task1Id], // Depends on Task 1!
-          subtasks: [
-            { id: 'subtask-3-1', title: 'Simulador multiusuario interactivo', isCompleted: false, createdAt: Date.now() },
-            { id: 'subtask-3-2', title: 'Escribir locks.json en el disco', isCompleted: false, createdAt: Date.now() }
-          ],
-          lastEditedBy: 'user-juan-id',
-          lastEditedAt: Date.now()
-        },
-        {
-          id: task4Id,
-          taskCode: 'TSK-004',
-          listId: listBId,
-          title: 'Compilar Ejecutable de Escritorio con Tauri',
-          description: `### Escalar en el futuro
-Este MVP se diseña pensando en empaquetarse en el futuro usando **Tauri** para exportar ejecutables nativos sumamente livianos en Windows, macOS y Linux.
-`,
-          statusId: 'backlog',
-          dueDate: '',
-          assignees: [],
-          priority: 'low',
-          tags: ['Tauri', 'Desktop', 'Escalabilidad'],
-          dependencies: [],
-          subtasks: [],
-          lastEditedBy: 'user-juan-id',
-          lastEditedAt: Date.now()
-        }
-      ];
-
-      // 4. Docs catalog & contents
-      const docA: DocMetadata = {
-        id: 'doc-guia-id',
-        title: 'Guía de Arquitectura de Almacenamiento',
-        filename: 'guia.md',
-        editedBy: 'user-juan-id',
-        editedAt: Date.now(),
-        createdAt: Date.now() - 3600000 * 2
-      };
-      
-      const docAContent = `# Guía - Almacenamiento de Datos del Proyecto
-
-Este proyecto está diseñado para funcionar de manera **totalmente local y privada**. No hay un servidor de base de datos intermedio.
-
-## ¿Cómo funciona la sincronización?
-Tú eres dueño de tus datos. El directorio elegido contiene archivos con formatos legibles por humanos:
-- Las tareas e información del proyecto se almacenan como archivos **JSON** (ej., \`tasks/task-001.json\`).
-- Los documentos son archivos **Markdown (.md)** estándar.
-
-## Sincronización en la Nube
-Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **Google Drive, Dropbox, OneDrive o repositorios Git** en tu computadora. La aplicación detectará los cambios de forma automática gracias al escaneo en segundo plano.
-
-> **Importante:** Al editar en paralelo, el sistema bloqueará archivos que estén siendo leídos y editados por otros compañeros utilizando la sincronización local en el archivo locks.json.
-`;
-
-      const docB: DocMetadata = {
-        id: 'doc-diagrama-id',
-        title: 'Diagrama de Arquitectura del Proyecto',
-        filename: 'diagrama-arquitectura.md',
-        editedBy: 'user-maria-id',
-        editedAt: Date.now(),
-        createdAt: Date.now() - 3600000 * 1
-      };
-
-      const docBContent = `# Diagrama de Arquitectura del Proyecto
-
-Este documento describe la arquitectura general del sistema **Kora** y cómo fluyen los datos a través de sus componentes principales.
-
-## Diagrama de Flujo de Datos
-
-\`\`\`mermaid
-graph TD
-    A[Usuario] --> B[Interfaz UI - React + Tailwind]
-    B --> C[Zustand Store - Estado Global]
-    C --> D[FileSystemAdapter - Capa de Persistencia]
-    D --> E[(Virtual FS - IndexedDB)]
-    D --> F[(Local FS - File System Access API)]
-    C --> G[Sistema de Locks - Control de Edición Concurrente]
-    G --> H[activitylocks.json]
-    C --> I[Documentos Markdown]
-    I --> J[docs/ - Archivos .md]
-    C --> K[Tareas JSON]
-    K --> L[tasks/ - Archivos .json]
-    C --> M[Actividad y Comentarios]
-    M --> N[activity/logs.json]
-    C --> O[Explorador de Medios]
-    O --> P[attachments/ - Imágenes y Videos]
-    C --> Q[Papelera de Reciclaje]
-    Q --> R[trash/items.json]
-\`\`\`
-
-## Componentes Clave
-
-| Componente        | Tecnología     | Propósito                              |
-|-------------------|----------------|----------------------------------------|
-| UI Frontend       | React + TSX    | Interfaz de usuario interactiva        |
-| Estado            | Zustand        | Manejo de estado global centralizado   |
-| Persistencia      | FSA API / IDB  | Lectura/escritura de archivos locales  |
-| Documentos        | Markdown       | Documentación y notas del proyecto     |
-| Tareas            | JSON           | Gestión de tareas y subtareas          |
-| Medios            | Archivos       | Adjuntos multimedia del proyecto       |
-
-## Vista Previa del Proyecto
-
-![Vista previa del proyecto Kora](attachments/images/og-image.png)
-
-*Imagen promocional del proyecto, ubicada en la carpeta pública de la aplicación.*
-`;
-
-      const docsCatalog = [docA, docB];
-
-      // 5. Audit logs
-      const logs: TaskActivityLog[] = [
-        {
-          id: 'log-1',
-          taskId: task1Id,
-          userId: 'user-carlos-id',
-          username: 'Carlos Gómez',
-          action: 'creó la tarea de persistencia FSA',
-          timestamp: Date.now() - 3600000 * 4
-        },
-        {
-          id: 'log-2',
-          taskId: task2Id,
-          userId: 'user-maria-id',
-          username: 'María López',
-          action: 'completó el diseño de la interfaz Kanban y Lists',
-          timestamp: Date.now() - 3600000 * 3
-        },
-        {
-          id: 'log-3',
-          taskId: task3Id,
-          userId: 'user-juan-id',
-          username: 'Juan Pérez',
-          action: 'comentó sobre la lógica del archivo locks.json',
-          timestamp: Date.now() - 3600000 * 2,
-          comment: {
-            id: 'comment-1',
-            userId: 'user-juan-id',
-            username: 'Juan Pérez',
-            text: 'He revisado el flujo. Creo que escribir latidos en `/activity/locks.json` cada 5 a 10 segundos es la forma offline de simular sincronización en tiempo real sin sobrecargar el almacenamiento ni la red local.',
-            createdAt: Date.now() - 3600000 * 2
-          }
-        },
-        {
-          id: 'log-4',
-          taskId: task3Id,
-          userId: 'user-maria-id',
-          username: 'María López',
-          action: 'adjuntó el icono móvil del proyecto',
-          timestamp: Date.now() - 3600000 * 1,
-          comment: {
-            id: 'comment-2',
-            userId: 'user-maria-id',
-            username: 'María López',
-            text: 'Aquí está el icono que usaremos para la aplicación móvil. ¿Qué opinan del diseño?',
-            createdAt: Date.now() - 3600000 * 1,
-            attachments: ['/attachments/images/mobile-icon.png']
-          }
-        }
-      ];
-
-      // 6. Write ALL files to directory layout
-      await adapter.writeTextFile('/config.json', JSON.stringify(config, null, 2));
-      await adapter.writeTextFile('/project.json', JSON.stringify(projectMeta, null, 2));
-      await adapter.writeTextFile('/users/users.json', JSON.stringify(users, null, 2));
-      await adapter.writeTextFile('/docs/info.json', JSON.stringify(docsCatalog, null, 2));
-      await adapter.writeTextFile(`/docs/${docA.filename}`, docAContent);
-      await adapter.writeTextFile(`/docs/${docB.filename}`, docBContent);
-      await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
-      await adapter.writeTextFile('/activity/logs.json', JSON.stringify(logs, null, 2));
-      await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
-
-      // Individual task writes
-      for (const t of tasks) {
-        await adapter.writeTextFile(`/tasks/task-${t.id}.json`, JSON.stringify(t, null, 2));
-      }
-
-      // Individual lists writes
-      await adapter.writeTextFile(`/lists/${listA.id}.json`, JSON.stringify(listA, null, 2));
-      await adapter.writeTextFile(`/lists/${listB.id}.json`, JSON.stringify(listB, null, 2));
-
-      // Copy images from public folder to attachments for demo purposes
-      const copyPublicImage = async (publicPath: string, destPath: string) => {
-        try {
-          const response = await fetch(publicPath);
-          if (response.ok) {
-            const blob = await response.blob();
-            await adapter.writeBinaryFile(destPath, blob);
-          } else {
-            console.warn(`Image ${publicPath} not found, skipping`);
-          }
-        } catch (e) {
-          console.warn(`Could not copy public image: ${publicPath}`, e);
-        }
-      };
-
-      // Copy demo images from public assets to project attachments
-      await copyPublicImage('/og-image.png', '/attachments/images/og-image.png');
-      await copyPublicImage('/mobile-icon.png', '/attachments/images/mobile-icon.png');
-      await copyPublicImage('/logo-dark.svg', '/attachments/images/logo-dark.svg');
-      await copyPublicImage('/logo-light.svg', '/attachments/images/logo-light.svg');
-
-      // Now update the local react state!
-      set({
-        projectMeta,
-        projectConfig: config,
-        users,
-        activeUser: null, // Don't auto-login, let user choose/register
-        lists: [listA, listB],
-        tasks,
-        docs: docsCatalog,
-        locks: {},
-        logs,
-        trashItems: [],
-        selectedListId: listAId,
-        selectedTaskId: null,
-        selectedDocId: null
-      });
-
-      // Save persistence state for virtual mode
-      await clearDirectoryHandle();
-      savePersistenceState({ hasActiveProject: true, fsMode: 'VIRTUAL' });
-    },
-
     // Background interval check to load recent updates from syncing folders
     backgroundReload: async () => {
       const { adapter, isPolling } = get();
@@ -1677,16 +1279,13 @@ graph TD
       localStorage.removeItem(SAVED_SESSION_KEY);
       await clearDirectoryHandle();
       
-      // If in VIRTUAL mode, clear IndexedDB
-      const { fsMode } = get();
-      if (fsMode === 'VIRTUAL') {
-        await dbClear();
-      }
+      // Clear IndexedDB (legacy virtual data, safe to clean)
+      await dbClear();
       
       // Reset all state but keep registered projects (they're persisted separately)
       set({
         adapter: null,
-        fsMode: 'VIRTUAL',
+        fsMode: 'FSA_API',
         projectMeta: null,
         projectConfig: null,
         users: [],
@@ -1757,8 +1356,6 @@ graph TD
             throw new Error('Permisos de carpeta perdidos.');
           }
           await get().loadProjectDirectory(handle, 'FSA_API');
-        } else {
-          await get().loadProjectDirectory(null, 'VIRTUAL');
         }
       } catch (err) {
         console.error('Failed to load project', err);
@@ -1777,7 +1374,7 @@ graph TD
       set({
         registeredProjects: savedProjects,
         adapter: null,
-        fsMode: 'VIRTUAL',
+        fsMode: 'FSA_API',
         projectMeta: null,
         projectConfig: null,
         users: [],

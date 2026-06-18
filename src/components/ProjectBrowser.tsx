@@ -6,11 +6,9 @@
 import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../store';
 import { RegisteredProject } from '../types';
-import { FsMode, dbClear, dbSet, normalizePath } from '../lib/fs';
-import JSZip from 'jszip';
 import { 
-  FolderOpen, HardDrive, Cpu, AlertTriangle, FileArchive, 
-  ArrowRight, Github, Download, LogIn, LogOut, Plus, X,
+  FolderOpen, HardDrive, AlertTriangle, 
+  ArrowRight, Github, Download, Plus, X,
   HelpCircle
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
@@ -60,7 +58,7 @@ export default function ProjectBrowser() {
     setLoading(true);
     try {
       if (!('showDirectoryPicker' in window)) {
-        throw new Error('Tu navegador no es compatible con la API de Acceso a Archivos Locales. Usa Chrome o Edge, o selecciona el "Disco Virtual".');
+        throw new Error('Tu navegador no es compatible con la API de Acceso a Archivos Locales. Usa Chrome o Edge.');
       }
       const directoryHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
       const { saveDirectoryHandleWithKey } = await import('../lib/fs');
@@ -80,69 +78,6 @@ export default function ProjectBrowser() {
         setErrorMsg(err.message || 'Error al abrir la carpeta.');
       }
       setLoading(false);
-    }
-  };
-
-  const handleSelectVirtual = async () => {
-    setErrorMsg(null);
-    
-    // Check if virtual project already exists
-    const virtualProject = registeredProjects.find(p => p.type === 'VIRTUAL');
-    if (virtualProject) {
-      setErrorMsg('Ya tienes un proyecto de Disco Virtual. Solo se permite uno para no saturar el almacenamiento del navegador. Puedes abrirlo desde la lista o crear un proyecto de Carpeta del Computador.');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const projId = registerProject('Mi Proyecto Virtual', 'VIRTUAL');
-      await loadProjectById(projId);
-    } catch (err: any) {
-      setErrorMsg('Error al cargar el entorno virtual: ' + err.message);
-      setLoading(false);
-    }
-  };
-
-  const handleZipImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    setErrorMsg(null);
-    setLoading(true);
-    try {
-      const virtualProject = registeredProjects.find(p => p.type === 'VIRTUAL');
-      if (virtualProject) {
-        throw new Error('Ya tienes un proyecto de Disco Virtual. Solo se permite uno.');
-      }
-
-      const zip = await JSZip.loadAsync(file);
-      await dbClear();
-      
-      let containsConfig = false;
-      for (const [relativePath, entry] of Object.entries(zip.files)) {
-        if (entry.dir) continue;
-        const normalized = normalizePath(relativePath);
-        if (normalized.endsWith('config.json')) containsConfig = true;
-        
-        const isBinary = normalized.includes('/attachments/');
-        if (isBinary) {
-          const blob = await entry.async('blob');
-          await dbSet(normalized, { content: blob, isBinary: true, lastModified: Date.now() });
-        } else {
-          const text = await entry.async('text');
-          await dbSet(normalized, { content: text, isBinary: false, lastModified: Date.now() });
-        }
-      }
-      
-      if (!containsConfig) throw new Error('Archivo ZIP no es un proyecto compatible. Debe contener config.json en su estructura raíz.');
-      
-      const projId = registerProject('Proyecto Importado', 'VIRTUAL');
-      await loadProjectById(projId);
-    } catch (err: any) {
-      setErrorMsg('Error al importar el ZIP: ' + err.message);
-      setLoading(false);
-    } finally {
-      e.target.value = '';
     }
   };
 
@@ -215,8 +150,8 @@ export default function ProjectBrowser() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Option A: Native File System */}
+            <div className="grid grid-cols-1 gap-4">
+              {/* Option: Native File System (only option now) */}
               <div 
                 onClick={handleSelectFSA}
                 className={`group border rounded-2xl p-5 cursor-pointer transition-all duration-300 flex flex-col text-left h-full ${
@@ -239,45 +174,6 @@ export default function ProjectBrowser() {
                   Dar acceso a carpeta <ArrowRight className="w-3 h-3" />
                 </span>
               </div>
-
-              {/* Option B: Simulated Sandbox Drive */}
-              <div 
-                onClick={handleSelectVirtual}
-                className={`group border rounded-2xl p-5 cursor-pointer transition-all duration-300 flex flex-col text-left h-full ${
-                  registeredProjects.some(p => p.type === 'VIRTUAL')
-                    ? 'border-border opacity-50 bg-muted cursor-not-allowed'
-                    : 'border-border bg-card hover:border-bento-orange/60 hover:shadow-card-hover'
-                }`}
-              >
-                <div className="w-10 h-10 rounded-xl bg-bento-orange-light flex items-center justify-center text-bento-orange mb-4 transition-colors">
-                  <Cpu className="w-5 h-5" />
-                </div>
-                <h3 className="font-semibold text-foreground text-sm font-heading">
-                  Disco Virtual en Navegador
-                  {registeredProjects.some(p => p.type === 'VIRTUAL') && <span className="text-[10px] bg-destructive/10 text-destructive font-mono px-2 py-0.5 rounded-full ml-1.5">Solo uno</span>}
-                </h3>
-                <p className="mt-1.5 text-muted-foreground text-xs leading-normal flex-1">
-                  Todo lo que hagas se almacenará en el <strong>almacenamiento local</strong> de tu navegador. Tus datos no salen de tu dispositivo.
-                </p>
-                <span className="mt-4 text-[11px] text-bento-orange font-medium group-hover:underline flex items-center gap-1">
-                  Crear Disco Virtual <ArrowRight className="w-3 h-3" />
-                </span>
-              </div>
-            </div>
-
-            <div className="flex justify-center pt-2">
-              <label 
-                className="cursor-pointer inline-flex items-center gap-1.5 px-4 py-2 bg-secondary hover:bg-muted border border-border rounded-xl text-foreground text-xs font-medium transition-colors"
-              >
-                <FileArchive className="w-4 h-4 text-muted-foreground" />
-                Importar desde ZIP
-                <input 
-                  type="file" 
-                  accept=".zip" 
-                  className="hidden" 
-                  onChange={handleZipImport}
-                />
-              </label>
             </div>
           </div>
         ) : registeredProjects.length === 0 ? (
@@ -345,15 +241,8 @@ export default function ProjectBrowser() {
                     onClick={() => handleOpenProject(project)}
                   >
                     <div className="flex items-start justify-between mb-2">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                        project.type === 'VIRTUAL' 
-                          ? 'bg-bento-orange-light text-bento-orange'
-                          : 'bg-bento-blue-light text-bento-blue'
-                      }`}>
-                        {project.type === 'VIRTUAL' 
-                          ? <Cpu className="w-4 h-4" />
-                          : <HardDrive className="w-4 h-4" />
-                        }
+                      <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-bento-blue-light text-bento-blue">
+                        <HardDrive className="w-4 h-4" />
                       </div>
                       <div className="flex items-center gap-1.5">
                         {/* Auth indicator */}
@@ -393,7 +282,7 @@ export default function ProjectBrowser() {
 
                     <h3 className="font-semibold text-foreground text-sm truncate">{project.name}</h3>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {project.type === 'VIRTUAL' ? 'Disco Virtual' : 'Carpeta Local'}
+                      Carpeta Local
                       {project.pathHint && <span className="ml-1">· {project.pathHint}</span>}
                     </p>
 

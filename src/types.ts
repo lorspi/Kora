@@ -141,7 +141,7 @@ export interface ProjectLocks {
 export interface RegisteredProject {
   id: string;
   name: string;
-  type: 'FSA_API' | 'VIRTUAL';
+  type: 'FSA_API';
   createdAt: number;
   /** Path hint for display purposes (FSA only) */
   pathHint?: string;
