@@ -76,7 +76,7 @@ export default function Sidebar() {
   const projectManagerRef = useRef<HTMLDivElement>(null);
   const [authStatuses, setAuthStatuses] = useState<Record<string, boolean>>({});
   
-  const { registeredProjects, unregisterProject, goToProjectBrowser, loadedProjectId, loadProjectById } = useProjectStore();
+  const { registeredProjects, registerProject, unregisterProject, goToProjectBrowser, loadedProjectId, loadProjectById } = useProjectStore();
 
   // Update auth statuses
   useEffect(() => {
@@ -87,6 +87,27 @@ export default function Sidebar() {
     }
     setAuthStatuses(statuses);
   }, [registeredProjects, showProjectManager]);
+
+  // Handle adding a new project directly from the dropdown
+  const handleAddNewProject = async () => {
+    setShowProjectManager(false);
+    try {
+      if (!('showDirectoryPicker' in window)) {
+        toast('Tu navegador no es compatible con la API de Acceso a Archivos Locales.', 'error');
+        return;
+      }
+      const directoryHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
+      const { saveDirectoryHandleWithKey } = await import('../lib/fs');
+      
+      const projId = registerProject('Cargando...', 'FSA_API');
+      await saveDirectoryHandleWithKey(directoryHandle, `fsa-handle-${projId}`);
+      await loadProjectById(projId);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        toast(err?.message || 'Error al agregar proyecto', 'error');
+      }
+    }
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -531,9 +552,18 @@ export default function Sidebar() {
                         </div>
                       </div>
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
-                          unregisterProject(project.id);
+                          const confirmed = await confirm({
+                            title: 'Desvincular proyecto',
+                            message: `¿Estás seguro de que deseas desvincular "${project.name}"? Los datos del proyecto no se eliminarán, solo se quitará de la lista.`,
+                            confirmLabel: 'Desvincular',
+                            cancelLabel: 'Cancelar',
+                            variant: 'danger'
+                          });
+                          if (confirmed) {
+                            unregisterProject(project.id);
+                          }
                         }}
                         className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
                         title="Desvincular proyecto"
@@ -552,6 +582,13 @@ export default function Sidebar() {
 
               {/* Actions */}
               <div className="border-t border-border p-2 flex flex-col gap-1">
+                <button
+                  onClick={handleAddNewProject}
+                  className="w-full px-3 py-1.5 bg-primary hover:opacity-90 rounded-lg text-[11px] font-bold text-primary-foreground transition-colors flex items-center gap-1.5 justify-center"
+                >
+                  <Plus className="w-3 h-3" />
+                  Vincular Nuevo Proyecto
+                </button>
                 <button
                   onClick={() => {
                     setShowProjectManager(false);

@@ -628,7 +628,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       });
 
       // Quick seed a initial list
-      await get().createList('Lista General 📋', '#3b82f6');
+      await get().createList('Lista General', '#3b82f6');
     },
 
     // Initialize new project from onboarding wizard
@@ -686,7 +686,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         await get().seedSampleProjectOnboarding(projectMeta, config, firstUser);
       } else {
         // Initialize blank project with one empty list
-        const blankList = await get().createListDirect('Lista General 📋', '#3b82f6');
+        const blankList = await get().createListDirect('Lista General', '#3b82f6');
         
         set({
           projectMeta,

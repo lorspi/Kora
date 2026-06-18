@@ -191,7 +191,7 @@ export default function App() {
                       <span>Base de Datos:</span>
                     </div>
                     <strong className="text-bento-blue font-semibold uppercase font-mono text-[11px]">
-                      Acceso Directo al Disco
+                      Carpeta local
                     </strong>
                   </div>
                 </div>
