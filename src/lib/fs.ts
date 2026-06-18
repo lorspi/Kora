@@ -74,6 +74,42 @@ export async function clearDirectoryHandle(): Promise<void> {
   });
 }
 
+/** Save an FSA handle with a custom key (for multi-project support) */
+export async function saveDirectoryHandleWithKey(handle: FileSystemDirectoryHandle, key: string): Promise<void> {
+  const db = await initHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(HANDLE_STORE_NAME);
+    const request = store.put(handle, key);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/** Load an FSA handle by custom key */
+export async function loadDirectoryHandleByKey(key: string): Promise<FileSystemDirectoryHandle | null> {
+  const db = await initHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE_NAME, 'readonly');
+    const store = tx.objectStore(HANDLE_STORE_NAME);
+    const request = store.get(key);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/** Delete an FSA handle by custom key */
+export async function deleteDirectoryHandleByKey(key: string): Promise<void> {
+  const db = await initHandleDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(HANDLE_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(HANDLE_STORE_NAME);
+    const request = store.delete(key);
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
 // Low-level DB accessors
 export async function dbSet(key: string, value: { content: string | Blob; isBinary: boolean; lastModified: number }): Promise<void> {
   const db = await initIndexedDB();

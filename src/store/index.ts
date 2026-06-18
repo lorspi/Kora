@@ -16,9 +16,10 @@ import {
   TaskStatus, 
   Subtask,
   TaskLock,
-  TrashItem
+  TrashItem,
+  RegisteredProject
 } from '../types';
-import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDirectoryHandle, clearDirectoryHandle, dbClear } from '../lib/fs';
+import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDirectoryHandle, clearDirectoryHandle, saveDirectoryHandleWithKey, loadDirectoryHandleByKey, deleteDirectoryHandleByKey, dbClear } from '../lib/fs';
 import { hashPassword } from '../lib/crypto';
 
 interface ProjectState {
@@ -140,6 +141,14 @@ interface ProjectState {
   // Mobile sidebar
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
+  
+  // Multi-project browser
+  registeredProjects: RegisteredProject[];
+  loadedProjectId: string | null;
+  loadProjectById: (projectId: string) => Promise<void>;
+  registerProject: (name: string, type: 'FSA_API' | 'VIRTUAL', pathHint?: string) => string;
+  unregisterProject: (projectId: string) => void;
+  goToProjectBrowser: () => void;
 }
 
 // Helper to save/load persistence state
@@ -168,6 +177,97 @@ function loadPersistenceState(): PersistenceState {
     console.warn('Could not load persistence state', e);
   }
   return { hasActiveProject: false, fsMode: 'VIRTUAL' };
+}
+
+// ── Multi-project persistence helpers ─────────────────────────────────────────
+
+const REGISTERED_PROJECTS_KEY = 'kora-registered-projects';
+const SAVED_SESSIONS_KEY = 'kora-saved-sessions';
+
+type SavedSessions = Record<string, { username: string; savedAt: number }>;
+
+function loadRegisteredProjects(): RegisteredProject[] {
+  try {
+    const raw = localStorage.getItem(REGISTERED_PROJECTS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn('Could not load registered projects', e);
+  }
+  return [];
+}
+
+function saveRegisteredProjects(projects: RegisteredProject[]) {
+  try {
+    localStorage.setItem(REGISTERED_PROJECTS_KEY, JSON.stringify(projects));
+  } catch (e) {
+    console.warn('Could not save registered projects', e);
+  }
+}
+
+function _loadSavedSessions(): SavedSessions {
+  try {
+    const raw = localStorage.getItem(SAVED_SESSIONS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn('Could not load saved sessions', e);
+  }
+  return {};
+}
+
+function _saveSavedSessions(sessions: SavedSessions) {
+  try {
+    localStorage.setItem(SAVED_SESSIONS_KEY, JSON.stringify(sessions));
+  } catch (e) {
+    console.warn('Could not save saved sessions', e);
+  }
+}
+
+/** Migrate old single-project persistence to the new multi-project system */
+function migrateOldProject(): RegisteredProject[] {
+  const persistence = loadPersistenceState();
+  if (!persistence.hasActiveProject) return [];
+
+  const existing = loadRegisteredProjects();
+  if (existing.length > 0) return existing;
+
+  const projectId = crypto.randomUUID();
+  const projName = persistence.fsMode === 'VIRTUAL' ? 'Mi Proyecto Virtual' : 'Mi Proyecto Local';
+  const project: RegisteredProject = {
+    id: projectId,
+    name: projName,
+    type: persistence.fsMode,
+    createdAt: Date.now()
+  };
+
+  // Migrate saved session
+  try {
+    const oldSessionRaw = localStorage.getItem(SAVED_SESSION_KEY);
+    if (oldSessionRaw) {
+      const oldSession = JSON.parse(oldSessionRaw);
+      const sessions = _loadSavedSessions();
+      sessions[projectId] = { username: oldSession.username, savedAt: oldSession.savedAt || Date.now() };
+      _saveSavedSessions(sessions);
+    }
+  } catch (e) { /* ignore */ }
+
+  const projects = [project];
+  saveRegisteredProjects(projects);
+
+  // Migrate FSA handle if needed (fire and forget - will complete before user clicks)
+  if (persistence.fsMode === 'FSA_API') {
+    (async () => {
+      try {
+        const handle = await loadDirectoryHandle();
+        if (handle) {
+          await saveDirectoryHandleWithKey(handle, `fsa-handle-${projectId}`);
+        }
+      } catch (e) {
+        console.warn('Could not migrate FSA handle', e);
+      }
+    })();
+  }
+
+  return projects;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => {
@@ -240,6 +340,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     showTrash: false,
     trashItems: [],
     showMediaExplorer: false,
+
+    // Multi-project browser state
+    registeredProjects: loadRegisteredProjects(),
+    loadedProjectId: null,
 
     // Read full project contents on load
     loadProjectDirectory: async (handle, mode) => {
@@ -366,15 +470,24 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         lists.sort((a, b) => a.createdAt - b.createdAt);
         tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
 
-        // Check for saved session (remember me)
+        // Check for saved session (remember me) — per-project first, then old global key
         let activeUser: SystemUser | null = null;
+        const currentProjectId = get().loadedProjectId;
         try {
-          const savedRaw = localStorage.getItem(SAVED_SESSION_KEY);
-          if (savedRaw) {
-            const saved = JSON.parse(savedRaw);
-            const matchedUser = users.find(u => u.username === saved.username);
-            if (matchedUser) {
-              activeUser = matchedUser;
+          if (currentProjectId) {
+            const sessions = _loadSavedSessions();
+            const saved = sessions[currentProjectId];
+            if (saved) {
+              const matchedUser = users.find(u => u.username === saved.username);
+              if (matchedUser) activeUser = matchedUser;
+            }
+          }
+          if (!activeUser) {
+            const savedRaw = localStorage.getItem(SAVED_SESSION_KEY);
+            if (savedRaw) {
+              const saved = JSON.parse(savedRaw);
+              const matchedUser = users.find(u => u.username === saved.username);
+              if (matchedUser) activeUser = matchedUser;
             }
           }
         } catch (e) {
@@ -406,6 +519,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         }
         savePersistenceState({ hasActiveProject: true, fsMode: mode });
 
+        // Update registered project name with real name from project.json
+        const loadedId = get().loadedProjectId;
+        if (loadedId && projectMeta) {
+          const currentProjects = loadRegisteredProjects();
+          const updatedProjects = currentProjects.map(p =>
+            p.id === loadedId ? { ...p, name: projectMeta.name } : p
+          );
+          saveRegisteredProjects(updatedProjects);
+          set({ registeredProjects: updatedProjects });
+        }
+
       } catch (err) {
         console.error('Failed to load project from folder', err);
         set({ isLoading: false });
@@ -413,45 +537,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
-    // Auto-initialize on app load
+    // Auto-initialize on app load — migrate old single-project to multi-project browser
     initialize: async () => {
-      const persistence = loadPersistenceState();
-      if (persistence.hasActiveProject) {
-        // Try to load the project with persisted mode
-        try {
-          if (persistence.fsMode === 'FSA_API') {
-            const savedHandle = await loadDirectoryHandle();
-            if (!savedHandle) {
-              throw new Error('No stored File System Access handle disponible.');
-            }
-            // Verify permissions before attempting to load.
-            // After closing a tab, the browser revokes FSA permissions and
-            // requires a new user gesture to re-grant them. queryPermission
-            // lets us detect this without triggering the error.
-            const permState = await (savedHandle as any).queryPermission({ mode: 'readwrite' });
-            if (permState !== 'granted') {
-              // Permissions lost — go back to LoadFolderScreen so the user
-              // can re-select the folder (which provides the user gesture needed).
-              console.info('FSA permissions not granted after tab restore, showing folder selection.');
-              savePersistenceState({ hasActiveProject: false, fsMode: 'VIRTUAL' });
-              await clearDirectoryHandle();
-              set({ isLoading: false });
-              return;
-            }
-            await get().loadProjectDirectory(savedHandle, 'FSA_API');
-          } else {
-            await get().loadProjectDirectory(null, 'VIRTUAL');
-          }
-        } catch (e) {
-          console.warn('Failed to auto-load persisted project', e);
-          // Clear invalid state
-          savePersistenceState({ hasActiveProject: false, fsMode: 'VIRTUAL' });
-          await clearDirectoryHandle();
-          set({ isLoading: false });
-        }
-      } else {
-        set({ isLoading: false });
+      // Try migration from old single-project system (old PERSISTENCE_KEY)
+      const migrated = migrateOldProject();
+      if (migrated.length > 0) {
+        set({ registeredProjects: migrated, isLoading: false });
+        return;
       }
+
+      // Projects are already loaded synchronously in the initial state from localStorage
+      set({ isLoading: false });
     },
 
     saveProjectConfig: async (config) => {
@@ -571,6 +667,23 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
       await adapter.writeTextFile('/activity/logs.json', JSON.stringify([], null, 2));
       await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
+
+      // Use existing loadedProjectId from initial registration (handleSelectVirtual/FSA)
+      // Update its name/type instead of creating a duplicate registration
+      const existingId = get().loadedProjectId;
+      if (existingId) {
+        const projects = loadRegisteredProjects();
+        const updated = projects.map(p =>
+          p.id === existingId ? { ...p, name: projectName } : p
+        );
+        saveRegisteredProjects(updated);
+        set({ registeredProjects: updated, loadedProjectId: existingId });
+      } else {
+        // Fallback: create new registration (should not happen)
+        const { fsMode } = get();
+        const registeredId = get().registerProject(projectName, fsMode);
+        set({ loadedProjectId: registeredId });
+      }
 
       if (useSampleData) {
         // Seed with sample data (using similar structure to seedSampleProject but adapted)
@@ -1514,13 +1627,23 @@ graph TD
 
       const hashToVerify = await hashPassword(password, user.salt);
       if (hashToVerify === user.passwordHash) {
-        // Save last opended session in config
+        // Save last opened session in config
         try {
           const configRaw = await adapter.readTextFile('/config.json');
           const config: ProjectConfig = JSON.parse(configRaw);
           config.lastOpenedBy = user.id;
           config.lastModified = Date.now();
           await adapter.writeTextFile('/config.json', JSON.stringify(config, null, 2));
+        } catch (e) {}
+
+        // Save per-project session
+        try {
+          const loadedProjectId = get().loadedProjectId;
+          if (loadedProjectId) {
+            const sessions = _loadSavedSessions();
+            sessions[loadedProjectId] = { username: user.username, savedAt: Date.now() };
+            _saveSavedSessions(sessions);
+          }
         } catch (e) {}
 
         set({ activeUser: user });
@@ -1531,11 +1654,21 @@ graph TD
     },
 
     logoutUser: () => {
-      // Clear saved session (remember me)
+      // Clear per-project saved session
+      const { loadedProjectId } = get();
+      if (loadedProjectId) {
+        const sessions = _loadSavedSessions();
+        if (sessions[loadedProjectId]) {
+          delete sessions[loadedProjectId];
+          _saveSavedSessions(sessions);
+        }
+      }
+      // Also clear old global session key
       try {
         localStorage.removeItem(SAVED_SESSION_KEY);
       } catch (e) {}
-      set({ activeUser: null, selectedTaskId: null, selectedDocId: null });
+      // Go back to project browser so the user sees the project list
+      get().goToProjectBrowser();
     },
 
     closeProject: async () => {
@@ -1550,11 +1683,12 @@ graph TD
         await dbClear();
       }
       
-      // Reset all state
+      // Reset all state but keep registered projects (they're persisted separately)
       set({
         adapter: null,
         fsMode: 'VIRTUAL',
         projectMeta: null,
+        projectConfig: null,
         users: [],
         activeUser: null,
         lists: [],
@@ -1569,7 +1703,99 @@ graph TD
         showMediaExplorer: false,
         showTrash: false,
         trashItems: [],
-        isLoading: false
+        isLoading: false,
+        loadedProjectId: null
+      });
+    },
+
+    // ─── Multi-Project Browser Methods ─────────────────────────────────────
+
+    registerProject: (name, type, pathHint?) => {
+      const projectId = crypto.randomUUID();
+      const project = { id: projectId, name, type, createdAt: Date.now(), pathHint };
+      const projects = [...get().registeredProjects, project];
+      saveRegisteredProjects(projects);
+      set({ registeredProjects: projects, loadedProjectId: projectId });
+      return projectId;
+    },
+
+    unregisterProject: (projectId) => {
+      const projects = get().registeredProjects.filter(p => p.id !== projectId);
+      saveRegisteredProjects(projects);
+      set({ registeredProjects: projects });
+
+      const sessions = _loadSavedSessions();
+      if (sessions[projectId]) {
+        delete sessions[projectId];
+        _saveSavedSessions(sessions);
+      }
+
+      (async () => {
+        try {
+          await deleteDirectoryHandleByKey('fsa-handle-' + projectId);
+        } catch (e) { /* ignore */ }
+      })();
+    },
+
+    loadProjectById: async (projectId) => {
+      const project = get().registeredProjects.find(p => p.id === projectId);
+      if (!project) {
+        console.error('Project not found', projectId);
+        return;
+      }
+
+      set({ loadedProjectId: projectId, isLoading: true });
+
+      try {
+        if (project.type === 'FSA_API') {
+          const handle = await loadDirectoryHandleByKey('fsa-handle-' + projectId);
+          if (!handle) {
+            throw new Error('No se pudo recuperar el manejador de la carpeta.');
+          }
+          const permState = await (handle).queryPermission({ mode: 'readwrite' });
+          if (permState !== 'granted') {
+            throw new Error('Permisos de carpeta perdidos.');
+          }
+          await get().loadProjectDirectory(handle, 'FSA_API');
+        } else {
+          await get().loadProjectDirectory(null, 'VIRTUAL');
+        }
+      } catch (err) {
+        console.error('Failed to load project', err);
+        set({ adapter: null, isLoading: false, loadedProjectId: null });
+        throw err;
+      }
+    },
+
+    goToProjectBrowser: () => {
+      localStorage.removeItem(PERSISTENCE_KEY);
+      clearDirectoryHandle();
+
+      // Re-read registered projects from localStorage to ensure the list is current
+      const savedProjects = loadRegisteredProjects();
+
+      set({
+        registeredProjects: savedProjects,
+        adapter: null,
+        fsMode: 'VIRTUAL',
+        projectMeta: null,
+        projectConfig: null,
+        users: [],
+        activeUser: null,
+        lists: [],
+        tasks: [],
+        docs: [],
+        locks: {},
+        logs: [],
+        isOnboarding: false,
+        selectedListId: null,
+        selectedTaskId: null,
+        selectedDocId: null,
+        showMediaExplorer: false,
+        showTrash: false,
+        trashItems: [],
+        isLoading: false,
+        loadedProjectId: null
       });
     },
 
@@ -2519,6 +2745,7 @@ graph TD
       }
       set({ selectedTaskId: taskId, selectedDocId: null, showTrash: false });
     },
+    setFsMode: (mode) => set({ fsMode: mode }),
     setDocHasUnsavedChanges: (has) => set({ docHasUnsavedChanges: has }),
 
     confirmPendingNavigation: () => {

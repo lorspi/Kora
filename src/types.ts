@@ -134,3 +134,15 @@ export interface TrashItem {
 export interface ProjectLocks {
   [taskId: string]: TaskLock;
 }
+
+/**
+ * A project registered in the project browser.
+ */
+export interface RegisteredProject {
+  id: string;
+  name: string;
+  type: 'FSA_API' | 'VIRTUAL';
+  createdAt: number;
+  /** Path hint for display purposes (FSA only) */
+  pathHint?: string;
+}

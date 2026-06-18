@@ -5,7 +5,7 @@
 
 import React, { useEffect, lazy, Suspense } from 'react';
 import { useProjectStore } from './store';
-import LoadFolderScreen from './components/LoadFolderScreen';
+import ProjectBrowser from './components/ProjectBrowser';
 import ProjectOnboarding from './components/ProjectOnboarding';
 import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
@@ -115,9 +115,9 @@ export default function App() {
     );
   }
 
-  // Stage 1: Load Directory Workspace
+  // Stage 1: Show Project Browser (multi-project selection)
   if (!adapter) {
-    return <LoadFolderScreen />;
+    return <ProjectBrowser />;
   }
 
   // Stage 2: Onboarding for new project

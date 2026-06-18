@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { useProjectStore } from '../store';
 import { KeyRound, UserPlus, LogIn, ChevronRight, User, Sparkles, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { saveSessionForProject } from '../store/sessions';
 import ThemeToggle from './ThemeToggle';
 import VersionBadge from './VersionBadge';
 
@@ -43,13 +44,19 @@ export default function AuthScreen() {
     try {
       await loginUser(username, password);
       if (rememberMe) {
+        const normalizedUsername = username.trim().toLowerCase();
         try {
           localStorage.setItem(SAVED_SESSION_KEY, JSON.stringify({
-            username: username.trim().toLowerCase(),
+            username: normalizedUsername,
             savedAt: Date.now()
           }));
         } catch (e) {
           // localStorage may be unavailable
+        }
+        // Also save per-project session
+        const state = useProjectStore.getState();
+        if (state.loadedProjectId) {
+          saveSessionForProject(state.loadedProjectId, normalizedUsername);
         }
       }
     } catch (err: any) {

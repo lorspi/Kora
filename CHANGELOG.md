@@ -40,3 +40,12 @@
 
 - **Quitado encabezado de los diagramas y tablas**
   Se eliminaron las etiquetas "mermaid" y "tabla (X filas)" del encabezado de los bloques de diagrama y tabla en el editor. El botón de edición ahora se alinea a la derecha.
+
+## [0.1.25-beta] — 2026-06-18
+
+### Added
+
+- **Persistencia de proyectos en el navegador**
+  La lista de proyectos registrados ahora se guarda en `localStorage` y persiste al recargar o cerrar y volver a abrir la pestaña. Se corrigieron tres problemas: (1) `initialize()` ahora siempre relee los proyectos de `localStorage` como fallback, (2) `initializeNewProject()` ya no crea registros duplicados sino que actualiza el proyecto existente, y (3) `goToProjectBrowser()` recarga explícitamente la lista desde `localStorage` al navegar de vuelta.
+
+### Fixed

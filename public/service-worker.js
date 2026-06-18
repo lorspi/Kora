@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kora-cache-0.1.24-beta';
+const CACHE_NAME = 'kora-cache-0.1.25-beta-v2';
 const ASSETS = [
   '/',
   '/index.html',
@@ -34,10 +34,17 @@ self.addEventListener('fetch', (event) => {
   // Never cache version.txt — always go to network for update checks
   if (event.request.url.includes('version.txt')) return;
 
-  // For navigation requests: network-first, fallback to cached index.html
+  // For navigation requests: network-first, cache the fresh response for offline fallback
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match('/index.html'))
+      fetch(event.request, { cache: 'no-cache' }).then((response) => {
+        // Cache the fresh page so offline fallback always has the latest version
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => {
+          try { cache.put('/', clone); } catch (e) {}
+        });
+        return response;
+      }).catch(() => caches.match('/'))
     );
     return;
   }
@@ -46,7 +53,7 @@ self.addEventListener('fetch', (event) => {
   // The hash in the filename already provides cache-busting at the HTTP level
   if (event.request.url.includes('/assets/')) {
     event.respondWith(
-      fetch(event.request).then((response) => {
+      fetch(event.request, { cache: 'no-cache' }).then((response) => {
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
@@ -63,7 +70,7 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
-      return fetch(event.request).then((response) => {
+      return fetch(event.request, { cache: 'no-cache' }).then((response) => {
         if (response.ok) {
           const clone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
