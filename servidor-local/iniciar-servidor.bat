@@ -1,5 +1,10 @@
 @echo off
 chcp 65001 > nul
+echo(
+echo ██ ▄█▀  ▄▄▄  ▄▄▄▄   ▄▄▄  
+echo ████   ██▀██ ██▄█▄ ██▀██ 
+echo ██ ▀█▄ ▀███▀ ██ ██ ██▀██
+echo(
 title Kora - Servidor Local
 powershell -NoProfile -Command "Write-Host ''; Write-Host '  [OK] Servidor iniciado correctamente' -ForegroundColor Green; Write-Host ''; Write-Host '  >>  Abriendo http://localhost:8000 ...' -ForegroundColor Cyan; Write-Host ''; Write-Host '  [!] NO CIERRES ESTA VENTANA' -ForegroundColor Yellow -BackgroundColor DarkRed; Write-Host '      El servidor se detendra si la cierras.' -ForegroundColor Yellow; Write-Host ''"
 powershell -NoProfile -Command "Start-Sleep -Milliseconds 500"
