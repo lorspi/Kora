@@ -84,6 +84,9 @@
 
 ### Fixed
 
+- **Auto-actualización forzada al detectar nueva versión desplegada**
+  Se incrustó la versión de compilación (`__APP_VERSION__`) en el bundle JS mediante Vite `define`. Al cargar la app, se compara esta versión compilada contra `version.txt` del servidor. Si hay diferencia, se eliminan todos los cachés del Service Worker, se desregistra el SW y se recarga la página con un parámetro `?v=...` que evita la caché HTTP del navegador. Todo esto ocurre automáticamente 3 segundos después de detectar la nueva versión, sin intervención del usuario y sin perder los proyectos, sesiones ni auth almacenados en `localStorage`.
+
 ### Changed
 
 - **Orden inverso y auto-scroll en notas y actividad de tareas**

@@ -2,9 +2,16 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig} from 'vite';
+import {readFileSync} from 'fs';
+
+// Embed the build version so the app can detect stale SW caches at runtime
+const APP_VERSION = readFileSync('public/version.txt', 'utf-8').trim();
 
 export default defineConfig(() => {
   return {
+    define: {
+      __APP_VERSION__: JSON.stringify(APP_VERSION),
+    },
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
