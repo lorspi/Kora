@@ -223,6 +223,60 @@ body {
   filter: none;
 }
 
+/* ===== Accessibility: Font Scaling ===== */
+.text-scale-sm {
+  font-size: 85%;
+}
+
+.text-scale-lg {
+  font-size: 115%;
+}
+
+.text-scale-xl {
+  font-size: 130%;
+}
+
+/* ===== Accessibility: High Contrast ===== */
+.high-contrast {
+  --background: 0 0% 100%;
+  --foreground: 0 0% 0%;
+  --card: 0 0% 98%;
+  --card-foreground: 0 0% 0%;
+  --muted: 0 0% 93%;
+  --muted-foreground: 0 0% 15%;
+  --border: 0 0% 50%;
+  --input: 0 0% 50%;
+  --ring: 0 0% 0%;
+  --bento-green: 142 90% 30%;
+  --bento-orange: 28 95% 40%;
+  --bento-blue: 210 90% 35%;
+  --bento-yellow: 45 95% 40%;
+}
+
+.high-contrast.dark {
+  --background: 0 0% 0%;
+  --foreground: 0 0% 100%;
+  --card: 0 0% 8%;
+  --card-foreground: 0 0% 100%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 85%;
+  --border: 0 0% 60%;
+  --input: 0 0% 60%;
+  --ring: 0 0% 100%;
+  --bento-green: 142 80% 55%;
+  --bento-orange: 28 90% 60%;
+  --bento-blue: 210 85% 60%;
+  --bento-yellow: 45 95% 60%;
+}
+
+.high-contrast * {
+  border-color: hsl(var(--border)) !important;
+}
+
+.high-contrast .text-muted-foreground {
+  opacity: 1 !important;
+}
+
 /* ===== Mobile Responsive Layout ===== */
 @media (min-width: 1024px) {
   #app-sidebar {

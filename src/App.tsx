@@ -15,6 +15,7 @@ import MediaExplorer from './components/MediaExplorer';
 import TrashView from './components/TrashView';
 import ProjectInfoCards from './components/ProjectInfoCards';
 import AboutKora from './components/AboutKora';
+import AccessibilitySection from './components/AccessibilitySection';
 import TaskDrawer from './components/TaskDrawer';
 import SearchDialog from './components/SearchDialog';
 import { 
@@ -239,6 +240,9 @@ export default function App() {
 
                 {/* Project Settings Cards */}
                 <ProjectInfoCards />
+
+                {/* Accessibility Section */}
+                <AccessibilitySection />
 
               </div>
             </div>

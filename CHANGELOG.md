@@ -79,6 +79,9 @@
 - **Opción "Salir sin guardar" en documento con cambios**
   Al intentar salir de un documento con cambios sin guardar, el modal ahora ofrece tres opciones: "Guardar" (guarda y sale), "Salir sin guardar" (descarta los cambios y sale) y "Cancelar" (permanece en el documento). Se agregó el campo `neutralLabel` al sistema de diálogos `confirm()` para soportar un tercer botón opcional.
 
+- **Apartado de accesibilidad en el dashboard**
+  Se agregó una sección de accesibilidad en el dashboard con controles para ajustar el tamaño general de la fuente (4 niveles: Pequeño, Normal, Grande, Extra Grande) y un interruptor para activar o desactivar el modo de alto contraste.
+
 ### Fixed
 
 ### Changed
