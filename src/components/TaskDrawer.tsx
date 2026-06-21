@@ -88,7 +88,34 @@ export default function TaskDrawer() {
   const heartbeatTimer = useRef<any>(null);
   const locksRef = useRef(locks);
   const descTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const notesScrollRef = useRef<HTMLDivElement>(null);
+  const activityScrollRef = useRef<HTMLDivElement>(null);
   locksRef.current = locks;
+
+  // Auto-scroll notes/activity to bottom when task, tab, or content changes
+  // Uses scrollIntoView on the last child for precision, plus setTimeout fallback
+  // to catch async content (e.g. images loading) that shifts layout after render
+  const scrollToBottom = (el: HTMLDivElement | null) => {
+    if (!el) return;
+    const doScroll = () => {
+      const last = el.lastElementChild as HTMLElement | null;
+      if (last) {
+        last.scrollIntoView({ block: 'end', behavior: 'instant' });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(doScroll));
+    setTimeout(doScroll, 150);
+  };
+
+  useEffect(() => {
+    if (activityTab === 'notes') {
+      scrollToBottom(notesScrollRef.current);
+    } else if (activityTab === 'activity') {
+      scrollToBottom(activityScrollRef.current);
+    }
+  }, [task?.id, activityTab, logs.length]);
 
   // Update locked-by-other status reactively when locks change
   useEffect(() => {
@@ -579,8 +606,8 @@ export default function TaskDrawer() {
             {/* Notes tab */}
             {activityTab === 'notes' && (
               <div className="flex-1 overflow-hidden flex flex-col gap-3">
-                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                  {taskLogs.filter(l => !!l.comment).map(log => {
+                <div ref={notesScrollRef} className="flex-1 overflow-y-auto space-y-3 pr-1">
+                  {taskLogs.filter(l => !!l.comment).reverse().map(log => {
                     const logUser = users.find(u => u.id === log.userId);
                     const isOwnComment = log.userId === activeUser?.id;
                     const canDeleteComment = isOwnComment || activeUser?.isSuperAdmin;
@@ -717,8 +744,8 @@ export default function TaskDrawer() {
 
             {/* Activity tab */}
             {activityTab === 'activity' && (
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                {taskLogs.filter(l => !l.comment).map(log => {
+              <div ref={activityScrollRef} className="flex-1 overflow-y-auto space-y-3 pr-1">
+                {taskLogs.filter(l => !l.comment).reverse().map(log => {
                   const logUser = users.find(u => u.id === log.userId);
                   const canDeleteActivity = activeUser?.isSuperAdmin;
                   return (

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { SystemUser, TaskActivityLog } from '../types';
 import {
   Send,
@@ -80,6 +80,34 @@ export default function MobileNotesDrawer({
   const drawerRef = useRef<HTMLDivElement>(null);
   const dragStartY = useRef<number>(0);
   const dragStartHeight = useRef<DrawerHeight>('collapsed');
+  const notesScrollRef = useRef<HTMLDivElement>(null);
+  const activityScrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when content, tab, or drawer height changes
+  // Uses scrollIntoView on the last child for precision, plus setTimeout fallback
+  // to catch async content (e.g. images loading) that shifts layout after render
+  const scrollToBottom = (el: HTMLDivElement | null) => {
+    if (!el) return;
+    const doScroll = () => {
+      const last = el.lastElementChild as HTMLElement | null;
+      if (last) {
+        last.scrollIntoView({ block: 'end', behavior: 'instant' });
+      } else {
+        el.scrollTop = el.scrollHeight;
+      }
+    };
+    requestAnimationFrame(() => requestAnimationFrame(doScroll));
+    setTimeout(doScroll, 150);
+  };
+
+  useEffect(() => {
+    if (drawerHeight === 'collapsed') return;
+    if (activityTab === 'notes') {
+      scrollToBottom(notesScrollRef.current);
+    } else if (activityTab === 'activity') {
+      scrollToBottom(activityScrollRef.current);
+    }
+  }, [activityTab, drawerHeight, taskLogs.length]);
 
   const heightClass = {
     collapsed: 'h-[3.5rem]',
@@ -169,8 +197,8 @@ export default function MobileNotesDrawer({
           {activityTab === 'notes' && (
             <div className="flex-1 flex flex-col overflow-hidden gap-2">
               {/* Notes list */}
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                {taskLogs.filter(l => !!l.comment).map(log => {
+              <div ref={notesScrollRef} className="flex-1 overflow-y-auto space-y-3 pr-1">
+                {taskLogs.filter(l => !!l.comment).reverse().map(log => {
                   const logUser = users.find(u => u.id === log.userId);
                   const isOwnComment = log.userId === activeUser?.id;
                   const canDeleteComment = isOwnComment || activeUser?.isSuperAdmin;
@@ -295,8 +323,8 @@ export default function MobileNotesDrawer({
           )}
 
           {activityTab === 'activity' && (
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-              {taskLogs.filter(l => !l.comment).map(log => {
+            <div ref={activityScrollRef} className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {taskLogs.filter(l => !l.comment).reverse().map(log => {
                 const logUser = users.find(u => u.id === log.userId);
                 const canDeleteActivity = activeUser?.isSuperAdmin;
                 return (

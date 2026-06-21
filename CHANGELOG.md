@@ -83,4 +83,7 @@
 
 ### Changed
 
+- **Orden inverso y auto-scroll en notas y actividad de tareas**
+  Se invirtió el orden de visualización de notas y registros de actividad para que los más recientes aparezcan al final (orden tradicional). El scroll del contenedor se posiciona automáticamente al fondo al abrir una tarea o cambiar de pestaña, mostrando el último registro. Se usó `scrollIntoView` con doble `requestAnimationFrame` y `setTimeout` de respaldo para capturar contenido asíncrono como imágenes.
+
 ### Removed
