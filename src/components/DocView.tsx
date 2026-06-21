@@ -1464,20 +1464,24 @@ export default function DocView() {
     isHandlingRef.current = true;
 
     const handlePendingNavigation = async () => {
-      const shouldSave = await confirm({
+      const result = await confirm({
         title: 'Cambios sin guardar',
         message: 'Tienes cambios sin guardar en este documento. ¿Quieres guardarlos antes de salir?',
         confirmLabel: 'Guardar',
         cancelLabel: 'Cancelar',
+        neutralLabel: 'Salir sin guardar',
       });
 
-      if (shouldSave) {
+      if (result === true) {
         const saved = await handleSave();
         if (saved) {
           confirmPendingNavigation();
         } else {
           cancelPendingNavigation();
         }
+      } else if (result === 'neutral') {
+        // Exit without saving — navigate away discarding changes
+        confirmPendingNavigation();
       } else {
         cancelPendingNavigation();
       }

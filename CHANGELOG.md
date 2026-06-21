@@ -41,7 +41,7 @@
 - **Quitado encabezado de los diagramas y tablas**
   Se eliminaron las etiquetas "mermaid" y "tabla (X filas)" del encabezado de los bloques de diagrama y tabla en el editor. El botón de edición ahora se alinea a la derecha.
 
-## [0.1.25-beta] — 2026-06-18
+## [0.1.26-beta] — 2026-06-21
 
 ### Added
 
@@ -71,3 +71,16 @@
 
 - **Funcionalidad de disco virtual**
   Se eliminó el modo de disco virtual (IndexedDB) debido a bugs persistentes y problemas de compatibilidad entre navegadores. La aplicación ahora opera exclusivamente con acceso directo al sistema de archivos local.
+
+## [0.1.25-beta] — 2026-06-18
+
+### Added
+
+- **Opción "Salir sin guardar" en documento con cambios**
+  Al intentar salir de un documento con cambios sin guardar, el modal ahora ofrece tres opciones: "Guardar" (guarda y sale), "Salir sin guardar" (descarta los cambios y sale) y "Cancelar" (permanece en el documento). Se agregó el campo `neutralLabel` al sistema de diálogos `confirm()` para soportar un tercer botón opcional.
+
+### Fixed
+
+### Changed
+
+### Removed

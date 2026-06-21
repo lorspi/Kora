@@ -21,6 +21,7 @@ interface ConfirmOptions {
   message: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  neutralLabel?: string;
   variant?: 'danger' | 'default';
 }
 
@@ -34,7 +35,7 @@ interface PromptOptions {
 }
 
 interface ConfirmState extends ConfirmOptions {
-  resolve: (value: boolean) => void;
+  resolve: (value: boolean | 'neutral') => void;
 }
 
 interface PromptState extends PromptOptions {
@@ -80,7 +81,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  const confirm = useCallback((options: ConfirmOptions): Promise<boolean> => {
+  const confirm = useCallback((options: ConfirmOptions): Promise<boolean | 'neutral'> => {
     return new Promise(resolve => {
       setConfirmState({ ...options, resolve });
     });
@@ -92,7 +93,7 @@ export function UIProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const handleConfirmResponse = (value: boolean) => {
+  const handleConfirmResponse = (value: boolean | 'neutral') => {
     confirmState?.resolve(value);
     setConfirmState(null);
   };
@@ -172,9 +173,9 @@ function ConfirmModal({
   onResponse,
 }: {
   state: ConfirmState;
-  onResponse: (value: boolean) => void;
+  onResponse: (value: boolean | 'neutral') => void;
 }) {
-  const { title, message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', variant = 'default' } = state;
+  const { title, message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', neutralLabel, variant = 'default' } = state;
   const isDanger = variant === 'danger';
 
   return (
@@ -208,6 +209,14 @@ function ConfirmModal({
 
         {/* Actions */}
         <div className="flex gap-2 px-5 pb-5 justify-end">
+          {neutralLabel && (
+            <button
+              onClick={() => onResponse('neutral')}
+              className="px-4 py-2 text-xs font-semibold rounded-xl bg-secondary hover:bg-accent border border-border text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              {neutralLabel}
+            </button>
+          )}
           <button
             onClick={() => onResponse(false)}
             className="px-4 py-2 text-xs font-semibold rounded-xl bg-secondary hover:bg-accent border border-border text-foreground transition-colors cursor-pointer"
