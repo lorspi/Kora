@@ -41,7 +41,7 @@
 - **Quitado encabezado de los diagramas y tablas**
   Se eliminaron las etiquetas "mermaid" y "tabla (X filas)" del encabezado de los bloques de diagrama y tabla en el editor. El botón de edición ahora se alinea a la derecha.
 
-## [0.1.26-beta] — 2026-06-21
+## [0.1.25-beta] — 2026-06-18
 
 ### Added
 
@@ -72,7 +72,7 @@
 - **Funcionalidad de disco virtual**
   Se eliminó el modo de disco virtual (IndexedDB) debido a bugs persistentes y problemas de compatibilidad entre navegadores. La aplicación ahora opera exclusivamente con acceso directo al sistema de archivos local.
 
-## [0.1.25-beta] — 2026-06-18
+## [0.1.26-beta] — 2026-06-21
 
 ### Added
 
@@ -91,5 +91,3 @@
 
 - **Orden inverso y auto-scroll en notas y actividad de tareas**
   Se invirtió el orden de visualización de notas y registros de actividad para que los más recientes aparezcan al final (orden tradicional). El scroll del contenedor se posiciona automáticamente al fondo al abrir una tarea o cambiar de pestaña, mostrando el último registro. Se usó `scrollIntoView` con doble `requestAnimationFrame` y `setTimeout` de respaldo para capturar contenido asíncrono como imágenes.
-
-### Removed
