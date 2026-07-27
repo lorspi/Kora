@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import { loadSavedSessions } from '../store/sessions';
+import { saveDirectoryHandleWithKey } from '../lib/fs';
 
 export default function Sidebar() {
   const { 
@@ -107,7 +108,6 @@ export default function Sidebar() {
         return;
       }
       const directoryHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-      const { saveDirectoryHandleWithKey } = await import('../lib/fs');
       
       const projId = registerProject('Cargando...', 'FSA_API');
       await saveDirectoryHandleWithKey(directoryHandle, `fsa-handle-${projId}`);

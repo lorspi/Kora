@@ -16,6 +16,7 @@ import VersionBadge from './VersionBadge';
 import { useUpdateCheck } from '../hooks/useVersion';
 import { loadSavedSessions } from '../store/sessions';
 import { useUI } from '../lib/ui';
+import { saveDirectoryHandleWithKey } from '../lib/fs';
 
 export default function ProjectBrowser() {
   const { registeredProjects, registerProject, loadProjectById, isLoading, unregisterProject } = useProjectStore();
@@ -61,7 +62,6 @@ export default function ProjectBrowser() {
         throw new Error('Tu navegador no es compatible con la API de Acceso a Archivos Locales. Usa Chrome o Edge.');
       }
       const directoryHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-      const { saveDirectoryHandleWithKey } = await import('../lib/fs');
       
       // Register the project first (we'll get the real name later from project.json)
       const projId = registerProject('Cargando...', 'FSA_API');
