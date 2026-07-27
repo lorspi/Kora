@@ -91,3 +91,10 @@
 
 - **Orden inverso y auto-scroll en notas y actividad de tareas**
   Se invirtió el orden de visualización de notas y registros de actividad para que los más recientes aparezcan al final (orden tradicional). El scroll del contenedor se posiciona automáticamente al fondo al abrir una tarea o cambiar de pestaña, mostrando el último registro. Se usó `scrollIntoView` con doble `requestAnimationFrame` y `setTimeout` de respaldo para capturar contenido asíncrono como imágenes.
+
+## [0.1.27-beta] — 2026-07-27
+
+### Added
+
+- **Título dinámico en la pestaña del navegador**
+  La pestaña ahora muestra "NombreDelProyecto — Kora" cuando hay un proyecto cargado, y vuelve a "Kora" al cerrar el proyecto. El título se actualiza automáticamente al renombrar el proyecto desde la configuración.

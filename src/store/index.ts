@@ -2456,6 +2456,7 @@ graph TD
       const updated: ProjectMetadata = { ...projectMeta, name, description };
       await adapter.writeTextFile('/project.json', JSON.stringify(updated, null, 2));
       set({ projectMeta: updated });
+      document.title = `${name} — Kora`;
     },
 
     updateUser: async (userId, updates) => {

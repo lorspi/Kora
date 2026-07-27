@@ -79,6 +79,11 @@ export default function App() {
     closeProject
   } = useProjectStore();
 
+  // Update browser tab title with project name
+  useEffect(() => {
+    document.title = projectMeta?.name ? `${projectMeta.name} — Kora` : 'Kora';
+  }, [projectMeta?.name]);
+
   // Initialize the app on load
   useEffect(() => {
     // Check for reset parameter
