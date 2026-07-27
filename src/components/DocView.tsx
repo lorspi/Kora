@@ -1332,6 +1332,7 @@ export default function DocView() {
     deleteDoc, 
     uploadAttachment, 
     resolveAttachmentUrl,
+    renameDocFile,
     adapter,
     activeUser,
     locks,
@@ -1359,6 +1360,8 @@ export default function DocView() {
   const [loading, setLoading] = useState(false);
   const [focusedBlockId, setFocusedBlockId] = useState<string | null>(null);
   const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
+  const [editingFilename, setEditingFilename] = useState(false);
+  const [filenameValue, setFilenameValue] = useState('');
 
   // Undo/Redo history
   const historyRef = useRef<{ past: Block[][]; future: Block[][] }>({ past: [], future: [] });
@@ -1973,7 +1976,47 @@ export default function DocView() {
           />
           <div className="text-[10px] text-muted-foreground font-mono px-2 mt-0.5 flex items-center gap-1 truncate">
             <span>Formato: Markdown legible. Archivo:</span>
-            <span className="text-foreground font-semibold truncate">/docs/{docMeta.filename}</span>
+            {editingFilename ? (
+              <form
+                className="inline-flex items-center gap-1"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (filenameValue.trim() && selectedDocId) {
+                    await renameDocFile(selectedDocId, filenameValue);
+                  }
+                  setEditingFilename(false);
+                }}
+              >
+                <span className="text-muted-foreground">/docs/{docMeta.folder ? `${docMeta.folder}/` : ''}</span>
+                <input
+                  type="text"
+                  autoFocus
+                  className="bg-card border border-input rounded px-1 py-0 text-[10px] font-mono text-foreground focus:outline-none focus:border-ring w-32"
+                  value={filenameValue}
+                  onChange={(e) => setFilenameValue(e.target.value)}
+                  onBlur={async () => {
+                    if (filenameValue.trim() && selectedDocId) {
+                      await renameDocFile(selectedDocId, filenameValue);
+                    }
+                    setEditingFilename(false);
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Escape') setEditingFilename(false); }}
+                />
+              </form>
+            ) : (
+              <button
+                onClick={() => {
+                  if (!isLockedByOther) {
+                    setFilenameValue(docMeta.filename);
+                    setEditingFilename(true);
+                  }
+                }}
+                className="text-foreground font-semibold truncate hover:underline hover:text-bento-blue transition-colors cursor-pointer"
+                title="Clic para renombrar archivo"
+              >
+                /docs/{docMeta.folder ? `${docMeta.folder}/` : ''}{docMeta.filename}
+              </button>
+            )}
           </div>
         </div>
 

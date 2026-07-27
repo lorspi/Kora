@@ -28,6 +28,11 @@ import {
   ChevronLeft,
   Trash as TrashIcon,
   FolderOpen,
+  FolderPlus,
+  ChevronRight,
+  ChevronDown,
+  Pencil,
+  Check,
   HardDrive,
   ArrowRight,
   Home
@@ -46,6 +51,11 @@ export default function Sidebar() {
     createList,
     createDoc,
     scanDocuments,
+    createDocFolder,
+    moveDocToFolder,
+    getDocFolders,
+    renameDocFolder,
+    deleteDocFolder,
     selectedListId,
     selectedDocId,
     setSelectedList,
@@ -124,6 +134,15 @@ export default function Sidebar() {
 
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [newDocTitle, setNewDocTitle] = useState('');
+  const [showAddFolder, setShowAddFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [docFolders, setDocFolders] = useState<string[]>([]);
+  const [newDocFolder, setNewDocFolder] = useState<string>('');
+  const [editingFolder, setEditingFolder] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState('');
+  const [draggedDocId, setDraggedDocId] = useState<string | null>(null);
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
 
   const LIST_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#db2777', '#06b6d4'];
 
@@ -144,8 +163,9 @@ export default function Sidebar() {
     if (!newDocTitle.trim()) return;
     try {
       const docHeader = `# ${newDocTitle}\n\nEscribe contenido en Markdown aquí...\n`;
-      await createDoc(newDocTitle, docHeader);
+      await createDoc(newDocTitle, docHeader, newDocFolder || undefined);
       setNewDocTitle('');
+      setNewDocFolder('');
       setShowAddDoc(false);
     } catch (e) {
       toast('Error al crear el documento', 'error');
@@ -180,6 +200,136 @@ export default function Sidebar() {
     } catch (e) {
       toast('Error al escanear documentos', 'error');
     }
+  };
+
+  // Load doc folders from filesystem
+  useEffect(() => {
+    getDocFolders().then(setDocFolders).catch(() => {});
+  }, [docs]);
+
+  const toggleFolder = (folder: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folder)) next.delete(folder);
+      else next.add(folder);
+      return next;
+    });
+  };
+
+  const handleAddFolderSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newFolderName.trim()) return;
+    try {
+      await createDocFolder(newFolderName);
+      const updated = await getDocFolders();
+      setDocFolders(updated);
+      setNewFolderName('');
+      setShowAddFolder(false);
+      toast('Carpeta creada', 'success');
+    } catch (err) {
+      toast('Error al crear carpeta', 'error');
+    }
+  };
+
+  const handleRenameFolderSubmit = async (oldName: string) => {
+    const trimmed = editingFolderName.trim();
+    if (!trimmed || trimmed === oldName) {
+      setEditingFolder(null);
+      return;
+    }
+    try {
+      await renameDocFolder(oldName, trimmed);
+      const updated = await getDocFolders();
+      setDocFolders(updated);
+      // Update expanded state if needed
+      setExpandedFolders(prev => {
+        if (!prev.has(oldName)) return prev;
+        const next = new Set(prev);
+        next.delete(oldName);
+        next.add(trimmed.replace(/[<>:"/\\|?*]/g, '_').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, ''));
+        return next;
+      });
+      setEditingFolder(null);
+      toast('Carpeta renombrada', 'success');
+    } catch (err) {
+      toast('Error al renombrar carpeta', 'error');
+    }
+  };
+
+  const handleDeleteFolder = async (folderName: string) => {
+    const folderDocs = docs.filter(d => d.folder === folderName);
+    const message = folderDocs.length > 0
+      ? `Los ${folderDocs.length} documento(s) que contiene se moverán a la raíz.`
+      : 'Esta carpeta está vacía.';
+    
+    const confirmed = await confirm({
+      title: `¿Eliminar la carpeta "${folderName}"?`,
+      message,
+      confirmLabel: 'Eliminar',
+      cancelLabel: 'Cancelar',
+      variant: 'danger'
+    });
+    if (!confirmed) return;
+    
+    try {
+      await deleteDocFolder(folderName);
+      const updated = await getDocFolders();
+      setDocFolders(updated);
+      setExpandedFolders(prev => {
+        const next = new Set(prev);
+        next.delete(folderName);
+        return next;
+      });
+      toast('Carpeta eliminada', 'success');
+    } catch (err) {
+      toast('Error al eliminar carpeta', 'error');
+    }
+  };
+
+  const handleDocDragStart = (e: React.DragEvent, docId: string) => {
+    setDraggedDocId(docId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', docId);
+  };
+
+  const handleDocDragEnd = () => {
+    setDraggedDocId(null);
+    setDragOverFolder(null);
+  };
+
+  const handleFolderDragOver = (e: React.DragEvent, folder: string | null) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverFolder(folder);
+  };
+
+  const handleFolderDragLeave = () => {
+    setDragOverFolder(null);
+  };
+
+  const handleFolderDrop = async (e: React.DragEvent, folder: string | null) => {
+    e.preventDefault();
+    setDragOverFolder(null);
+    if (!draggedDocId) return;
+    
+    const doc = docs.find(d => d.id === draggedDocId);
+    if (!doc) return;
+    
+    // Don't move if already in same folder
+    if ((doc.folder || null) === folder) {
+      setDraggedDocId(null);
+      return;
+    }
+
+    try {
+      await moveDocToFolder(draggedDocId, folder);
+      if (folder) {
+        setExpandedFolders(prev => new Set([...prev, folder]));
+      }
+    } catch (err) {
+      toast('Error al mover documento', 'error');
+    }
+    setDraggedDocId(null);
   };
 
   return (
@@ -395,6 +545,13 @@ export default function Sidebar() {
                 <RefreshCw className="w-3.5 h-3.5" />
               </button>
               <button 
+                onClick={() => setShowAddFolder(!showAddFolder)}
+                className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-bento-green transition-colors"
+                title="Nueva Carpeta"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+              </button>
+              <button 
                 onClick={() => setShowAddDoc(!showAddDoc)}
                 className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-bento-orange transition-colors"
                 title="Nuevo Doc"
@@ -403,6 +560,34 @@ export default function Sidebar() {
               </button>
             </div>
           </div>
+
+          {showAddFolder && (
+            <form onSubmit={handleAddFolderSubmit} className="p-2 bg-secondary rounded-xl mb-2 mx-1 border border-border space-y-2">
+              <input 
+                type="text" 
+                required
+                className="w-full bg-card border border-input rounded-lg px-2 py-1 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring"
+                placeholder="Nombre de carpeta..." 
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+              />
+              <div className="flex gap-1.5 pt-1">
+                <button 
+                  type="button" 
+                  onClick={() => setShowAddFolder(false)}
+                  className="flex-1 bg-muted hover:bg-accent py-1 rounded text-[10px] text-muted-foreground"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 bg-primary hover:opacity-90 py-1 rounded text-[10px] text-primary-foreground font-semibold"
+                >
+                  Crear
+                </button>
+              </div>
+            </form>
+          )}
 
           {showAddDoc && (
             <form onSubmit={handleAddDocSubmit} className="p-2 bg-secondary rounded-xl mb-2 mx-1 border border-border space-y-2">
@@ -414,6 +599,18 @@ export default function Sidebar() {
                 value={newDocTitle}
                 onChange={(e) => setNewDocTitle(e.target.value)}
               />
+              {docFolders.length > 0 && (
+                <select
+                  className="w-full bg-card border border-input rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring"
+                  value={newDocFolder}
+                  onChange={(e) => setNewDocFolder(e.target.value)}
+                >
+                  <option value="">Sin carpeta (raíz)</option>
+                  {docFolders.map(f => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              )}
               <div className="flex gap-1.5 pt-1">
                 <button 
                   type="button" 
@@ -433,21 +630,127 @@ export default function Sidebar() {
           )}
 
           <div className="space-y-0.5">
-            {docs.map(d => (
-              <button
-                key={d.id}
-                onClick={() => setSelectedDoc(d.id)}
-                className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
-                  selectedDocId === d.id 
-                    ? 'bg-bento-orange-light text-bento-orange border-l-2 border-bento-orange font-bold' 
-                    : 'hover:bg-accent text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5 shrink-0" />
-                <span className="text-xs font-semibold truncate flex-1">{d.title}</span>
-              </button>
-            ))}
-            {docs.length === 0 && (
+            {/* Root-level drop zone */}
+            <div
+              onDragOver={(e) => handleFolderDragOver(e, null)}
+              onDragLeave={handleFolderDragLeave}
+              onDrop={(e) => handleFolderDrop(e, null)}
+              className={`rounded-lg transition-colors ${dragOverFolder === null && draggedDocId ? 'bg-bento-orange/10 ring-1 ring-bento-orange/30' : ''}`}
+            >
+              {/* Root-level docs (no folder) */}
+              {docs.filter(d => !d.folder).map(d => (
+                <button
+                  key={d.id}
+                  draggable
+                  onDragStart={(e) => handleDocDragStart(e, d.id)}
+                  onDragEnd={handleDocDragEnd}
+                  onClick={() => setSelectedDoc(d.id)}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors cursor-grab active:cursor-grabbing ${
+                    selectedDocId === d.id 
+                      ? 'bg-bento-orange-light text-bento-orange border-l-2 border-bento-orange font-bold' 
+                      : 'hover:bg-accent text-muted-foreground hover:text-foreground'
+                  } ${draggedDocId === d.id ? 'opacity-50' : ''}`}
+                >
+                  <FileText className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-xs font-semibold truncate flex-1">{d.title}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Folder groups */}
+            {docFolders.map(folder => {
+              const folderDocs = docs.filter(d => d.folder === folder);
+              const isExpanded = expandedFolders.has(folder);
+              const isEditing = editingFolder === folder;
+              const isDragOver = dragOverFolder === folder && draggedDocId;
+              return (
+                <div
+                  key={folder}
+                  onDragOver={(e) => handleFolderDragOver(e, folder)}
+                  onDragLeave={handleFolderDragLeave}
+                  onDrop={(e) => handleFolderDrop(e, folder)}
+                  className={`rounded-lg transition-colors ${isDragOver ? 'bg-bento-yellow/10 ring-1 ring-bento-yellow/30' : ''}`}
+                >
+                  {isEditing ? (
+                    <form
+                      onSubmit={(e) => { e.preventDefault(); handleRenameFolderSubmit(folder); }}
+                      className="flex items-center gap-1 px-2.5 py-1"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 shrink-0 text-bento-yellow" />
+                      <input
+                        type="text"
+                        autoFocus
+                        className="flex-1 min-w-0 bg-card border border-input rounded px-1.5 py-0.5 text-xs text-foreground focus:outline-none focus:border-ring"
+                        value={editingFolderName}
+                        onChange={(e) => setEditingFolderName(e.target.value)}
+                        onBlur={() => handleRenameFolderSubmit(folder)}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingFolder(null); }}
+                      />
+                      <button type="submit" className="p-0.5 text-bento-green hover:bg-accent rounded">
+                        <Check className="w-3 h-3" />
+                      </button>
+                    </form>
+                  ) : (
+                    <div className="group/folder flex items-center">
+                      <button
+                        onClick={() => toggleFolder(folder)}
+                        className="flex-1 text-left px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {isExpanded ? <ChevronDown className="w-3 h-3 shrink-0" /> : <ChevronRight className="w-3 h-3 shrink-0" />}
+                        <FolderOpen className="w-3.5 h-3.5 shrink-0 text-bento-yellow" />
+                        <span className="text-xs font-semibold truncate flex-1">{folder}</span>
+                        <span
+                          className="flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-opacity"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span
+                            onClick={() => { setEditingFolder(folder); setEditingFolderName(folder); }}
+                            className="p-0.5 rounded hover:text-foreground hover:bg-accent/50 cursor-pointer"
+                            title="Renombrar carpeta"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </span>
+                          <span
+                            onClick={() => handleDeleteFolder(folder)}
+                            className="p-0.5 rounded hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+                            title="Eliminar carpeta"
+                          >
+                            <TrashIcon className="w-3 h-3" />
+                          </span>
+                        </span>
+                        <span className="text-[9px] text-muted-foreground">{folderDocs.length}</span>
+                      </button>
+                    </div>
+                  )}
+                  {isExpanded && (
+                    <div className="ml-4 space-y-0.5 mt-0.5">
+                      {folderDocs.map(d => (
+                        <button
+                          key={d.id}
+                          draggable
+                          onDragStart={(e) => handleDocDragStart(e, d.id)}
+                          onDragEnd={handleDocDragEnd}
+                          onClick={() => setSelectedDoc(d.id)}
+                          className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors cursor-grab active:cursor-grabbing ${
+                            selectedDocId === d.id 
+                              ? 'bg-bento-orange-light text-bento-orange border-l-2 border-bento-orange font-bold' 
+                              : 'hover:bg-accent text-muted-foreground hover:text-foreground'
+                          } ${draggedDocId === d.id ? 'opacity-50' : ''}`}
+                        >
+                          <FileText className="w-3.5 h-3.5 shrink-0" />
+                          <span className="text-xs font-semibold truncate flex-1">{d.title}</span>
+                        </button>
+                      ))}
+                      {folderDocs.length === 0 && (
+                        <span className="text-[10px] text-muted-foreground italic px-3 block">Carpeta vacía.</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {docs.length === 0 && docFolders.length === 0 && (
               <span className="text-[10px] text-muted-foreground italic px-3 block">Ningún documento.</span>
             )}
           </div>

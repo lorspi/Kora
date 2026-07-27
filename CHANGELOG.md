@@ -101,3 +101,15 @@
 
 - **Selección de texto entre bloques en documentos**
   Los bloques del editor de documentos ahora permiten seleccionar texto a través de múltiples bloques arrastrando con el mouse, como en cualquier página web. Los bloques solo se vuelven editables al hacer click simple sin arrastrar. La toolbar de formato también aparece en selecciones cross-block.
+
+- **Carpetas para organizar documentos**
+  Los documentos ahora se pueden agrupar en carpetas reales dentro de `docs/`. Las carpetas se muestran en la barra lateral como secciones colapsables con chevron. Al crear un documento se puede elegir en qué carpeta guardarlo. El escaneo de documentos detecta automáticamente subcarpetas y limpia del catálogo los archivos que ya no existen en disco.
+
+- **Arrastrar y soltar documentos entre carpetas**
+  Los documentos se pueden arrastrar desde la raíz o desde cualquier carpeta hacia otra carpeta o de vuelta a la raíz. Si hay colisión de nombre en el destino, se agrega un sufijo numérico automáticamente (ej: `archivo.md` → `archivo2.md`).
+
+- **Renombrar y eliminar carpetas**
+  Cada carpeta muestra iconos de edición (lápiz y basura) al pasar el mouse. Renombrar una carpeta mueve todos los archivos a la nueva ubicación y elimina la carpeta original. Eliminar una carpeta mueve sus documentos a la raíz antes de borrarla, con confirmación previa.
+
+- **Renombrar archivo desde el editor**
+  En el header del editor de documentos, el path del archivo es clickeable. Al hacer clic se abre un input inline para cambiar el nombre del archivo en disco. Maneja colisiones y asegura la extensión `.md`.

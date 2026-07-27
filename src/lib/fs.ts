@@ -315,6 +315,30 @@ export class FileSystemAdapter {
   }
 
   /**
+   * Delete a directory recursively
+   */
+  async deleteDirectory(path: string): Promise<void> {
+    const normalized = normalizePath(path).replace(/\/$/, '');
+    if (!this.rootDirectoryHandle) {
+      throw new Error('No directory handle selected.');
+    }
+    const parts = normalized.split('/').filter(Boolean);
+    if (parts.length === 0) return;
+    
+    const dirName = parts[parts.length - 1];
+    // Get the parent directory handle
+    let parentDir: FileSystemDirectoryHandle = this.rootDirectoryHandle;
+    for (let i = 0; i < parts.length - 1; i++) {
+      parentDir = await parentDir.getDirectoryHandle(parts[i]);
+    }
+    try {
+      await parentDir.removeEntry(dirName, { recursive: true });
+    } catch (err) {
+      console.warn(`Directory could not be removed: ${dirName}`, err);
+    }
+  }
+
+  /**
    * List files in a directory path
    */
   async listFiles(subFolder: string): Promise<string[]> {
@@ -337,6 +361,32 @@ export class FileSystemAdapter {
       return files;
     } catch (e) {
       // Folder might not exist yet
+      return [];
+    }
+  }
+
+  /**
+   * List subdirectories in a directory path
+   */
+  async listDirectories(subFolder: string): Promise<string[]> {
+    const folderNormalized = normalizePath(subFolder).replace(/\/$/, '') + '/';
+    if (!this.rootDirectoryHandle) {
+      return [];
+    }
+    try {
+      const parts = folderNormalized.split('/').filter(Boolean);
+      let dir: FileSystemDirectoryHandle = this.rootDirectoryHandle;
+      for (const p of parts) {
+        dir = await dir.getDirectoryHandle(p);
+      }
+      const dirs: string[] = [];
+      for await (const entry of (dir as any).values()) {
+        if (entry.kind === 'directory') {
+          dirs.push(entry.name);
+        }
+      }
+      return dirs;
+    } catch (e) {
       return [];
     }
   }

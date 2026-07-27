@@ -102,6 +102,7 @@ export interface DocMetadata {
   id: string;
   title: string;
   filename: string; // e.g. "guia.md"
+  folder?: string; // e.g. "proyectos" (subfolder inside docs/)
   editedBy?: string;
   editedAt?: number;
   createdAt: number;

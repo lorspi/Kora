@@ -88,11 +88,17 @@ interface ProjectState {
   deleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
   
   // Markdown Documents
-  createDoc: (title: string, content: string) => Promise<DocMetadata>;
+  createDoc: (title: string, content: string, folder?: string) => Promise<DocMetadata>;
   getDocContent: (docId: string) => Promise<string>;
   saveDocContent: (docId: string, title: string, content: string) => Promise<void>;
   deleteDoc: (docId: string) => Promise<void>;
   scanDocuments: () => Promise<number>;
+  createDocFolder: (folderName: string) => Promise<void>;
+  moveDocToFolder: (docId: string, folder: string | null) => Promise<void>;
+  getDocFolders: () => Promise<string[]>;
+  renameDocFolder: (oldName: string, newName: string) => Promise<void>;
+  deleteDocFolder: (folderName: string) => Promise<void>;
+  renameDocFile: (docId: string, newFilename: string) => Promise<void>;
   
   // Lock mechanism
   lockTask: (taskId: string) => Promise<boolean>;
@@ -1728,7 +1734,7 @@ graph TD
     },
 
     // Documents (Docs in Markdown format)
-    createDoc: async (title, content) => {
+    createDoc: async (title, content, folder) => {
       const { adapter, docs, activeUser } = get();
       if (!adapter) throw new Error('No open folder');
 
@@ -1749,7 +1755,7 @@ graph TD
       // Check if filename already exists, append number if necessary
       let filename = `${baseFilename}.md`;
       let counter = 1;
-      const existingFilenames = new Set(docs.map(d => d.filename));
+      const existingFilenames = new Set(docs.filter(d => d.folder === (folder || undefined)).map(d => d.filename));
       
       while (existingFilenames.has(filename)) {
         filename = `${baseFilename}-${counter}.md`;
@@ -1760,6 +1766,7 @@ graph TD
         id: docId,
         title: title.trim(),
         filename,
+        folder: folder || undefined,
         editedBy: activeUser?.id,
         editedAt: Date.now(),
         createdAt: Date.now()
@@ -1767,8 +1774,9 @@ graph TD
 
       const updatedDocs = [...docs, newDocMeta];
 
-      // Save document md raw context
-      await adapter.writeTextFile(`/docs/${filename}`, content);
+      // Save document md raw content in the appropriate folder
+      const docPath = folder ? `/docs/${folder}/${filename}` : `/docs/${filename}`;
+      await adapter.writeTextFile(docPath, content);
       
       // Save doc index file info
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
@@ -1784,7 +1792,8 @@ graph TD
       if (!doc) return '';
 
       try {
-        return await adapter.readTextFile(`/docs/${doc.filename}`);
+        const docPath = doc.folder ? `/docs/${doc.folder}/${doc.filename}` : `/docs/${doc.filename}`;
+        return await adapter.readTextFile(docPath);
       } catch (err) {
         console.warn('Doc physical file missing, initializing empty template', err);
         return '';
@@ -1810,17 +1819,19 @@ graph TD
         baseFilename = 'untitled';
       }
 
-      // Check for existing filenames
+      // Check for existing filenames (within the same folder)
       let newFilename = `${baseFilename}.md`;
       let counter = 1;
       const existingFilenames = new Set(
-        docs.filter(d => d.id !== docId).map(d => d.filename)
+        docs.filter(d => d.id !== docId && d.folder === oldDoc.folder).map(d => d.filename)
       );
       
       while (existingFilenames.has(newFilename)) {
         newFilename = `${baseFilename}-${counter}.md`;
         counter++;
       }
+
+      const folderPrefix = oldDoc.folder ? `/docs/${oldDoc.folder}` : '/docs';
 
       // Update metadata
       const updatedDocs = docs.map(d => {
@@ -1842,16 +1853,16 @@ graph TD
       // If filename changed, handle renaming the file
       if (oldDoc.filename !== newFilename) {
         // Write new file
-        await adapter.writeTextFile(`/docs/${newFilename}`, content);
+        await adapter.writeTextFile(`${folderPrefix}/${newFilename}`, content);
         // Delete old file
         try {
-          await adapter.deleteFile(`/docs/${oldDoc.filename}`);
+          await adapter.deleteFile(`${folderPrefix}/${oldDoc.filename}`);
         } catch (err) {
           console.warn('Could not delete old file:', err);
         }
       } else {
         // Just update the content without renaming
-        await adapter.writeTextFile(`/docs/${newDoc.filename}`, content);
+        await adapter.writeTextFile(`${folderPrefix}/${newDoc.filename}`, content);
       }
       
       // Write Index file catalog
@@ -1868,10 +1879,12 @@ graph TD
       const doc = docs.find(d => d.id === docId);
       if (!doc) return;
 
+      const docPath = doc.folder ? `/docs/${doc.folder}/${doc.filename}` : `/docs/${doc.filename}`;
+
       // Read doc content before deleting so we can restore it later
       let docContent = '';
       try {
-        docContent = await adapter.readTextFile(`/docs/${doc.filename}`);
+        docContent = await adapter.readTextFile(docPath);
       } catch (e) {
         // File might not exist, that's ok
       }
@@ -1879,7 +1892,7 @@ graph TD
       const updatedDocs = docs.filter(d => d.id !== docId);
 
       // Remove markdown file
-      await adapter.deleteFile(`/docs/${doc.filename}`);
+      await adapter.deleteFile(docPath);
       
       // Re-save index Catalog
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
@@ -1921,33 +1934,30 @@ graph TD
       if (!adapter) throw new Error('No open folder');
       
       let newDocCount = 0;
+      let removedDocCount = 0;
 
       try {
+        // Build a set of existing files (folder + filename combo)
+        const existingFiles = new Set(docs.map(d => `${d.folder || ''}/${d.filename}`));
+
+        // Collect all actual files on disk
+        const actualFiles = new Set<string>();
+
+        // Scan root /docs/ folder
         const docFilenames = await adapter.listFiles('/docs');
         
-        // Get existing filenames from catalog
-        const existingFilenames = new Set(docs.map(d => d.filename));
-        
-        // Iterate over files in docs folder
         for (const filename of docFilenames) {
-          // Skip info.json and only process .md files
-          if (filename === 'info.json' || !filename.endsWith('.md')) {
-            continue;
-          }
+          if (filename === 'info.json' || !filename.endsWith('.md')) continue;
+          actualFiles.add(`/${filename}`);
+          if (existingFiles.has(`/${filename}`)) continue;
           
-          // Check if this file is already in the catalog
-          if (existingFilenames.has(filename)) {
-            continue;
-          }
-          
-          // Create a new document entry for this file
           const docId = crypto.randomUUID();
-          const title = filename.replace(/\.md$/i, '').replace(/[-_]/g, ' '); // Use filename as title (without extension)
+          const title = filename.replace(/\.md$/i, '').replace(/[-_]/g, ' ');
           
           const newDocMeta: DocMetadata = {
             id: docId,
-            title: title,
-            filename: filename,
+            title,
+            filename,
             editedBy: activeUser?.id,
             editedAt: Date.now(),
             createdAt: Date.now()
@@ -1956,20 +1966,281 @@ graph TD
           docs.push(newDocMeta);
           newDocCount++;
         }
+
+        // Scan subdirectories
+        const subDirs = await adapter.listDirectories('/docs');
+        for (const dirName of subDirs) {
+          // Skip hidden/system folders
+          if (dirName.startsWith('.') || dirName === 'media') continue;
+          
+          const filesInDir = await adapter.listFiles(`/docs/${dirName}`);
+          for (const filename of filesInDir) {
+            if (!filename.endsWith('.md')) continue;
+            actualFiles.add(`${dirName}/${filename}`);
+            if (existingFiles.has(`${dirName}/${filename}`)) continue;
+            
+            const docId = crypto.randomUUID();
+            const title = filename.replace(/\.md$/i, '').replace(/[-_]/g, ' ');
+            
+            const newDocMeta: DocMetadata = {
+              id: docId,
+              title,
+              filename,
+              folder: dirName,
+              editedBy: activeUser?.id,
+              editedAt: Date.now(),
+              createdAt: Date.now()
+            };
+            
+            docs.push(newDocMeta);
+            newDocCount++;
+          }
+        }
+
+        // Remove docs from catalog that no longer exist on disk
+        const filteredDocs = docs.filter(d => {
+          const key = `${d.folder || ''}/${d.filename}`;
+          return actualFiles.has(key);
+        });
+        removedDocCount = docs.length - filteredDocs.length;
         
         // Save updated catalog
-        if (newDocCount > 0) {
-          await adapter.writeTextFile('/docs/info.json', JSON.stringify(docs, null, 2));
-          set({ docs: [...docs] });
+        if (newDocCount > 0 || removedDocCount > 0) {
+          await adapter.writeTextFile('/docs/info.json', JSON.stringify(filteredDocs, null, 2));
+          set({ docs: [...filteredDocs] });
         }
         
         return newDocCount;
         
       } catch (e) {
-        // If docs directory doesn't exist or any other error
         console.warn('Error scanning documents:', e);
         return 0;
       }
+    },
+
+    createDocFolder: async (folderName) => {
+      const { adapter } = get();
+      if (!adapter) throw new Error('No open folder');
+      
+      // Sanitize folder name
+      const sanitized = folderName.trim()
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      
+      if (!sanitized) throw new Error('Invalid folder name');
+      
+      // Create the folder by writing a placeholder (FSA API creates dirs on path traversal)
+      // We write and immediately delete a temp file to ensure the directory is created
+      const tempPath = `/docs/${sanitized}/.folder`;
+      await adapter.writeTextFile(tempPath, '');
+    },
+
+    moveDocToFolder: async (docId, folder) => {
+      const { adapter, docs } = get();
+      if (!adapter) return;
+
+      const doc = docs.find(d => d.id === docId);
+      if (!doc) return;
+
+      // Don't move if already in same folder
+      if ((doc.folder || null) === folder) return;
+
+      // Check for filename collision in target folder
+      const docsInTarget = docs.filter(d => d.id !== docId && (d.folder || null) === folder);
+      const existingFilenames = new Set(docsInTarget.map(d => d.filename));
+      
+      let targetFilename = doc.filename;
+      if (existingFilenames.has(targetFilename)) {
+        // Add number suffix to avoid collision
+        const baseName = targetFilename.replace(/\.md$/i, '');
+        let counter = 2;
+        while (existingFilenames.has(`${baseName}${counter}.md`)) {
+          counter++;
+        }
+        targetFilename = `${baseName}${counter}.md`;
+      }
+
+      const oldPath = doc.folder ? `/docs/${doc.folder}/${doc.filename}` : `/docs/${doc.filename}`;
+      const newPath = folder ? `/docs/${folder}/${targetFilename}` : `/docs/${targetFilename}`;
+
+      // Read content, write to new location, delete old
+      let content = '';
+      try {
+        content = await adapter.readTextFile(oldPath);
+      } catch (e) {
+        console.warn('Could not read doc for move:', e);
+        return;
+      }
+
+      await adapter.writeTextFile(newPath, content);
+      
+      try {
+        await adapter.deleteFile(oldPath);
+      } catch (e) {
+        console.warn('Could not delete old file after move:', e);
+      }
+
+      // Update metadata
+      const updatedDocs = docs.map(d => {
+        if (d.id === docId) {
+          return { ...d, folder: folder || undefined, filename: targetFilename };
+        }
+        return d;
+      });
+
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
+      set({ docs: updatedDocs });
+    },
+
+    getDocFolders: async () => {
+      const { adapter } = get();
+      if (!adapter) return [];
+      
+      try {
+        const dirs = await adapter.listDirectories('/docs');
+        // Filter out system/hidden folders
+        return dirs.filter(d => !d.startsWith('.') && d !== 'media');
+      } catch (e) {
+        return [];
+      }
+    },
+
+    renameDocFolder: async (oldName, newName) => {
+      const { adapter, docs } = get();
+      if (!adapter) return;
+
+      // Sanitize new name
+      const sanitized = newName.trim()
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      
+      if (!sanitized || sanitized === oldName) return;
+
+      // Move all files from old folder to new folder
+      const docsInFolder = docs.filter(d => d.folder === oldName);
+      for (const doc of docsInFolder) {
+        try {
+          const content = await adapter.readTextFile(`/docs/${oldName}/${doc.filename}`);
+          await adapter.writeTextFile(`/docs/${sanitized}/${doc.filename}`, content);
+        } catch (e) {
+          console.warn(`Could not move ${doc.filename} to new folder:`, e);
+        }
+      }
+
+      // Delete old folder entirely
+      try {
+        await adapter.deleteDirectory(`/docs/${oldName}`);
+      } catch (e) {
+        console.warn('Could not delete old folder:', e);
+      }
+
+      // Update metadata
+      const updatedDocs = docs.map(d => {
+        if (d.folder === oldName) {
+          return { ...d, folder: sanitized };
+        }
+        return d;
+      });
+
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
+      set({ docs: updatedDocs });
+    },
+
+    deleteDocFolder: async (folderName) => {
+      const { adapter, docs } = get();
+      if (!adapter) return;
+
+      // Move all docs in this folder to root (remove their folder assignment)
+      const docsInFolder = docs.filter(d => d.folder === folderName);
+      for (const doc of docsInFolder) {
+        try {
+          const content = await adapter.readTextFile(`/docs/${folderName}/${doc.filename}`);
+          await adapter.writeTextFile(`/docs/${doc.filename}`, content);
+        } catch (e) {
+          console.warn(`Could not move ${doc.filename} out of folder:`, e);
+        }
+      }
+
+      // Delete the folder directory
+      try {
+        await adapter.deleteDirectory(`/docs/${folderName}`);
+      } catch (e) {
+        console.warn('Could not delete folder:', e);
+      }
+
+      // Update metadata: remove folder reference from all docs that were in it
+      const updatedDocs = docs.map(d => {
+        if (d.folder === folderName) {
+          const { folder, ...rest } = d;
+          return rest as DocMetadata;
+        }
+        return d;
+      });
+
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
+      set({ docs: updatedDocs });
+    },
+
+    renameDocFile: async (docId, newFilename) => {
+      const { adapter, docs } = get();
+      if (!adapter) return;
+
+      const doc = docs.find(d => d.id === docId);
+      if (!doc) return;
+
+      // Sanitize and ensure .md extension
+      let sanitized = newFilename.trim()
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      
+      if (!sanitized) return;
+      if (!sanitized.endsWith('.md')) sanitized += '.md';
+      if (sanitized === doc.filename) return;
+
+      // Check for collision within same folder
+      const docsInSameFolder = docs.filter(d => d.id !== docId && (d.folder || null) === (doc.folder || null));
+      const existingFilenames = new Set(docsInSameFolder.map(d => d.filename));
+      
+      if (existingFilenames.has(sanitized)) {
+        const baseName = sanitized.replace(/\.md$/i, '');
+        let counter = 2;
+        while (existingFilenames.has(`${baseName}${counter}.md`)) {
+          counter++;
+        }
+        sanitized = `${baseName}${counter}.md`;
+      }
+
+      const folderPrefix = doc.folder ? `/docs/${doc.folder}` : '/docs';
+      const oldPath = `${folderPrefix}/${doc.filename}`;
+      const newPath = `${folderPrefix}/${sanitized}`;
+
+      // Read, write new, delete old
+      try {
+        const content = await adapter.readTextFile(oldPath);
+        await adapter.writeTextFile(newPath, content);
+        await adapter.deleteFile(oldPath);
+      } catch (e) {
+        console.warn('Could not rename doc file:', e);
+        return;
+      }
+
+      // Update metadata
+      const updatedDocs = docs.map(d => {
+        if (d.id === docId) {
+          return { ...d, filename: sanitized };
+        }
+        return d;
+      });
+
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
+      set({ docs: updatedDocs });
     },
 
     // File locks system for single folder syncing multi-user environments
@@ -2290,7 +2561,8 @@ graph TD
           await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
           // Restore the actual .md file content if available
           if (docContent) {
-            await adapter.writeTextFile(`/docs/${docMeta.filename}`, docContent);
+            const docPath = docMeta.folder ? `/docs/${docMeta.folder}/${docMeta.filename}` : `/docs/${docMeta.filename}`;
+            await adapter.writeTextFile(docPath, docContent);
           }
           set({ docs: updatedDocs });
           break;
