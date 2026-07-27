@@ -98,3 +98,6 @@
 
 - **Título dinámico en la pestaña del navegador**
   La pestaña ahora muestra "NombreDelProyecto — Kora" cuando hay un proyecto cargado, y vuelve a "Kora" al cerrar el proyecto. El título se actualiza automáticamente al renombrar el proyecto desde la configuración.
+
+- **Selección de texto entre bloques en documentos**
+  Los bloques del editor de documentos ahora permiten seleccionar texto a través de múltiples bloques arrastrando con el mouse, como en cualquier página web. Los bloques solo se vuelven editables al hacer click simple sin arrastrar. La toolbar de formato también aparece en selecciones cross-block.

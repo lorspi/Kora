@@ -847,6 +847,17 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
           sel?.addRange(range);
         }
       }
+    } else {
+      // When losing focus, ensure content is rendered as HTML (in case blur didn't fire)
+      if (block.type !== 'code' && block.type !== 'divider' && block.type !== 'table' && !isImageBlock(block.content) && !isVideoBlock(block.content)) {
+        const el = inputRef.current;
+        if (el && isFocusedRef.current) {
+          isFocusedRef.current = false;
+          const content = el.textContent || '';
+          lastSetContent.current = content;
+          el.innerHTML = hasInlineFormatting(content) ? inlineMarkdownToHtml(content) : (content || '');
+        }
+      }
     }
   }, [focused, block.id]);
 
@@ -1277,12 +1288,21 @@ function BlockEditor({ block, index, numberedIndex, focused, totalBlocks, onUpda
           )}
           <div
             ref={inputRef}
-            contentEditable={!readOnly}
+            contentEditable={!readOnly && focused}
             suppressContentEditableWarning
-            className={`flex-1 min-w-0 outline-none ${elClassName} ${block.checked ? 'line-through text-muted-foreground' : ''}`}
+            className={`flex-1 min-w-0 outline-none ${elClassName} ${block.checked ? 'line-through text-muted-foreground' : ''} ${!readOnly && !focused ? 'cursor-text' : ''}`}
             onInput={handleInput}
             onFocus={handleFocus}
             onBlur={handleBlur}
+            onClick={() => {
+              if (!readOnly && !focused) {
+                // Only enter edit mode if user clicked without selecting text
+                const sel = window.getSelection();
+                if (!sel || sel.isCollapsed) {
+                  onFocus(block.id);
+                }
+              }
+            }}
             onKeyDown={handleKeyDownInner}
             data-placeholder={placeholderText}
           />
@@ -1832,10 +1852,11 @@ export default function DocView() {
         setFormatToolbar(null);
         return;
       }
-      // Check if the selection is inside a contenteditable
+      // Check if the selection is inside a contenteditable OR inside the blocks container (for cross-block selection)
       const ancestor = range.commonAncestorContainer;
       const editableEl = (ancestor.nodeType === 3 ? ancestor.parentElement : ancestor as HTMLElement)?.closest('[contenteditable]');
-      if (!editableEl) {
+      const blocksContainer = (ancestor.nodeType === 3 ? ancestor.parentElement : ancestor as HTMLElement)?.closest('[data-block-id]');
+      if (!editableEl && !blocksContainer) {
         setFormatToolbar(null);
         return;
       }
