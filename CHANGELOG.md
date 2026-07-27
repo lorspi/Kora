@@ -113,3 +113,26 @@
 
 - **Renombrar archivo desde el editor**
   En el header del editor de documentos, el path del archivo es clickeable. Al hacer clic se abre un input inline para cambiar el nombre del archivo en disco. Maneja colisiones y asegura la extensión `.md`.
+
+## [1.0.0] — 2026-07-27
+
+### Added
+
+- **Script de release (`npm run release`)**
+  Nuevo script que compila el frontend y genera una carpeta `release/` lista para distribuir. El paquete incluye los scripts de inicio y un archivo LEEME.txt con instrucciones. No requiere Node.js para ejecutarse: Windows usa PowerShell y Linux/macOS usa Python 3.
+
+- **Verificación de versión remota en About**
+  La sección "Acerca de" ahora consulta el `version.txt` del repositorio en GitHub para detectar nuevas versiones. Si hay una versión más reciente disponible, muestra un enlace a la página de releases para descargar la actualización.
+
+- **Archivo LEEME.txt en servidor-local**
+  Instrucciones de uso para el paquete distribuible, con pasos para Windows y Linux/macOS, solución de problemas y notas generales.
+
+### Changed
+
+- **Nueva mecánica de actualización**
+  Se eliminó el sistema de auto-actualización que borraba la caché del navegador y forzaba la recarga. Ahora la verificación de versión se hace contra el repositorio de GitHub y, si hay una versión nueva, se muestra un enlace a los releases en lugar de un botón de actualización automática. Quienes usan la versión en la nube siempre tienen el build más actual; quienes usan el release local ven el aviso y deciden cuándo actualizar.
+
+### Removed
+
+- Lógica de `performUpdate` (borrado de caché, desregistro de service workers, recarga forzada).
+- Archivos obsoletos de `servidor-local/`: `compilar.bat`, `Instrucciones.md`, zips antiguos.

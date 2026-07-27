@@ -5,7 +5,6 @@
 
 import React, { useState } from 'react';
 import { useVersion, useUpdateCheck } from '../hooks/useVersion';
-import { useUI } from '../lib/ui';
 import { 
   Info, 
   Github, 
@@ -15,6 +14,7 @@ import {
   Heart,
   Code2,
   Download,
+  ExternalLink,
   Newspaper
 } from 'lucide-react';
 import { MarkdownPreview } from '../lib/markdown';
@@ -23,20 +23,7 @@ import changelog from '../../CHANGELOG.md?raw';
 export default function AboutKora() {
   const [activeTab, setActiveTab] = useState<'about' | 'changelog'>('about');
   const version = useVersion();
-  const { updateAvailable, remoteVersion, performUpdate } = useUpdateCheck();
-  const { confirm } = useUI();
-
-  const handleUpdate = async () => {
-    const ok = await confirm({
-      title: 'Actualizar Kora',
-      message: `Se actualizará de v${version} a v${remoteVersion}. Esto borrará la versión actual de la aplicación en caché y cargará la nueva versión desde el servidor. Tus datos de proyecto no se perderán, pero tendrás que volver a abrir la carpeta del proyecto.`,
-      confirmLabel: 'Actualizar ahora',
-      variant: 'danger'
-    });
-    if (ok) {
-      await performUpdate();
-    }
-  };
+  const { updateAvailable, remoteVersion } = useUpdateCheck();
 
   const techStack = [
     'React 19',
@@ -89,13 +76,16 @@ export default function AboutKora() {
                 <p className="text-xs text-muted-foreground font-mono mt-1">versión {version}</p>
               </div>
               {updateAvailable && (
-                <button
-                  onClick={handleUpdate}
+                <a
+                  href="https://github.com/lorspi/Kora/releases"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 bg-bento-blue-light text-bento-blue border border-bento-blue/30 px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-80 transition-opacity cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  Actualización disponible (v{remoteVersion})
-                </button>
+                  Nueva versión disponible (v{remoteVersion})
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               )}
               <p className="text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
                 El lugar donde los proyectos encuentran un hogar permanente. Gestión de proyectos offline-first, sin servidores externos ni suscripciones.

@@ -20,7 +20,7 @@ import { saveDirectoryHandleWithKey } from '../lib/fs';
 
 export default function ProjectBrowser() {
   const { registeredProjects, registerProject, loadProjectById, isLoading, unregisterProject } = useProjectStore();
-  const { updateAvailable, remoteVersion, localVersion, performUpdate } = useUpdateCheck();
+  const { updateAvailable, remoteVersion } = useUpdateCheck();
   const { confirm } = useUI();
   const [fsaSupported] = useState<boolean>(() => 'showDirectoryPicker' in window);
 
@@ -118,13 +118,15 @@ export default function ProjectBrowser() {
             Edita, organiza y colabora sobre tus tareas con almacenamiento local y privado. Tus datos permanecen en tu control.
           </p>
           {updateAvailable && (
-            <button
-              onClick={performUpdate}
+            <a
+              href="https://github.com/lorspi/Kora/releases"
+              target="_blank"
+              rel="noopener noreferrer"
               className="mt-3 inline-flex items-center gap-1.5 bg-bento-blue-light text-bento-blue border border-bento-blue/30 px-3 py-1.5 rounded-xl text-xs font-semibold hover:opacity-80 transition-opacity cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              Actualización disponible (v{remoteVersion})
-            </button>
+              Nueva versión disponible (v{remoteVersion})
+            </a>
           )}
         </div>
 

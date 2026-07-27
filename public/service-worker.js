@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kora-cache-0.1.27-beta-v2';
+const CACHE_NAME = 'kora-cache-1.0.0';
 const ASSETS = [
   '/',
   '/index.html',

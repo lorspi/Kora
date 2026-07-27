@@ -1,0 +1,61 @@
+KORA - Gestión de Proyectos Offline
+====================================
+Versión: 0.1.27-beta
+
+REQUISITOS:
+- Windows: Ninguno (usa PowerShell, incluido en Windows 7+).
+- Linux/macOS: Python 3 (preinstalado en la mayoría de distribuciones).
+
+NO se necesita Node.js para ejecutar el servidor local.
+
+INSTRUCCIONES:
+====================================
+
+## Windows
+
+1. Extrae todo el contenido del zip en una carpeta.
+2. Haz doble clic en "iniciar-servidor.bat".
+3. Se abrirá automáticamente el navegador en http://localhost:8000.
+
+Para detener el servidor, cierra la ventana de la terminal.
+
+## Linux / macOS
+
+1. Extrae todo el contenido del zip en una carpeta.
+2. Abre una terminal y navega hasta esa carpeta:
+       cd ruta/de/la/carpeta
+3. Dale permisos de ejecución al script:
+       chmod +x iniciar-servidor.sh
+4. Ejecuta el script:
+       ./iniciar-servidor.sh
+5. Se abrirá automáticamente el navegador en http://localhost:8000.
+
+Para detener el servidor, presiona Ctrl+C en la terminal.
+
+ACCESO:
+====================================
+- Desde este computador: http://localhost:8000
+- Desde otros dispositivos en la misma red: http://<IP-DE-ESTE-PC>:8000
+
+ACTUALIZACIONES:
+====================================
+Cuando abras Kora, la aplicación revisará si hay una versión más
+reciente disponible. Si la hay, verás un aviso en la sección
+"Acerca de" con un enlace para descargar la nueva versión.
+
+SOLUCIÓN DE PROBLEMAS:
+====================================
+| Problema                          | Solución                                         |
+|-----------------------------------|--------------------------------------------------|
+| "No se encuentra 'dist'"         | Verifica que extrajiste el zip completo.         |
+| "No se encontró Python" (Linux)  | Instala Python 3 con tu gestor de paquetes.      |
+| "Permiso denegado" (Linux/macOS) | Ejecuta: chmod +x iniciar-servidor.sh            |
+| localhost:8000 no carga           | Verifica que no haya otro programa en puerto 8000.|
+
+NOTAS:
+====================================
+- Todos tus datos se almacenan localmente en el navegador (IndexedDB).
+- No se envía información a servidores externos.
+- Mantén la ventana de la terminal abierta mientras uses Kora.
+
+Más información: https://github.com/lorspi/Kora

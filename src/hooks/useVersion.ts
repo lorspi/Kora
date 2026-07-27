@@ -2,55 +2,27 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  *
- * Version detection for PWA update management.
+ * Version detection and remote update check.
  *
- * — useVersion() returns the version baked into the JS bundle at build time
- *   (the version the running code was compiled with).
- * — useUpdateCheck() fetches /version.txt from the server and compares it
- *   against the compiled version.  If they differ, a newer build has been
- *   deployed → the hook surfaces updateAvailable and automatically triggers
- *   a full cache-clearing reload after a brief delay.
+ * — useVersion() returns the version baked into the JS bundle at build time.
+ * — useUpdateCheck() fetches the version.txt from the GitHub repository
+ *   to detect new releases. If a newer version exists, surfaces a flag
+ *   so the UI can show a download link to GitHub releases.
  *
- * User data (projects, sessions, IndexedDB handles) is never touched.
+ * Users running the cloud-hosted version always get the latest build.
+ * Users running local releases see a notification when a new version
+ * is available for download.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 
-// ── Module-level caches (survives across hook instances within a session) ────
+// GitHub raw URL for version.txt
+const REMOTE_VERSION_URL = 'https://raw.githubusercontent.com/lorspi/Kora/main/public/version.txt';
+
+// ── Module-level caches (survive across hook instances within a session) ─────
 
 let cachedRemoteVersion: string | null = null;
 let checkedForUpdate = false;
-let autoUpdateTriggered = false;
-
-// ── Standalone update handler (usable from both manual buttons & auto-trigger) ─
-
-const performUpdate = async () => {
-  // 1. Delete every SW-backed cache
-  if ('caches' in window) {
-    const keys = await caches.keys();
-    await Promise.all(keys.map((key) => caches.delete(key)));
-  }
-
-  // 2. Unregister all service workers — the next page load will register
-  //    the fresh service-worker.js from the server
-  if ('serviceWorker' in navigator) {
-    const registrations = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(registrations.map((reg) => reg.unregister()));
-  }
-
-  // 3. Reset in-memory flags so the next session starts clean
-  cachedRemoteVersion = null;
-  checkedForUpdate = false;
-  autoUpdateTriggered = false;
-
-  // 4. Hard-navigate with a cache-busting query parameter so the browser
-  //    fetches index.html (and therefore all hashed chunks) from the
-  //    server instead of its HTTP cache.
-  const cacheBuster = __APP_VERSION__
-    ? `?v=${encodeURIComponent(__APP_VERSION__)}`
-    : `?t=${Date.now()}`;
-  window.location.href = cacheBuster;
-};
 
 // ── Read the compile-time version ────────────────────────────────────────────
 
@@ -59,19 +31,25 @@ export function useVersion() {
   return __APP_VERSION__ || '';
 }
 
-// ── Update check with auto-reload ────────────────────────────────────────────
+// ── Remote version check (GitHub) ────────────────────────────────────────────
 
+/**
+ * Checks the remote GitHub repository for a newer version of Kora.
+ * Compares the local build version against the latest published version.txt.
+ *
+ * If a newer version is available, `updateAvailable` will be true and
+ * `remoteVersion` will contain the new version string.
+ *
+ * Silently fails if the repo is private, there's no internet, or the
+ * fetch fails for any reason.
+ */
 export function useUpdateCheck() {
   const [localVersion] = useState(__APP_VERSION__ || '');
   const [remoteVersion, setRemoteVersion] = useState(cachedRemoteVersion || '');
   const [updateAvailable, setUpdateAvailable] = useState(false);
-  const [checking, setChecking] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Fetch the deployed /version.txt once per session ───────────────────
   useEffect(() => {
     if (checkedForUpdate) {
-      // Already checked on a previous mount — derive state from cache
       setRemoteVersion(cachedRemoteVersion || '');
       setUpdateAvailable(
         !!cachedRemoteVersion && cachedRemoteVersion !== __APP_VERSION__
@@ -82,55 +60,33 @@ export function useUpdateCheck() {
     let cancelled = false;
 
     const check = async () => {
-      setChecking(true);
       try {
-        const res = await fetch('/version.txt', { cache: 'no-store' });
+        const res = await fetch(REMOTE_VERSION_URL, { cache: 'no-store' });
         if (cancelled) return;
+        if (!res.ok) {
+          checkedForUpdate = true;
+          return;
+        }
         cachedRemoteVersion = (await res.text()).trim();
         setRemoteVersion(cachedRemoteVersion);
 
         const hasUpdate = cachedRemoteVersion !== __APP_VERSION__;
         setUpdateAvailable(hasUpdate);
       } catch {
+        // No internet or repo is private — no update notification
         if (!cancelled) setUpdateAvailable(false);
       } finally {
-        if (!cancelled) {
-          checkedForUpdate = true;
-          setChecking(false);
-        }
+        if (!cancelled) checkedForUpdate = true;
       }
     };
 
     check();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
-
-  // ── Auto-trigger the full update when a newer version is detected ──────
-  useEffect(() => {
-    if (!updateAvailable || autoUpdateTriggered) return;
-    autoUpdateTriggered = true;
-
-    // Give the UI a moment to render the "update available" indicator
-    // before forcing the full reload.
-    timerRef.current = setTimeout(() => {
-      performUpdate();
-    }, 3000);
-
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [updateAvailable]);
 
   return {
     localVersion,
     remoteVersion,
     updateAvailable,
-    checking,
-    /** Delete caches, unregister SWs, and force a full reload from the server */
-    performUpdate,
   };
 }

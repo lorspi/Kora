@@ -63,6 +63,7 @@ npm run dev
 4. Accede a la herramienta en tu servidor local: [localhost:8080](http://localhost:8080/)
 
 ## Stack Tecnológico
+
 - React 19
 - TypeScript
 - Vite
@@ -71,6 +72,22 @@ npm run dev
 - Lucide React
 - Motion
 - Express
+
+## Generar un release distribuible
+
+Para crear un paquete listo para distribuir (sin necesidad de Node.js para ejecutarlo):
+
+```bash
+npm run release
+```
+
+Esto genera una carpeta `release/` con:
+- `dist/` — la aplicación compilada
+- `iniciar-servidor.bat` — script de inicio para Windows (usa PowerShell)
+- `iniciar-servidor.sh` — script de inicio para Linux/macOS (usa Python 3)
+- `LEEME.txt` — instrucciones de uso
+
+El usuario final solo necesita extraer el contenido y ejecutar el script correspondiente a su sistema operativo. No se requiere Node.js ni ninguna instalación adicional.
 
 ## Licencia
 Kora está licenciado bajo la Licencia Apache 2.0. Ver el archivo [LICENSE](./LICENSE) para más detalles.
