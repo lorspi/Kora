@@ -1,12 +1,6 @@
 <img src="./public/logo-dark.svg?v=2#gh-dark-mode-only" alt="Kora Logo" width="400"/>
 <img src="./public/logo-light.svg?v=2#gh-light-mode-only" alt="Kora Logo" width="400"/>
 
-
-
-> ⚠️ **IMPORTANTE: PROYECTO EN ETAPA MUY TEMPRANA DE DESARROLLO** ⚠️
->
-> Este proyecto está en una fase inicial y muchas funcionalidades aún no están implementadas o no funcionan correctamente. Si decides probarlo, ten en cuenta que el proyecto sigue evolucionando.
-
 Kora es el lugar donde los proyectos encuentran un hogar permanente.
 
 No depende de servidores externos ni de suscripciones para existir. Es una herramienta construida sobre una idea simple: **el trabajo y los datos pertenecen a quienes los crean**.
@@ -37,6 +31,16 @@ Kora no busca convertirse en:
 - Un ecosistema cerrado del que sea difícil salir.
 
 Su objetivo es ser una herramienta objetiva, funcional y predecible que desaparezca en el fondo para que puedas concentrarte en tu trabajo.
+
+## Una nota personal
+
+Kora también es un experimento.
+
+Creo que la inteligencia artificial está transformando la forma en que se crea software, permitiendo que personas con perfiles distintos al desarrollo tradicional puedan construir herramientas útiles.
+
+Como diseñador UX, utilizo la IA como un compañero de desarrollo para convertir ideas en productos reales. El resultado no pretende reemplazar las buenas prácticas de ingeniería, sino demostrar una nueva forma de crear.
+
+Si encuentras errores, oportunidades de mejora o tienes sugerencias, las contribuciones son siempre bienvenidas.
 
 ## Demostración en vivo
 [kora.lorspi.com](https://kora.lorspi.com)
