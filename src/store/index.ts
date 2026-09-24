@@ -76,6 +76,7 @@ interface ProjectState {
   createListDirect: (name: string, color: string) => Promise<TaskList>;
   seedSampleProjectOnboarding: (projectMeta: ProjectMetadata, config: ProjectConfig, firstUser: SystemUser) => Promise<void>;
   backgroundReload: () => Promise<void>;
+  importBackupZip: (file: File) => Promise<void>;
   
   // User Authentication
   registerUser: (username: string, name: string, password: string, avatarColor: string) => Promise<SystemUser>;
@@ -1251,6 +1252,82 @@ graph TD
       } catch (err) {
         console.warn('Sync background check bypassed/idle', err);
         set({ isPolling: false });
+      }
+    },
+
+    // Import a backup ZIP into the currently loaded project, replacing its contents.
+    // Works for both local (FSA) and cloud (Firebase) projects since it operates
+    // through the shared storage adapter. The caller is responsible for confirming
+    // the destructive replace with the user beforehand.
+    importBackupZip: async (file) => {
+      const { adapter } = get();
+      if (!adapter) throw new Error('No hay un proyecto activo para importar el respaldo.');
+
+      const JSZip = (await import('jszip')).default;
+      const zip = await JSZip.loadAsync(file);
+
+      // Validate the archive looks like a Kora backup before wiping anything.
+      const hasProject = zip.file('project.json') != null;
+      if (!hasProject) {
+        throw new Error('El archivo ZIP no parece un respaldo válido de Kora (falta project.json).');
+      }
+
+      set({ isLoading: true });
+      try {
+        // 1. Clear existing per-item files (lists, tasks, docs) so removed items
+        //    don't linger after the import.
+        const clearFolder = async (folder: string) => {
+          try {
+            const files = await adapter.listFiles(folder);
+            for (const f of files) {
+              try { await adapter.deleteFile(`${folder}/${f}`); } catch (e) { /* ignore */ }
+            }
+          } catch (e) { /* folder may not exist */ }
+        };
+        await clearFolder('/lists');
+        await clearFolder('/tasks');
+        await clearFolder('/docs');
+
+        // 2. Write every entry from the ZIP back to its canonical path.
+        const entries = Object.values(zip.files).filter(e => !e.dir);
+        for (const entry of entries) {
+          const path = '/' + entry.name.replace(/^\/+/, '');
+          const isText = /\.(json|md|txt|markdown)$/i.test(path);
+          if (isText) {
+            const content = await entry.async('string');
+            await adapter.writeTextFile(path, content);
+          } else {
+            const blob = await entry.async('blob');
+            await adapter.writeBinaryFile(path, blob);
+          }
+        }
+
+        // 3. Preserve this project's own id in config.json so it keeps loading
+        //    under the current registration instead of the backup's original id.
+        const currentId = get().projectMeta?.id;
+        try {
+          if (currentId && await adapter.fileExists('/project.json')) {
+            const projRaw = await adapter.readTextFile('/project.json');
+            const proj = JSON.parse(projRaw) as ProjectMetadata;
+            proj.id = currentId;
+            await adapter.writeTextFile('/project.json', JSON.stringify(proj, null, 2));
+
+            let cfg: ProjectConfig = { projectId: currentId, projectName: proj.name, lastModified: Date.now() };
+            if (await adapter.fileExists('/config.json')) {
+              cfg = { ...cfg, ...JSON.parse(await adapter.readTextFile('/config.json')) };
+            }
+            cfg.projectId = currentId;
+            await adapter.writeTextFile('/config.json', JSON.stringify(cfg, null, 2));
+          }
+        } catch (e) {
+          console.warn('Could not reconcile imported project id', e);
+        }
+
+        // 4. Re-read everything from the adapter to refresh in-memory state.
+        await get().loadFromAdapter(adapter);
+      } catch (err) {
+        set({ isLoading: false });
+        throw err;
       }
     },
 

@@ -6,16 +6,16 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { SystemUser, TaskActivityLog } from '../types';
 import {
-  Send,
+  PaperPlaneRight as Send,
   Paperclip,
-  Trash2,
+  Trash as Trash2,
   Check,
   X,
-  Pencil,
-  MessageSquare,
-  ChevronUp,
-  ChevronDown,
-} from 'lucide-react';
+  PencilSimple as Pencil,
+  ChatText as MessageSquare,
+  CaretUp as ChevronUp,
+  CaretDown as ChevronDown,
+} from '@phosphor-icons/react';
 
 type DrawerHeight = 'collapsed' | 'half' | 'full';
 

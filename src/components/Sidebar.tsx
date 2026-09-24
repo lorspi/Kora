@@ -14,30 +14,30 @@ import {
   RegisteredProject
 } from '../types';
 
-import { 
-  LogOut, 
-  Plus, 
-  Layers, 
-  FileText, 
-  Search, 
+import {
+  SignOut as LogOut,
+  Plus,
+  Stack as Layers,
+  FileText,
+  MagnifyingGlass as Search,
   Info,
-  RefreshCw,
-  ImageIcon,
+  ArrowClockwise as RefreshCw,
+  Image as ImageIcon,
   X,
-  LayoutDashboard,
-  ChevronLeft,
-  Trash as TrashIcon,
+  SquaresFour as LayoutDashboard,
+  CaretLeft as ChevronLeft,
+  TrashSimple as TrashIcon,
   FolderOpen,
   FolderPlus,
-  ChevronRight,
-  ChevronDown,
-  Pencil,
+  CaretRight as ChevronRight,
+  CaretDown as ChevronDown,
+  PencilSimple as Pencil,
   Check,
   HardDrive,
   Cloud,
   ArrowRight,
-  Home
-} from 'lucide-react';
+  House as Home
+} from '@phosphor-icons/react';
 import ThemeToggle from './ThemeToggle';
 import { loadSavedSessions } from '../store/sessions';
 import { saveDirectoryHandleWithKey } from '../lib/fs';
@@ -368,7 +368,7 @@ export default function Sidebar() {
               {currentProjectType === 'FIREBASE' ? (
                 <>
                   <Cloud className="w-2.5 h-2.5 text-bento-orange shrink-0" />
-                  Equipo en la Nube
+                  En la nube
                 </>
               ) : (
                 <>
@@ -865,7 +865,7 @@ export default function Sidebar() {
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-[10px] text-muted-foreground">
-                            {project.type === 'FIREBASE' ? 'Equipo en la Nube' : 'Carpeta Local'}
+                            {project.type === 'FIREBASE' ? 'Proyecto en la nube' : 'Carpeta Local'}
                           </span>
                           {/* Auth indicator dot */}
                           <span className={`inline-block w-1.5 h-1.5 rounded-full ${isAuthenticated ? 'bg-bento-green' : 'bg-muted-foreground'}`} 

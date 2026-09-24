@@ -5,18 +5,18 @@
 
 import React, { useState } from 'react';
 import { useVersion, useUpdateCheck } from '../hooks/useVersion';
-import { 
-  Info, 
-  Github, 
-  Coffee, 
-  Scale, 
-  Globe, 
+import {
+  Info,
+  GithubLogo as Github,
+  Coffee,
+  Scales as Scale,
+  Globe,
   Heart,
-  Code2,
+  Code as Code2,
   Download,
-  ExternalLink,
+  ArrowSquareOut as ExternalLink,
   Newspaper
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { MarkdownPreview } from '../lib/markdown';
 import changelog from '../../CHANGELOG.md?raw';
 

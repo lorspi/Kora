@@ -5,7 +5,7 @@
 
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useProjectStore } from '../store';
-import { Search, X, CheckSquare, FileText, Tag, Image, CornerDownLeft, CircleDot } from 'lucide-react';
+import { MagnifyingGlass as Search, X, CheckSquare, FileText, Tag, Image, ArrowElbowDownLeft as CornerDownLeft, CircleDashed as CircleDot } from '@phosphor-icons/react';
 
 export default function SearchDialog() {
   const { 

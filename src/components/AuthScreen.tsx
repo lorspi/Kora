@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useProjectStore } from '../store';
-import { KeyRound, UserPlus, LogIn, ChevronRight, User, Sparkles, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { Key as KeyRound, UserPlus, SignIn as LogIn, CaretRight as ChevronRight, User, Sparkle as Sparkles, ArrowLeft, Eye, EyeSlash as EyeOff } from '@phosphor-icons/react';
 import { saveSessionForProject } from '../store/sessions';
 import ThemeToggle from './ThemeToggle';
 import VersionBadge from './VersionBadge';

@@ -151,3 +151,30 @@
 
 - **Carga diferida del SDK de Firebase**
   El SDK de Firebase se carga bajo demanda solo cuando se usa el modo "Equipo en la Nube", quedando aislado en su propio bundle. Así, los usuarios que solo trabajan con carpetas locales no cargan esta dependencia, y el bundle principal de la aplicación se mantiene ligero.
+
+
+## [1.1.1] — 2026-09-24
+
+### Added
+
+- **Importar respaldo ZIP en proyectos locales y en la nube**
+  Ahora se puede restaurar un proyecto desde un respaldo. En "Datos del Proyecto", junto a "Respaldar como ZIP", se agregó el botón "Importar respaldo" (disponible para superadministradores), que carga el archivo `.zip` de un respaldo y reemplaza el proyecto actual. Antes de importar, un diálogo de confirmación advierte que la acción reemplazará las listas, tareas, documentos y configuración existentes y no se puede deshacer. La importación funciona igual en carpeta local y en la nube gracias al método `importBackupZip`, que escribe el contenido a través del adaptador de almacenamiento compartido, preserva el identificador del proyecto actual y recarga el estado en memoria. El respaldo ZIP ahora también incluye `trash/items.json` para que la papelera se conserve en un ciclo de exportar e importar.
+
+### Changed
+
+- **Iconografía migrada a Phosphor Icons (peso duotone)**
+  Toda la aplicación pasó de `lucide-react` a `@phosphor-icons/react` con el peso duotone aplicado de forma global mediante un `IconContext.Provider`. Los iconos mantienen su tamaño y ubicación originales; solo cambia el estilo visual a duotone.
+
+- **Onboarding de "Proyecto en la nube" con instrucciones plegables**
+  Las instrucciones paso a paso para crear y configurar el proyecto de Firebase (incluida la plantilla de reglas de seguridad) ahora viven dentro de un acordeón colapsable, cerrado por defecto. Así, quien ya tiene su proyecto creado y configurado solo debe pegar el objeto de configuración, mientras que quien lo hace por primera vez puede desplegar la guía completa.
+
+- **Renombrado "Equipo en la Nube" a "Proyecto en la nube"**
+  Se unificó la nomenclatura en toda la interfaz (navegador de proyectos, header y panel del sidebar, dashboard y diálogo de vinculación de Firebase) para mantener consistencia con "Carpeta local", el otro tipo de proyecto.
+
+### Fixed
+
+- **Error del service worker al cachear peticiones de extensiones del navegador**
+  Al recargar con el service worker activo, las extensiones del navegador disparaban peticiones con esquema `chrome-extension://` que la Cache API no puede almacenar, provocando el error `Failed to execute 'put' on 'Cache': Request scheme 'chrome-extension' is unsupported`. El handler `fetch` ahora ignora cualquier petición cuyo esquema no sea `http`/`https` y las peticiones de otros orígenes, y las escrituras a caché (`cache.put`) manejan correctamente el rechazo de la promesa. Se subió la versión de `CACHE_NAME` para que el nuevo service worker se active y limpie el caché anterior.
+
+- **Aviso de meta etiqueta PWA obsoleta**
+  Se agregó `<meta name="mobile-web-app-capable" content="yes">` (estándar) junto a la variante `apple-mobile-web-app-capable`, eliminando la advertencia de obsolescencia en la consola.

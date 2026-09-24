@@ -9,17 +9,19 @@ import { useUI } from '../lib/ui';
 import { SystemUser } from '../types';
 import JSZip from 'jszip';
 import {
-  Save,
-  Trash2,
+  FloppyDisk as Save,
+  Trash as Trash2,
   ShieldCheck,
-  ShieldAlert,
+  ShieldWarning as ShieldAlert,
   User,
-  Pencil,
+  PencilSimple as Pencil,
   X,
   Crown,
-  FileArchive,
-  Plus
-} from 'lucide-react';
+  FileZip as FileArchive,
+  Plus,
+  UploadSimple as Upload,
+  SpinnerGap as Loader2
+} from '@phosphor-icons/react';
 
 const PRESET_COLORS = [
   '#8b5cf6', '#6366f1', '#3b82f6', '#06b6d4', '#10b981', '#22c55e', '#eab308', '#f97316',
@@ -103,9 +105,12 @@ export default function ProjectInfoCards() {
     updateProjectMeta,
     updateUser,
     deleteUser,
-    adapter
+    adapter,
+    importBackupZip
   } = useProjectStore();
   const { toast, confirm } = useUI();
+  const importInputRef = React.useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
 
   const isSuperAdmin = activeUser?.isSuperAdmin === true;
 
@@ -221,6 +226,7 @@ export default function ProjectInfoCards() {
         zip.file('users/users.json', JSON.stringify(state.users, null, 2));
         zip.file('activity/logs.json', JSON.stringify(state.logs, null, 2));
         zip.file('activity/locks.json', JSON.stringify({}, null, 2));
+        zip.file('trash/items.json', JSON.stringify(state.trashItems || [], null, 2));
         for (const list of state.lists) {
           zip.file(`lists/${list.id}.json`, JSON.stringify(list, null, 2));
         }
@@ -247,6 +253,42 @@ export default function ProjectInfoCards() {
       toast('Respaldo ZIP generado exitosamente', 'success');
     } catch (err: any) {
       toast('No se pudo generar el ZIP: ' + err.message, 'error');
+    }
+  };
+
+  const handleImportClick = () => {
+    if (importing) return;
+    importInputRef.current?.click();
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset the input so choosing the same file again re-triggers change.
+    e.target.value = '';
+    if (!file) return;
+
+    if (!/\.zip$/i.test(file.name)) {
+      toast('Selecciona un archivo .zip de respaldo de Kora', 'warning');
+      return;
+    }
+
+    const ok = await confirm({
+      title: 'Reemplazar proyecto actual',
+      message: `Vas a importar "${file.name}" sobre el proyecto "${projectMeta?.name || 'actual'}". Esto reemplazará las listas, tareas, documentos y configuración existentes. Esta acción no se puede deshacer. ¿Deseas continuar?`,
+      confirmLabel: 'Reemplazar e importar',
+      cancelLabel: 'Cancelar',
+      variant: 'danger'
+    });
+    if (!ok) return;
+
+    setImporting(true);
+    try {
+      await importBackupZip(file);
+      toast('Respaldo importado correctamente', 'success');
+    } catch (err: any) {
+      toast('No se pudo importar el respaldo: ' + (err?.message || err), 'error');
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -423,14 +465,36 @@ export default function ProjectInfoCards() {
         </h2>
         <p className="text-xs text-muted-foreground">
           Genera una copia completa del proyecto en formato ZIP. Incluye todas las listas, tareas, documentos y configuración.
+          {isSuperAdmin && ' También puedes importar un respaldo para reemplazar el proyecto actual (funciona tanto en carpeta local como en la nube).'}
         </p>
-        <button
-          onClick={handleExportZip}
-          className="bg-primary hover:opacity-90 text-primary-foreground font-bold px-4 py-2 rounded-xl text-xs transition-colors flex items-center gap-1.5"
-        >
-          <FileArchive className="w-3.5 h-3.5" />
-          Respaldar como ZIP
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={handleExportZip}
+            className="bg-primary hover:opacity-90 text-primary-foreground font-bold px-4 py-2 rounded-xl text-xs transition-colors flex items-center gap-1.5"
+          >
+            <FileArchive className="w-3.5 h-3.5" />
+            Respaldar como ZIP
+          </button>
+          {isSuperAdmin && (
+            <button
+              onClick={handleImportClick}
+              disabled={importing}
+              className="bg-secondary hover:bg-accent border border-border text-foreground font-bold px-4 py-2 rounded-xl text-xs transition-colors flex items-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {importing
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Upload className="w-3.5 h-3.5" />}
+              {importing ? 'Importando...' : 'Importar respaldo'}
+            </button>
+          )}
+        </div>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".zip,application/zip"
+          onChange={handleImportFile}
+          className="hidden"
+        />
       </section>
     </>
   );

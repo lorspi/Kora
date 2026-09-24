@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, Eye, EyeOff } from 'lucide-react';
+import { MagnifyingGlassPlus as ZoomIn, MagnifyingGlassMinus as ZoomOut, Eye, EyeSlash as EyeOff } from '@phosphor-icons/react';
 
 type FontScale = 'sm' | 'md' | 'lg' | 'xl';
 

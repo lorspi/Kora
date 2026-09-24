@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useProjectStore } from '../store';
-import { UserPlus, FileText, Sparkles, ArrowRight, ChevronLeft, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { UserPlus, FileText, Sparkle as Sparkles, ArrowRight, CaretLeft as ChevronLeft, Warning as AlertTriangle, CheckCircle as CheckCircle2 } from '@phosphor-icons/react';
 import { hashPassword } from '../lib/crypto';
 import VersionBadge from './VersionBadge';
 

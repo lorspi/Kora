@@ -8,29 +8,29 @@ import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { Task, TaskStatus, TaskList } from '../types';
 import CustomSelect from './CustomSelect';
-import { 
-  Check, 
-  ChevronDown, 
-  ChevronRight, 
-  Plus, 
-  Trash2, 
-  Calendar, 
-  AlertCircle, 
-  Maximize2, 
-  FolderLock, 
-  Edit,
+import {
+  Check,
+  CaretDown as ChevronDown,
+  CaretRight as ChevronRight,
+  Plus,
+  Trash as Trash2,
+  CalendarBlank as Calendar,
+  WarningCircle as AlertCircle,
+  ArrowsOutSimple as Maximize2,
+  LockKey as FolderLock,
+  PencilSimple as Edit,
   ArrowUp,
   ArrowDown,
-  CircleDot,
-  CheckCircle2,
+  CircleDashed as CircleDot,
+  CheckCircle as CheckCircle2,
   Table,
   Kanban,
-  List as ListIcon,
-  Settings as SettingsIcon,
+  ListBullets as ListIcon,
+  GearSix as SettingsIcon,
   User,
   PlusCircle,
   Clock
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 type ActiveViewTab = 'list' | 'kanban' | 'table' | 'settings';
 

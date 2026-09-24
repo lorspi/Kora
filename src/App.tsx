@@ -18,14 +18,14 @@ import AboutKora from './components/AboutKora';
 import AccessibilitySection from './components/AccessibilitySection';
 import TaskDrawer from './components/TaskDrawer';
 import SearchDialog from './components/SearchDialog';
-import { 
-  CheckCircle2, 
-  Layers, 
-  FileText, 
+import {
+  CheckCircle as CheckCircle2,
+  Stack as Layers,
+  FileText,
   HardDrive,
   Cloud,
-  Menu
-} from 'lucide-react';
+  List as Menu
+} from '@phosphor-icons/react';
 import ThemeToggle from './components/ThemeToggle';
 
 /** Mobile top bar – visible only below lg breakpoint */
@@ -221,7 +221,7 @@ export default function App() {
                           <span>Base de Datos:</span>
                         </div>
                         <strong className="text-bento-orange font-semibold uppercase font-mono text-[11px]">
-                          Equipo en la Nube
+                          Proyecto en la nube
                         </strong>
                       </>
                     ) : (

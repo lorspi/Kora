@@ -7,40 +7,40 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import mermaid from 'mermaid';
 import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
-import { 
-  Save, 
-  Trash2, 
-  Bold, 
-  Italic, 
-  Underline,
-  Strikethrough,
-  Heading1, 
-  Heading2, 
-  Heading3,
-  List, 
-  ListOrdered,
-  Quote,
+import {
+  FloppyDisk as Save,
+  Trash as Trash2,
+  TextB as Bold,
+  TextItalic as Italic,
+  TextUnderline as Underline,
+  TextStrikethrough as Strikethrough,
+  TextHOne as Heading1,
+  TextHTwo as Heading2,
+  TextHThree as Heading3,
+  ListBullets as List,
+  ListNumbers as ListOrdered,
+  Quotes as Quote,
   Code,
   Minus,
   CheckSquare,
-  Type,
+  TextT as Type,
   Plus,
-  GripVertical,
+  DotsSixVertical as GripVertical,
   Paperclip,
-  ChevronDown,
-  ChevronRight,
-  ImageIcon,
-  Film,
+  CaretDown as ChevronDown,
+  CaretRight as ChevronRight,
+  Image as ImageIcon,
+  FilmStrip as Film,
   FolderOpen,
   Check,
   Copy,
   Link,
-  MoreVertical,
+  DotsThreeVertical as MoreVertical,
   FileCode,
-  ShieldAlert,
+  ShieldWarning as ShieldAlert,
   GitBranch,
   Table
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 // ─── Block Types ────────────────────────────────────────────────────────────────
 

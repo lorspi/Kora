@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kora-cache-1.1.0';
+const CACHE_NAME = 'kora-cache-1.1.1';
 const ASSETS = [
   '/',
   '/index.html',
@@ -31,6 +31,16 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
+  // Only handle http/https requests. Browser extensions issue requests with
+  // schemes like chrome-extension:// that the Cache API cannot store, which
+  // otherwise throws "Request scheme 'chrome-extension' is unsupported".
+  const url = new URL(event.request.url);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
+  // Only cache requests to our own origin. Cross-origin responses (CDNs, etc.)
+  // are left to the browser's own HTTP cache to avoid opaque-response issues.
+  if (url.origin !== self.location.origin) return;
+
   // Never cache version.txt — always go to network for update checks
   if (event.request.url.includes('version.txt')) return;
 
@@ -40,9 +50,9 @@ self.addEventListener('fetch', (event) => {
       fetch(event.request, { cache: 'no-cache' }).then((response) => {
         // Cache the fresh page so offline fallback always has the latest version
         const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          try { cache.put('/', clone); } catch (e) {}
-        });
+        caches.open(CACHE_NAME).then((cache) =>
+          cache.put('/', clone)
+        ).catch(() => {});
         return response;
       }).catch(() => caches.match('/'))
     );
@@ -56,9 +66,9 @@ self.addEventListener('fetch', (event) => {
       fetch(event.request, { cache: 'no-cache' }).then((response) => {
         if (response.ok) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            try { cache.put(event.request, clone); } catch (e) {}
-          });
+          caches.open(CACHE_NAME).then((cache) =>
+            cache.put(event.request, clone)
+          ).catch(() => {});
         }
         return response;
       }).catch(() => caches.match(event.request))
@@ -73,9 +83,9 @@ self.addEventListener('fetch', (event) => {
       return fetch(event.request, { cache: 'no-cache' }).then((response) => {
         if (response.ok) {
           const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            try { cache.put(event.request, clone); } catch (e) {}
-          });
+          caches.open(CACHE_NAME).then((cache) =>
+            cache.put(event.request, clone)
+          ).catch(() => {});
         }
         return response;
       });

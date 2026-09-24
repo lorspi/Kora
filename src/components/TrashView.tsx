@@ -8,16 +8,16 @@ import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { TrashItem } from '../types';
 import {
-  Trash2,
-  RotateCcw,
-  Trash as TrashIcon,
-  AlertTriangle,
+  Trash as Trash2,
+  ArrowCounterClockwise as RotateCcw,
+  TrashSimple as TrashIcon,
+  Warning as AlertTriangle,
   FileText,
   CheckSquare,
-  ImageIcon,
+  Image as ImageIcon,
   X,
-  Search
-} from 'lucide-react';
+  MagnifyingGlass as Search
+} from '@phosphor-icons/react';
 
 type TrashFilter = 'all' | 'task' | 'document' | 'media';
 

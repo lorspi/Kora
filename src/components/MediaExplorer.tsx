@@ -6,18 +6,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
-import { 
-  Image, 
-  Video, 
-  Trash2, 
-  RefreshCw, 
-  Link2, 
-  Unlink, 
+import {
+  Image,
+  VideoCamera as Video,
+  Trash as Trash2,
+  ArrowClockwise as RefreshCw,
+  LinkSimple as Link2,
+  LinkBreak as Unlink,
   Eye,
   X,
-  Film,
-  ImageIcon
-} from 'lucide-react';
+  FilmStrip as Film,
+  Image as ImageIcon
+} from '@phosphor-icons/react';
 
 interface MediaItem {
   path: string;

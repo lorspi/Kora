@@ -10,30 +10,30 @@ import { Task, SystemUser } from '../types';
 import { MarkdownPreview } from '../lib/markdown';
 import MobileNotesDrawer from './MobileNotesDrawer';
 import CustomSelect from './CustomSelect';
-import { 
-  X, 
-  Trash2, 
-  UserPlus, 
-  Tags, 
-  Paperclip, 
-  Calendar, 
-  AlertCircle, 
-  FolderLock, 
-  Play, 
-  CheckSquare, 
-  MessageSquare, 
-  Send,
+import {
+  X,
+  Trash as Trash2,
+  UserPlus,
+  Tag as Tags,
+  Paperclip,
+  CalendarBlank as Calendar,
+  WarningCircle as AlertCircle,
+  LockKey as FolderLock,
+  Play,
+  CheckSquare,
+  ChatText as MessageSquare,
+  PaperPlaneRight as Send,
   Link,
   Plus,
   Compass,
   FileImage,
   Clock,
-  Unlock,
-  ShieldAlert,
-  Pencil,
+  LockKeyOpen as Unlock,
+  ShieldWarning as ShieldAlert,
+  PencilSimple as Pencil,
   Check,
-  Settings2
-} from 'lucide-react';
+  GearSix as Settings2
+} from '@phosphor-icons/react';
 
 type TaskDetailTab = 'details' | 'subtasks' | 'dependencies';
 

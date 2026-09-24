@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useProjectStore } from '../store';
-import { FolderOpen, HardDrive, HelpCircle, AlertTriangle, ArrowRight, Github, Download } from 'lucide-react';
+import { FolderOpen, HardDrive, Question as HelpCircle, Warning as AlertTriangle, ArrowRight, GithubLogo as Github, Download } from '@phosphor-icons/react';
 import { FileSystemAdapter } from '../lib/fs';
 import ThemeToggle from './ThemeToggle';
 import VersionBadge from './VersionBadge';

@@ -6,11 +6,11 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { useProjectStore } from '../store';
 import { RegisteredProject } from '../types';
-import { 
-  FolderOpen, HardDrive, AlertTriangle, 
-  ArrowRight, Github, Download, Plus, X,
-  HelpCircle, Cloud
-} from 'lucide-react';
+import {
+  FolderOpen, HardDrive, Warning as AlertTriangle,
+  ArrowRight, GithubLogo as Github, Download, Plus, X,
+  Question as HelpCircle, Cloud
+} from '@phosphor-icons/react';
 import ThemeToggle from './ThemeToggle';
 import VersionBadge from './VersionBadge';
 const FirebaseLinkDialog = lazy(() => import('./FirebaseLinkDialog'));
@@ -196,7 +196,7 @@ export default function ProjectBrowser() {
                   <Cloud className="w-5 h-5" />
                 </div>
                 <h3 className="font-semibold text-foreground text-sm flex items-center gap-1.5 font-heading">
-                  Equipo en la Nube
+                  Proyecto en la nube
                   <span className="text-[10px] bg-bento-orange/10 text-bento-orange font-mono px-2 py-0.5 rounded-full">Tiempo real</span>
                 </h3>
                 <p className="mt-1.5 text-muted-foreground text-xs leading-normal flex-1">
@@ -318,7 +318,7 @@ export default function ProjectBrowser() {
 
                     <h3 className="font-semibold text-foreground text-sm truncate">{project.name}</h3>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {project.type === 'FIREBASE' ? 'Equipo en la Nube' : 'Carpeta Local'}
+                      {project.type === 'FIREBASE' ? 'Proyecto en la nube' : 'Carpeta Local'}
                       {project.pathHint && <span className="ml-1">· {project.pathHint}</span>}
                     </p>
 

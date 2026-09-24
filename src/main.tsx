@@ -1,5 +1,6 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
+import { IconContext } from '@phosphor-icons/react';
 import App from './App.tsx';
 import { UIProvider } from './lib/ui.tsx';
 import './index.css';
@@ -19,9 +20,13 @@ if (import.meta.env.VITE_CLARITY_ID) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <UIProvider>
-      <App />
-    </UIProvider>
+    {/* Default every Phosphor icon to the duotone weight app-wide. Individual
+        icons still control their size via Tailwind width/height classes. */}
+    <IconContext.Provider value={{ weight: 'duotone' }}>
+      <UIProvider>
+        <App />
+      </UIProvider>
+    </IconContext.Provider>
   </StrictMode>,
 );
 

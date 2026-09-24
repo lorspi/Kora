@@ -9,9 +9,9 @@
 
 import React, { useState } from 'react';
 import {
-  Cloud, X, ArrowLeft, Copy, Check, ExternalLink,
-  AlertTriangle, Loader2, ShieldCheck,
-} from 'lucide-react';
+  Cloud, X, ArrowLeft, Copy, Check, ArrowSquareOut as ExternalLink,
+  Warning as AlertTriangle, SpinnerGap as Loader2, ShieldCheck, CaretDown as ChevronDown,
+} from '@phosphor-icons/react';
 import { useProjectStore } from '../store';
 import {
   parseFirebaseConfig,
@@ -31,6 +31,7 @@ export default function FirebaseLinkDialog({ onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copiedRules, setCopiedRules] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(false);
 
   const handleCopyRules = async () => {
     try {
@@ -47,7 +48,7 @@ export default function FirebaseLinkDialog({ onClose }: Props) {
 
     const name = projectName.trim();
     if (!name) {
-      setError('Ponle un nombre a este proyecto de equipo.');
+      setError('Ponle un nombre a este proyecto en la nube.');
       return;
     }
 
@@ -87,8 +88,8 @@ export default function FirebaseLinkDialog({ onClose }: Props) {
             <ArrowLeft className="w-4 h-4" />
           </button>
           <h2 className="text-lg font-bold text-foreground font-heading flex items-center gap-2">
-            <Cloud className="w-5 h-5 text-bento-blue" />
-            Equipo en la Nube (Firebase)
+            <Cloud className="w-5 h-5 text-bento-orange" />
+            Proyecto en la nube (Firebase)
           </h2>
         </div>
         <button
@@ -105,6 +106,27 @@ export default function FirebaseLinkDialog({ onClose }: Props) {
         los datos: viven en el proyecto de Firebase de tu equipo.
       </p>
 
+      {/* Collapsible setup instructions — returning users can skip straight to pasting the config */}
+      <div className="border border-border rounded-2xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowInstructions(v => !v)}
+          className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-secondary/50 hover:bg-secondary transition-colors cursor-pointer text-left"
+          aria-expanded={showInstructions}
+        >
+          <span className="flex flex-col gap-0.5">
+            <span className="text-xs font-bold text-foreground font-heading uppercase tracking-wide">
+              Cómo crear y configurar tu proyecto de Firebase
+            </span>
+            <span className="text-[11px] text-muted-foreground font-normal normal-case">
+              Ábrelo si es tu primera vez. Si ya tienes tu proyecto listo, solo pega la configuración abajo.
+            </span>
+          </span>
+          <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${showInstructions ? 'rotate-180' : ''}`} />
+        </button>
+
+        {showInstructions && (
+          <div className="border-t border-border p-4 space-y-4 animate-fade-in">
       {/* Step-by-step instructions */}
       <div className="bg-secondary/50 border border-border rounded-2xl p-4 space-y-3">
         <h3 className="text-xs font-bold text-foreground font-heading uppercase tracking-wide">
@@ -197,12 +219,15 @@ export default function FirebaseLinkDialog({ onClose }: Props) {
 {FIRESTORE_RULES_TEMPLATE}
         </pre>
       </div>
+          </div>
+        )}
+      </div>
 
       {/* Inputs */}
       <div className="space-y-3">
         <div>
           <label className="text-[11px] font-semibold text-foreground block mb-1.5">
-            Nombre del proyecto de equipo
+            Nombre del proyecto en la nube
           </label>
           <input
             type="text"
