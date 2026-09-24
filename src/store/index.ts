@@ -17,14 +17,24 @@ import {
   Subtask,
   TaskLock,
   TrashItem,
-  RegisteredProject
+  RegisteredProject,
+  ProjectStorageType
 } from '../types';
 import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDirectoryHandle, clearDirectoryHandle, saveDirectoryHandleWithKey, loadDirectoryHandleByKey, deleteDirectoryHandleByKey, dbClear } from '../lib/fs';
+import type { FirebaseAdapter, FirebaseConfig } from '../lib/firebase';
+import { saveFirebaseConfigForProject, loadFirebaseConfigForProject, deleteFirebaseConfigForProject } from '../lib/firebaseConfigStore';
 import { hashPassword } from '../lib/crypto';
+
+/**
+ * Storage engine used by the store. Both adapters share the same structural
+ * interface (readTextFile/writeTextFile/listFiles/fileExists/...), so the entire
+ * store, CRUD, locks and polling logic works against either one unchanged.
+ */
+export type StorageAdapter = FileSystemAdapter | FirebaseAdapter;
 
 interface ProjectState {
   // Engines
-  adapter: FileSystemAdapter | null;
+  adapter: StorageAdapter | null;
   fsMode: FsMode;
   isLoading: boolean;
   isPolling: boolean;
@@ -58,6 +68,7 @@ interface ProjectState {
   // Methods
   setFsMode: (mode: FsMode) => void;
   loadProjectDirectory: (handle: FileSystemDirectoryHandle | null, mode: FsMode) => Promise<void>;
+  loadFromAdapter: (adapter: StorageAdapter) => Promise<void>;
   initialize: () => Promise<void>;
   createBlankProject: (name: string, desc: string) => Promise<void>;
 
@@ -152,7 +163,8 @@ interface ProjectState {
   registeredProjects: RegisteredProject[];
   loadedProjectId: string | null;
   loadProjectById: (projectId: string) => Promise<void>;
-  registerProject: (name: string, type: 'FSA_API', pathHint?: string) => string;
+  registerProject: (name: string, type: ProjectStorageType, pathHint?: string) => string;
+  registerFirebaseProject: (name: string, config: FirebaseConfig, spaceId?: string) => string;
   unregisterProject: (projectId: string) => void;
   goToProjectBrowser: () => void;
 }
@@ -305,7 +317,7 @@ function migrateOldProject(): RegisteredProject[] {
 export const useProjectStore = create<ProjectState>((set, get) => {
   
   // Save specific logs helper
-  const saveLogsAndRefresh = async (adapter: FileSystemAdapter, newLogs: TaskActivityLog[]) => {
+  const saveLogsAndRefresh = async (adapter: StorageAdapter, newLogs: TaskActivityLog[]) => {
     await adapter.writeTextFile('/activity/logs.json', JSON.stringify(newLogs, null, 2));
     set({ logs: newLogs });
   };
@@ -377,16 +389,21 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     registeredProjects: loadRegisteredProjects(),
     loadedProjectId: null,
 
-    // Read full project contents on load
+    // Read full project contents on load (local folder mode)
     loadProjectDirectory: async (handle, mode) => {
-      set({ isLoading: true });
       const adapter = new FileSystemAdapter(mode, handle);
-      
+      await get().loadFromAdapter(adapter);
+    },
+
+    // Generic loader that works for any storage adapter (local folder or Firebase).
+    loadFromAdapter: async (adapter) => {
+      set({ isLoading: true });
+
       try {
         const configExists = await adapter.fileExists('/config.json');
         
         if (!configExists) {
-          // New folder setup! Enable onboarding flow instead of seeding automatically
+          // New project setup! Enable onboarding flow instead of seeding automatically
           set({ adapter, isOnboarding: true });
           set({ isLoading: false });
           return;
@@ -534,7 +551,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           isLoading: false
         });
 
-        await saveDirectoryHandle(handle);
+        // Persist the FSA handle as the "last opened" one (local mode only).
+        if (adapter instanceof FileSystemAdapter) {
+          const h = adapter.getDirectoryHandle();
+          if (h) await saveDirectoryHandle(h);
+        }
 
         // Update registered project name with real name from project.json
         const loadedId = get().loadedProjectId;
@@ -1361,9 +1382,27 @@ graph TD
 
     registerProject: (name, type, pathHint?) => {
       const projectId = crypto.randomUUID();
-      const project = { id: projectId, name, type, createdAt: Date.now(), pathHint };
+      const project: RegisteredProject = { id: projectId, name, type, createdAt: Date.now(), pathHint };
       const projects = [...get().registeredProjects, project];
       saveRegisteredProjects(projects);
+      saveLastOpenedProjectId(projectId);
+      set({ registeredProjects: projects, loadedProjectId: projectId });
+      return projectId;
+    },
+
+    // Register a cloud (Firebase) project and persist its public config locally.
+    registerFirebaseProject: (name, config, spaceId = 'default') => {
+      const projectId = crypto.randomUUID();
+      const project: RegisteredProject = {
+        id: projectId,
+        name,
+        type: 'FIREBASE',
+        createdAt: Date.now(),
+        pathHint: config.projectId,
+      };
+      const projects = [...get().registeredProjects, project];
+      saveRegisteredProjects(projects);
+      saveFirebaseConfigForProject(projectId, config, spaceId);
       saveLastOpenedProjectId(projectId);
       set({ registeredProjects: projects, loadedProjectId: projectId });
       return projectId;
@@ -1386,6 +1425,9 @@ graph TD
         } catch (e) { /* ignore */ }
       })();
 
+      // Clean up any stored Firebase config for cloud projects.
+      deleteFirebaseConfigForProject(projectId);
+
       // If the unregistered project is the currently loaded one, go back to home
       if (get().loadedProjectId === projectId) {
         get().goToProjectBrowser();
@@ -1402,12 +1444,26 @@ graph TD
       set({ loadedProjectId: projectId, isLoading: true });
 
       try {
-        if (project.type === 'FSA_API') {
+        if (project.type === 'FIREBASE') {
+          const link = loadFirebaseConfigForProject(projectId);
+          if (!link) {
+            throw new Error('No se encontró la configuración de Firebase para este proyecto.');
+          }
+          // Lazy-load the Firebase SDK only when cloud mode is actually used,
+          // so local-only users don't pay the bundle cost.
+          const { FirebaseAdapter } = await import('../lib/firebase');
+          const adapter = new FirebaseAdapter(link.config, link.spaceId);
+          // Surface auth/connection errors early with a friendly message.
+          await adapter.ready();
+          set({ fsMode: 'FSA_API' });
+          await get().loadFromAdapter(adapter);
+        } else {
+          // Local folder (FSA API)
           const handle = await loadDirectoryHandleByKey('fsa-handle-' + projectId);
           if (!handle) {
             throw new Error('No se pudo recuperar el manejador de la carpeta.');
           }
-          const permState = await (handle).queryPermission({ mode: 'readwrite' });
+          const permState = await (handle as any).queryPermission({ mode: 'readwrite' });
           if (permState !== 'granted') {
             throw new Error('Permisos de carpeta perdidos.');
           }

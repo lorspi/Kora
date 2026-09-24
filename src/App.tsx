@@ -23,6 +23,7 @@ import {
   Layers, 
   FileText, 
   HardDrive,
+  Cloud,
   Menu
 } from 'lucide-react';
 import ThemeToggle from './components/ThemeToggle';
@@ -97,11 +98,30 @@ export default function App() {
     }
   }, []);
 
-  // Polling interval loop to detect directory/IDB modifications during other simulations
+  // Sync loop.
+  //  - Local folder mode: poll every 7s (folder changes aren't observable otherwise).
+  //  - Firebase cloud mode: subscribe to realtime changes for instant updates,
+  //    plus a slow safety poll.
   useEffect(() => {
     if (!adapter) return;
 
-    // Run background reload of project state every 7 seconds
+    // Firebase adapters expose a realtime subscribe(); use it when available.
+    const maybeSubscribe = (adapter as any).subscribe;
+    if (typeof maybeSubscribe === 'function') {
+      const unsubscribe = maybeSubscribe.call(adapter, () => {
+        backgroundReload();
+      });
+      // Safety net poll (much slower) in case a realtime event is missed.
+      const slowInterval = setInterval(() => {
+        backgroundReload();
+      }, 30000);
+      return () => {
+        if (typeof unsubscribe === 'function') unsubscribe();
+        clearInterval(slowInterval);
+      };
+    }
+
+    // Local folder mode: background reload every 7 seconds.
     const interval = setInterval(() => {
       backgroundReload();
     }, 7000);
@@ -187,18 +207,34 @@ export default function App() {
                       ¡Hola de nuevo, {activeUser.name.split(' ')[0]}! 👋
                     </h1>
                     <p className="text-muted-foreground text-xs mt-1.5 leading-normal">
-                      Has cargado exitosamente la carpeta local de tu proyecto. Tu base de conocimientos está lista y 100% desconectada.
+                      {adapter?.getMode() === 'FIREBASE'
+                        ? 'Tu proyecto está conectado a Firebase y se sincroniza en tiempo real con tu equipo.'
+                        : 'Has cargado exitosamente la carpeta local de tu proyecto. Tu base de conocimientos está lista y 100% desconectada.'}
                     </p>
                   </div>
 
                   <div className="text-xs font-mono bg-card border border-border p-3 rounded-xl shadow-card">
-                    <div className="flex items-center gap-2 mb-1 text-muted-foreground">
-                      <HardDrive className="w-4 h-4 text-bento-blue" />
-                      <span>Base de Datos:</span>
-                    </div>
-                    <strong className="text-bento-blue font-semibold uppercase font-mono text-[11px]">
-                      Carpeta local
-                    </strong>
+                    {adapter?.getMode() === 'FIREBASE' ? (
+                      <>
+                        <div className="flex items-center gap-2 mb-1 text-muted-foreground">
+                          <Cloud className="w-4 h-4 text-bento-orange" />
+                          <span>Base de Datos:</span>
+                        </div>
+                        <strong className="text-bento-orange font-semibold uppercase font-mono text-[11px]">
+                          Equipo en la Nube
+                        </strong>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 mb-1 text-muted-foreground">
+                          <HardDrive className="w-4 h-4 text-bento-blue" />
+                          <span>Base de Datos:</span>
+                        </div>
+                        <strong className="text-bento-blue font-semibold uppercase font-mono text-[11px]">
+                          Carpeta local
+                        </strong>
+                      </>
+                    )}
                   </div>
                 </div>
 

@@ -139,10 +139,12 @@ export interface ProjectLocks {
 /**
  * A project registered in the project browser.
  */
+export type ProjectStorageType = 'FSA_API' | 'FIREBASE';
+
 export interface RegisteredProject {
   id: string;
   name: string;
-  type: 'FSA_API';
+  type: ProjectStorageType;
   createdAt: number;
   /** Path hint for display purposes (FSA only) */
   pathHint?: string;

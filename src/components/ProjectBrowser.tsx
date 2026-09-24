@@ -3,16 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { useProjectStore } from '../store';
 import { RegisteredProject } from '../types';
 import { 
   FolderOpen, HardDrive, AlertTriangle, 
   ArrowRight, Github, Download, Plus, X,
-  HelpCircle
+  HelpCircle, Cloud
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import VersionBadge from './VersionBadge';
+const FirebaseLinkDialog = lazy(() => import('./FirebaseLinkDialog'));
 import { useUpdateCheck } from '../hooks/useVersion';
 import { loadSavedSessions } from '../store/sessions';
 import { useUI } from '../lib/ui';
@@ -25,6 +26,7 @@ export default function ProjectBrowser() {
   const [fsaSupported] = useState<boolean>(() => 'showDirectoryPicker' in window);
 
   const [showNewProject, setShowNewProject] = useState(false);
+  const [showFirebaseLink, setShowFirebaseLink] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
@@ -140,7 +142,15 @@ export default function ProjectBrowser() {
           </div>
         )}
 
-        {showNewProject ? (
+        {showFirebaseLink ? (
+          <Suspense fallback={
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          }>
+            <FirebaseLinkDialog onClose={() => setShowFirebaseLink(false)} />
+          </Suspense>
+        ) : showNewProject ? (
           <div className="space-y-5 animate-fade-in">
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-foreground font-heading">Nuevo Proyecto</h2>
@@ -152,8 +162,8 @@ export default function ProjectBrowser() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4">
-              {/* Option: Native File System (only option now) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Option: Native File System (local, offline-first) */}
               <div 
                 onClick={handleSelectFSA}
                 className={`group border rounded-2xl p-5 cursor-pointer transition-all duration-300 flex flex-col text-left h-full ${
@@ -174,6 +184,26 @@ export default function ProjectBrowser() {
                 </p>
                 <span className="mt-4 text-[11px] text-bento-blue font-medium group-hover:underline flex items-center gap-1">
                   Dar acceso a carpeta <ArrowRight className="w-3 h-3" />
+                </span>
+              </div>
+
+              {/* Option: Firebase cloud (realtime team sync) */}
+              <div
+                onClick={() => { setErrorMsg(null); setShowFirebaseLink(true); }}
+                className="group border border-border bg-card hover:border-bento-orange/60 hover:shadow-card-hover rounded-2xl p-5 cursor-pointer transition-all duration-300 flex flex-col text-left h-full"
+              >
+                <div className="w-10 h-10 rounded-xl bg-bento-orange-light flex items-center justify-center text-bento-orange mb-4 transition-colors">
+                  <Cloud className="w-5 h-5" />
+                </div>
+                <h3 className="font-semibold text-foreground text-sm flex items-center gap-1.5 font-heading">
+                  Equipo en la Nube
+                  <span className="text-[10px] bg-bento-orange/10 text-bento-orange font-mono px-2 py-0.5 rounded-full">Tiempo real</span>
+                </h3>
+                <p className="mt-1.5 text-muted-foreground text-xs leading-normal flex-1">
+                  Conecta tu propio proyecto de <strong>Firebase</strong> para sincronizar al instante con todo el equipo, sin esperar a Drive ni Mega.
+                </p>
+                <span className="mt-4 text-[11px] text-bento-orange font-medium group-hover:underline flex items-center gap-1">
+                  Vincular Firebase <ArrowRight className="w-3 h-3" />
                 </span>
               </div>
             </div>
@@ -202,7 +232,7 @@ export default function ProjectBrowser() {
             <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground font-mono pt-2">
               <span className="flex items-center gap-2">
                 <HelpCircle className="w-4 h-4 text-bento-blue/70" />
-                Es 100% privado. Ningún dato viaja a servidores externos.
+                En modo local tus datos no salen de tu equipo. En modo nube viven en tu propio Firebase.
               </span>
               <a 
                 href="https://github.com/lorspi/Kora" 
@@ -243,8 +273,12 @@ export default function ProjectBrowser() {
                     onClick={() => handleOpenProject(project)}
                   >
                     <div className="flex items-start justify-between mb-2">
-                      <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-bento-blue-light text-bento-blue">
-                        <HardDrive className="w-4 h-4" />
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        project.type === 'FIREBASE'
+                          ? 'bg-bento-orange-light text-bento-orange'
+                          : 'bg-bento-blue-light text-bento-blue'
+                      }`}>
+                        {project.type === 'FIREBASE' ? <Cloud className="w-4 h-4" /> : <HardDrive className="w-4 h-4" />}
                       </div>
                       <div className="flex items-center gap-1.5">
                         {/* Auth indicator */}
@@ -284,7 +318,7 @@ export default function ProjectBrowser() {
 
                     <h3 className="font-semibold text-foreground text-sm truncate">{project.name}</h3>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      Carpeta Local
+                      {project.type === 'FIREBASE' ? 'Equipo en la Nube' : 'Carpeta Local'}
                       {project.pathHint && <span className="ml-1">· {project.pathHint}</span>}
                     </p>
 
@@ -304,7 +338,7 @@ export default function ProjectBrowser() {
             <div className="flex items-center justify-center gap-4 pt-4 text-xs text-muted-foreground font-mono border-t border-border">
               <span className="flex items-center gap-2">
                 <HelpCircle className="w-4 h-4 text-bento-blue/70" />
-                Es 100% privado. Ningún dato viaja a servidores externos.
+                En modo local tus datos no salen de tu equipo. En modo nube viven en tu propio Firebase.
               </span>
               <a 
                 href="https://github.com/lorspi/Kora" 

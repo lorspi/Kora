@@ -136,3 +136,18 @@
 
 - Lógica de `performUpdate` (borrado de caché, desregistro de service workers, recarga forzada).
 - Archivos obsoletos de `servidor-local/`: `compilar.bat`, `Instrucciones.md`, zips antiguos.
+
+## [1.1.0] — 2026-09-23
+
+### Added
+
+- **Sincronización en tiempo real con Firebase (modo "Equipo en la Nube")**
+  Se agregó un nuevo modo de proyecto que permite a los equipos sincronizar en tiempo real sin depender de la velocidad de servicios de carpetas compartidas como Drive o Mega. Cada equipo conecta su propio proyecto de Firebase (modelo "trae tu propio backend"): desde la opción "Vincular Nuevo Proyecto" se elige "Equipo en la Nube", se siguen las instrucciones paso a paso para crear el proyecto en la consola de Firebase, habilitar Firestore y el inicio de sesión anónimo, y se pega el objeto `firebaseConfig`. Kora se conecta directamente a Firestore desde el navegador, sin backend propio. Se implementó un `FirebaseAdapter` con la misma interfaz que el adaptador de archivos local, de modo que toda la lógica de tareas, listas, documentos, bloqueos de edición y sincronización funciona igual en ambos modos. La actualización en la nube usa suscripciones en tiempo real de Firestore (`onSnapshot`) con un sondeo lento de respaldo, mientras el modo local conserva su sondeo de carpeta. Los datos viven en el proyecto de Firebase del propio equipo.
+
+- **Distinción visual entre proyectos locales y remotos**
+  La interfaz ahora identifica claramente el tipo de almacenamiento de cada proyecto. En el navegador de proyectos, el header del sidebar, el panel "Proyectos Vinculados" y la tarjeta "Base de Datos" del dashboard, los proyectos en la nube muestran un icono de nube con acento naranja y la etiqueta "Equipo en la Nube", mientras que los locales conservan el icono de disco con acento azul y la etiqueta "Carpeta Local".
+
+### Changed
+
+- **Carga diferida del SDK de Firebase**
+  El SDK de Firebase se carga bajo demanda solo cuando se usa el modo "Equipo en la Nube", quedando aislado en su propio bundle. Así, los usuarios que solo trabajan con carpetas locales no cargan esta dependencia, y el bundle principal de la aplicación se mantiene ligero.

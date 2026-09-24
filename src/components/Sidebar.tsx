@@ -34,6 +34,7 @@ import {
   Pencil,
   Check,
   HardDrive,
+  Cloud,
   ArrowRight,
   Home
 } from 'lucide-react';
@@ -88,6 +89,9 @@ export default function Sidebar() {
   const [authStatuses, setAuthStatuses] = useState<Record<string, boolean>>({});
   
   const { registeredProjects, registerProject, unregisterProject, goToProjectBrowser, loadedProjectId, loadProjectById } = useProjectStore();
+
+  // Storage type of the currently loaded project ('FIREBASE' for cloud, else local folder).
+  const currentProjectType = registeredProjects.find(p => p.id === loadedProjectId)?.type;
 
   // Update auth statuses — solely from localStorage (persisted sessions)
   useEffect(() => {
@@ -360,8 +364,18 @@ export default function Sidebar() {
           <img src="/icon.svg" alt="Kora" className="w-8 h-8 shrink-0" />
           <div className="leading-tight overflow-hidden">
             <span className="text-xs font-bold text-foreground block truncate font-heading">{projectMeta?.name || 'Kora Workspace'}</span>
-            <span className="text-[10px] text-muted-foreground block font-mono truncate">
-              Carpeta Local
+            <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono truncate">
+              {currentProjectType === 'FIREBASE' ? (
+                <>
+                  <Cloud className="w-2.5 h-2.5 text-bento-orange shrink-0" />
+                  Equipo en la Nube
+                </>
+              ) : (
+                <>
+                  <HardDrive className="w-2.5 h-2.5 text-bento-blue shrink-0" />
+                  Carpeta Local
+                </>
+              )}
             </span>
           </div>
         </div>
@@ -837,8 +851,12 @@ export default function Sidebar() {
                         isCurrent ? 'bg-accent cursor-default' : 'hover:bg-accent/50'
                       }`}
                     >
-                      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 bg-bento-blue-light text-bento-blue">
-                        <HardDrive className="w-3.5 h-3.5" />
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                        project.type === 'FIREBASE'
+                          ? 'bg-bento-orange-light text-bento-orange'
+                          : 'bg-bento-blue-light text-bento-blue'
+                      }`}>
+                        {project.type === 'FIREBASE' ? <Cloud className="w-3.5 h-3.5" /> : <HardDrive className="w-3.5 h-3.5" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
@@ -847,7 +865,7 @@ export default function Sidebar() {
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-[10px] text-muted-foreground">
-                            Carpeta Local
+                            {project.type === 'FIREBASE' ? 'Equipo en la Nube' : 'Carpeta Local'}
                           </span>
                           {/* Auth indicator dot */}
                           <span className={`inline-block w-1.5 h-1.5 rounded-full ${isAuthenticated ? 'bg-bento-green' : 'bg-muted-foreground'}`} 
