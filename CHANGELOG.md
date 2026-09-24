@@ -178,3 +178,27 @@
 
 - **Aviso de meta etiqueta PWA obsoleta**
   Se agregó `<meta name="mobile-web-app-capable" content="yes">` (estándar) junto a la variante `apple-mobile-web-app-capable`, eliminando la advertencia de obsolescencia en la consola.
+
+## [1.2.0] — 2026-09-24
+
+### Added
+
+- **Nuevo editor de documentos basado en TipTap**
+  Se reemplazó por completo el editor de bloques anterior por un editor WYSIWYG construido sobre TipTap (núcleo de código abierto, licencia MIT). El editor mantiene intacto el contrato de almacenamiento en disco: los documentos se siguen guardando como Markdown legible, y la conversión Markdown ↔ editor es de ida y vuelta byte a byte para no alterar archivos existentes ni la vista previa de solo lectura. Se conservaron todas las funciones alrededor del editor: guardado, bloqueo colaborativo del documento, aviso de cambios sin guardar al salir, adjuntos (imágenes y video desde archivo o biblioteca de medios), renombrado del archivo y el modo código con Markdown crudo.
+
+- **Controles por bloque (mover, convertir, duplicar, borrar)**
+  Cada bloque muestra al pasar el mouse un botón `+` para insertar un bloque debajo y un asa de arrastre para reordenar. Al hacer clic en el asa se abre un menú contextual para borrar, duplicar o convertir el tipo de bloque (texto, encabezados, listas, lista de tareas, cita y código).
+
+- **Barra flotante de formato y menú de comandos con "/"**
+  Al seleccionar texto aparece una barra flotante con negrita, cursiva, subrayado, tachado, código y enlaces. Escribir `/` abre un menú para insertar bloques (encabezados, listas, cita, código, divisor, diagrama Mermaid y tabla).
+
+- **Diagramas Mermaid y tablas con edición de código**
+  Los diagramas Mermaid se renderizan en vivo y reaccionan al tema claro/oscuro; los bloques de Mermaid y de tabla conservan un editor de código fuente colapsable. Ambos preservan su fuente Markdown original sin reformatearla.
+
+### Changed
+
+- **Placeholder por bloque que sigue al cursor**
+  El texto guía ("Escribe '/' para insertar un bloque…") ahora aparece solo en el bloque activo y desaparece al perder el foco, en lugar de mostrarse en todas las líneas vacías.
+
+- **Normalización de saltos de línea al abrir documentos**
+  Al cargar un documento, los finales de línea CRLF/CR se normalizan a LF. Es un cambio de una sola vez al volver a guardar y mantiene estable el indicador de cambios sin guardar.

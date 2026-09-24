@@ -44,7 +44,7 @@ interface PromptState extends PromptOptions {
 
 interface UIContextValue {
   toast: (message: string, type?: ToastType) => void;
-  confirm: (options: ConfirmOptions) => Promise<boolean>;
+  confirm: (options: ConfirmOptions) => Promise<boolean | 'neutral'>;
   prompt: (options: PromptOptions) => Promise<string | null>;
 }
 

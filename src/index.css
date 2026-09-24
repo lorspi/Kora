@@ -363,3 +363,156 @@ body {
 [contenteditable]:focus {
   outline: none;
 }
+
+/* ===== TipTap Document Editor ===== */
+.ProseMirror {
+  outline: none;
+  color: hsl(var(--foreground));
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  line-height: 1.65;
+}
+
+.ProseMirror > * + * {
+  margin-top: 0.5rem;
+}
+
+.ProseMirror h1 {
+  font-size: 1.5rem;
+  font-weight: 900;
+  line-height: 1.2;
+  color: hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: 0.5rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.ProseMirror h2 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: hsl(var(--foreground));
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.ProseMirror h3 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: hsl(var(--foreground));
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.ProseMirror p {
+  color: hsl(var(--foreground));
+}
+
+.ProseMirror ul,
+.ProseMirror ol {
+  padding-left: 1.5rem;
+}
+
+.ProseMirror ul {
+  list-style: disc;
+}
+
+.ProseMirror ol {
+  list-style: decimal;
+}
+
+.ProseMirror li {
+  margin-top: 0.15rem;
+  margin-bottom: 0.15rem;
+}
+
+.ProseMirror li p {
+  margin: 0;
+}
+
+.ProseMirror blockquote {
+  border-left: 4px solid hsl(var(--bento-blue));
+  background-color: hsl(var(--bento-blue) / 0.06);
+  padding: 0.5rem 1rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  font-style: italic;
+}
+
+.ProseMirror pre {
+  background-color: hsl(var(--secondary));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  overflow-x: auto;
+}
+
+.ProseMirror pre code {
+  background: none;
+  padding: 0;
+  color: hsl(var(--foreground));
+  font-size: inherit;
+}
+
+.ProseMirror code {
+  background-color: hsl(var(--secondary));
+  color: hsl(var(--bento-orange));
+  font-family: var(--font-mono);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+}
+
+.ProseMirror hr {
+  border: none;
+  border-top: 1px solid hsl(var(--border));
+  margin: 1rem 0;
+}
+
+.ProseMirror a {
+  color: hsl(var(--bento-blue));
+  text-decoration: underline;
+}
+
+/* Task list (checklists) */
+.ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0.25rem;
+}
+
+.ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.ProseMirror ul[data-type="taskList"] li > label {
+  margin-top: 0.15rem;
+  user-select: none;
+}
+
+.ProseMirror ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+  accent-color: hsl(var(--bento-green));
+}
+
+/* Placeholder shown only on the focused empty block (follows the cursor).
+   Scoped to .ProseMirror-focused so it disappears when the editor loses focus. */
+.ProseMirror-focused .is-empty::before {
+  content: attr(data-placeholder);
+  color: hsl(var(--muted-foreground));
+  opacity: 0.5;
+  float: left;
+  height: 0;
+  pointer-events: none;
+}

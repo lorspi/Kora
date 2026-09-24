@@ -33,7 +33,7 @@ interface MobileNotesDrawerProps {
   editComment: (logId: string, text: string) => Promise<void>;
   deleteComment: (logId: string) => Promise<void>;
   markNoteAsRead: (logId: string) => Promise<void>;
-  confirm: (opts: any) => Promise<boolean>;
+  confirm: (opts: any) => Promise<boolean | 'neutral'>;
   resolvedMedia: Record<string, string>;
   setPreviewMediaUrl: (url: string | null) => void;
   setPreviewMediaType: (type: 'image' | 'video') => void;
