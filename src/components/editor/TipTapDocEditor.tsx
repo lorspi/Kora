@@ -50,8 +50,11 @@ import { pmDocToMarkdown, markdownToTiptapHtml, normalizeMarkdown } from '../../
 export interface TipTapDocEditorHandle {
   /** Serialize current document to the on-disk Markdown dialect. */
   getMarkdown: () => string;
-  /** Replace the whole document from a Markdown string (does not push history baseline). */
-  setMarkdown: (md: string) => void;
+  /**
+   * Replace the whole document from a Markdown string without emitting onChange.
+   * Returns the editor's own serialization of the new content.
+   */
+  setMarkdown: (md: string) => string;
   /** Insert an image at the current selection (relative attachment path). */
   insertImage: (src: string, alt: string) => void;
   /** Insert a video at the current selection (relative attachment path). */
@@ -69,6 +72,12 @@ interface TipTapDocEditorProps {
   resolvedUrls: Record<string, string>;
   /** Called with the current Markdown whenever the document changes. */
   onChange: (markdown: string) => void;
+  /**
+   * Called once the editor is created, with its serialization of the initial content.
+   * The round-trip is not always byte-identical to the file, so this is the baseline
+   * to compare against when deciding whether the user actually changed anything.
+   */
+  onReady?: (markdown: string) => void;
 }
 
 // ─── Slash command definitions ────────────────────────────────────────────────────
@@ -99,8 +108,13 @@ const SLASH_ITEMS: SlashItem[] = [
 
 // ─── Slash command menu ─────────────────────────────────────────────────────────
 
+/** Matches the menu's max-h-[300px]; used to decide whether it fits below the caret. */
+const SLASH_MENU_MAX_HEIGHT = 300;
+const SLASH_MENU_GAP = 4;
+
 function SlashMenu({ editor, onClose }: { editor: Editor; onClose: () => void }) {
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  // Either `top` (menu below the caret) or `bottom` (menu above it) is set.
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
   const [filter, setFilter] = useState('');
   const [selected, setSelected] = useState(0);
   const slashPosRef = useRef<number | null>(null);
@@ -122,7 +136,13 @@ function SlashMenu({ editor, onClose }: { editor: Editor; onClose: () => void })
         if (slashPosRef.current === null) slashPosRef.current = $from.pos - match[1].length - 1;
         setFilter(match[1]);
         const coords = editor.view.coordsAtPos($from.pos);
-        setPos({ top: coords.bottom + 4, left: coords.left });
+        const spaceBelow = window.innerHeight - coords.bottom;
+        const spaceAbove = coords.top;
+        if (spaceBelow < SLASH_MENU_MAX_HEIGHT + SLASH_MENU_GAP && spaceAbove > spaceBelow) {
+          setPos({ bottom: window.innerHeight - coords.top + SLASH_MENU_GAP, left: coords.left });
+        } else {
+          setPos({ top: coords.bottom + SLASH_MENU_GAP, left: coords.left });
+        }
         setSelected(0);
       } else {
         slashPosRef.current = null;
@@ -166,7 +186,7 @@ function SlashMenu({ editor, onClose }: { editor: Editor; onClose: () => void })
   return (
     <div
       className="fixed z-[9999] bg-card border border-border rounded-xl shadow-card-hover py-1.5 min-w-[220px] max-h-[300px] overflow-y-auto animate-fade-in"
-      style={{ top: pos.top, left: pos.left }}
+      style={{ top: pos.top, bottom: pos.bottom, left: pos.left }}
     >
       <div className="px-3 py-1.5">
         <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Bloques básicos</span>
@@ -250,7 +270,7 @@ function FormatBubble({ editor }: { editor: Editor }) {
 // ─── Main editor component ─────────────────────────────────────────────────────────
 
 const TipTapDocEditor = forwardRef<TipTapDocEditorHandle, TipTapDocEditorProps>(
-  ({ initialMarkdown, readOnly = false, resolvedUrls, onChange }, ref) => {
+  ({ initialMarkdown, readOnly = false, resolvedUrls, onChange, onReady }, ref) => {
     const [showSlash, setShowSlash] = useState(true);
     const [viewReady, setViewReady] = useState(false);
 
@@ -263,21 +283,29 @@ const TipTapDocEditor = forwardRef<TipTapDocEditorHandle, TipTapDocEditorProps>(
           class: 'focus:outline-none font-body',
         },
       },
-      onCreate: () => setViewReady(true),
-      onUpdate: ({ editor: e }) => {
+      onCreate: ({ editor: e }) => {
+        onReady?.(pmDocToMarkdown(e.getJSON() as any));
+        setViewReady(true);
+      },
+      onUpdate: ({ editor: e, transaction }) => {
+        // `update` also fires for non-content events (e.g. setEditable); only real
+        // document edits should count as changes.
+        if (!transaction.docChanged) return;
         onChange(pmDocToMarkdown(e.getJSON() as any));
       },
     });
 
-    // Reflect readOnly changes.
+    // Reflect readOnly changes without emitting a spurious update.
     useEffect(() => {
-      editor?.setEditable(!readOnly);
+      editor?.setEditable(!readOnly, false);
     }, [editor, readOnly]);
 
     useImperativeHandle(ref, (): TipTapDocEditorHandle => ({
       getMarkdown: () => (editor ? pmDocToMarkdown(editor.getJSON() as any) : ''),
       setMarkdown: (md: string) => {
-        editor?.commands.setContent(markdownToTiptapHtml(normalizeMarkdown(md)));
+        if (!editor) return md;
+        editor.commands.setContent(markdownToTiptapHtml(normalizeMarkdown(md)), { emitUpdate: false });
+        return pmDocToMarkdown(editor.getJSON() as any);
       },
       insertImage: (src: string, alt: string) => {
         editor?.chain().focus().insertContent({ type: 'mediaImage', attrs: { src, alt } }).run();

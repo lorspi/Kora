@@ -16,7 +16,7 @@
  */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useUI } from '../lib/ui';
-import { useProjectStore } from '../store';
+import { useProjectStore, DOC_LOCK_TTL, isDocLockAlive } from '../store';
 import {
   FloppyDisk as Save,
   Trash as Trash2,
@@ -29,10 +29,37 @@ import {
   DotsThreeVertical as MoreVertical,
   FileCode,
   ShieldWarning as ShieldAlert,
+  CloudCheck,
 } from '@phosphor-icons/react';
 import TipTapDocEditor from './editor/TipTapDocEditor';
 import type { TipTapDocEditorHandle } from './editor/TipTapDocEditor';
 import { normalizeMarkdown } from '../lib/tiptapMarkdown';
+
+/** Per-device preference; autosave is on unless the user turned it off. */
+const AUTOSAVE_KEY = 'kora-doc-autosave';
+/** Quiet period after the last edit before an autosave runs. */
+const AUTOSAVE_DELAY = 1500;
+/** Lock renewal interval; must stay well under DOC_LOCK_TTL. */
+const LOCK_HEARTBEAT = 15000;
+
+function loadAutoSavePref(): boolean {
+  try {
+    return localStorage.getItem(AUTOSAVE_KEY) !== 'false';
+  } catch {
+    return true;
+  }
+}
+
+function formatSavedAgo(savedAt: number, now: number): string {
+  const seconds = Math.max(0, Math.round((now - savedAt) / 1000));
+  if (seconds < 45) return 'Guardado hace unos segundos';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `Guardado hace ${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `Guardado hace ${hours} h`;
+  const days = Math.round(hours / 24);
+  return `Guardado hace ${days} ${days === 1 ? 'día' : 'días'}`;
+}
 
 export default function DocView() {
   const {
@@ -46,7 +73,7 @@ export default function DocView() {
     renameDocFile,
     adapter,
     activeUser,
-    locks,
+    docLocks,
     lockDoc,
     unlockDoc,
     setDocHasUnsavedChanges,
@@ -58,9 +85,10 @@ export default function DocView() {
 
   const [isLockedByOther, setIsLockedByOther] = useState(false);
   const [lockingUser, setLockingUser] = useState<string | null>(null);
-  const heartbeatTimer = useRef<any>(null);
-  const locksRef = useRef(locks);
-  locksRef.current = locks;
+  // This editor session's lock id, and until when (our clock) our claim is live.
+  const sessionRef = useRef('');
+  const claimUntilRef = useRef(0);
+  const acquireLockRef = useRef<(() => Promise<void>) | null>(null);
 
   const docMeta = docs.find((d) => d.id === selectedDocId);
 
@@ -68,7 +96,16 @@ export default function DocView() {
   const [currentMarkdown, setCurrentMarkdown] = useState('');
   const [initialMarkdown, setInitialMarkdown] = useState('');
   const [originalMarkdown, setOriginalMarkdown] = useState('');
+  // The editor's own serialization of originalMarkdown. The Markdown round-trip is
+  // not always byte-identical, so content equal to either one counts as unchanged.
+  const [baselineMarkdown, setBaselineMarkdown] = useState('');
+  const [originalTitle, setOriginalTitle] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
+  const [autoSave, setAutoSave] = useState(loadAutoSavePref);
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const savingRef = useRef(false);
+  const takeBaselineRef = useRef(false);
   const [loading, setLoading] = useState(false); // save-in-progress (button spinner)
   const [initialLoading, setInitialLoading] = useState(false); // first document load
   const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
@@ -93,10 +130,15 @@ export default function DocView() {
     setInitialLoading(true);
     getDocContent(selectedDocId).then((text) => {
       const normalized = normalizeMarkdown(text);
+      const docTitle = docMeta?.title || 'Sin Título';
+      takeBaselineRef.current = true;
       setInitialMarkdown(normalized);
       setCurrentMarkdown(normalized);
       setOriginalMarkdown(normalized);
-      setTitle(docMeta?.title || 'Sin Título');
+      setBaselineMarkdown(normalized);
+      setTitle(docTitle);
+      setOriginalTitle(docTitle);
+      setLastSavedAt(docMeta?.editedAt ?? docMeta?.createdAt ?? null);
       setHasChanges(false);
       setCodeMode(false);
       setInitialLoading(false);
@@ -104,68 +146,179 @@ export default function DocView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDocId, docMeta?.id]);
 
+  // The editor reports its serialization on mount: on a fresh load that becomes the
+  // baseline; after leaving code mode it is simply the current content.
+  const handleEditorReady = useCallback((markdown: string) => {
+    if (takeBaselineRef.current) {
+      takeBaselineRef.current = false;
+      setBaselineMarkdown(markdown);
+    }
+    setCurrentMarkdown(markdown);
+  }, []);
+
+  // Re-read the doc from disk (used while someone else holds the lock, so we show
+  // their saved edits, and when the lock passes to us).
+  const reloadFromDisk = useCallback(async () => {
+    if (!selectedDocId) return;
+    const text = normalizeMarkdown(await getDocContent(selectedDocId));
+    const meta = useProjectStore.getState().docs.find((d) => d.id === selectedDocId);
+    const docTitle = meta?.title || 'Sin Título';
+    const canonical = !codeMode && editorRef.current ? editorRef.current.setMarkdown(text) : text;
+    setInitialMarkdown(text);
+    setOriginalMarkdown(text);
+    setBaselineMarkdown(canonical);
+    setCurrentMarkdown(canonical);
+    setTitle(docTitle);
+    setOriginalTitle(docTitle);
+    setLastSavedAt(meta?.editedAt ?? null);
+  }, [selectedDocId, codeMode, getDocContent]);
+
+  // ── Acquire lock + heartbeat ─────────────────────────────────────────────────────
+  // Whoever opened the doc first keeps it. If another session overwrites our live
+  // lock without having seen it (a stale read), our claim reclaims it and the late
+  // arrival drops to read-only. See lockDoc in the store.
+  useEffect(() => {
+    if (!selectedDocId || !activeUser) return;
+    const session = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    sessionRef.current = session;
+    claimUntilRef.current = 0;
+    let inFlight = false;
+    let closed = false;
+    let pending: Promise<void> = Promise.resolve();
+    const acquireLock = async () => {
+      if (inFlight || closed) return;
+      inFlight = true;
+      pending = (async () => {
+        try {
+          // Our own clock only: we've held it continuously if the last renewal is within the TTL.
+          const claimLive = claimUntilRef.current > Date.now();
+          const ok = await lockDoc(selectedDocId, session, claimLive);
+          if (!closed) claimUntilRef.current = ok ? Date.now() + DOC_LOCK_TTL : 0;
+        } finally {
+          inFlight = false;
+        }
+      })();
+      await pending;
+    };
+    // Release after any in-flight renewal lands, or that write would re-create the lock.
+    const release = () => { pending.finally(() => unlockDoc(selectedDocId)); };
+    acquireLockRef.current = acquireLock;
+    acquireLock();
+    const heartbeat = setInterval(acquireLock, LOCK_HEARTBEAT);
+    // Background tabs throttle timers; renew as soon as the tab is visible again.
+    const onVisible = () => { if (document.visibilityState === 'visible') acquireLock(); };
+    // Best effort: release on tab close/reload so others don't wait out the TTL.
+    const onPageHide = () => { release(); };
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      clearInterval(heartbeat);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pagehide', onPageHide);
+      closed = true;
+      acquireLockRef.current = null;
+      claimUntilRef.current = 0;
+      release();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDocId, activeUser?.id]);
+
   // ── Locked-by-other status ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedDocId || !activeUser) return;
-    const activeLock = locks[selectedDocId];
-    const now = Date.now();
-    if (activeLock && activeLock.userId !== activeUser.id && activeLock.expiresAt > now) {
+    const activeLock = docLocks[selectedDocId];
+    const heldByOther = !!activeLock && activeLock.userId !== activeUser.id && isDocLockAlive(selectedDocId, activeLock);
+    const ourClaimWins = heldByOther && claimUntilRef.current > Date.now() && activeLock.replaces !== sessionRef.current;
+    if (heldByOther && !ourClaimWins) {
       setIsLockedByOther(true);
       setLockingUser(activeLock.username);
     } else {
       setIsLockedByOther(false);
       setLockingUser(null);
     }
-  }, [selectedDocId, activeUser?.id, locks]);
+    if (ourClaimWins) acquireLockRef.current?.();
+  }, [selectedDocId, activeUser?.id, docLocks]);
 
-  // ── Acquire lock + heartbeat ─────────────────────────────────────────────────────
+  // While read-only, follow the editor's saves; when the lock passes to us, start
+  // from the latest saved version rather than what we loaded earlier.
+  const prevLockedRef = useRef(false);
+  const prevEditedAtRef = useRef(docMeta?.editedAt);
+  const prevDocIdRef = useRef(selectedDocId);
   useEffect(() => {
-    if (!selectedDocId || !activeUser) return;
-    const acquireLock = async () => {
-      const activeLock = locksRef.current[selectedDocId];
-      const now = Date.now();
-      if (!activeLock || activeLock.userId === activeUser.id || activeLock.expiresAt <= now) {
-        await lockDoc(selectedDocId);
-      }
-    };
-    acquireLock();
-    heartbeatTimer.current = setInterval(acquireLock, 14000);
-    return () => {
-      if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
-      unlockDoc(selectedDocId);
-    };
+    const wasLocked = prevLockedRef.current;
+    const editedChanged = prevEditedAtRef.current !== docMeta?.editedAt;
+    const docChanged = prevDocIdRef.current !== selectedDocId;
+    prevLockedRef.current = isLockedByOther;
+    prevEditedAtRef.current = docMeta?.editedAt;
+    prevDocIdRef.current = selectedDocId;
+    // A different doc is loaded by the load effect above.
+    if (docChanged || initialLoading) return;
+    if ((wasLocked && !isLockedByOther) || (isLockedByOther && editedChanged)) reloadFromDisk();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDocId, activeUser?.id]);
+  }, [selectedDocId, isLockedByOther, docMeta?.editedAt]);
 
   // ── Track changes and sync to store for navigation interception ───────────────────
+  // Nothing counts as a change while someone else holds the doc: we can't save it.
   useEffect(() => {
-    const changed = currentMarkdown !== originalMarkdown || title !== (docMeta?.title || '');
+    const markdownChanged = currentMarkdown !== originalMarkdown && currentMarkdown !== baselineMarkdown;
+    const titleChanged = title.trim() !== originalTitle.trim();
+    const changed = !isLockedByOther && !initialLoading && (markdownChanged || titleChanged);
     setHasChanges(changed);
     setDocHasUnsavedChanges(changed);
-  }, [currentMarkdown, title, originalMarkdown, docMeta?.title, setDocHasUnsavedChanges]);
+  }, [currentMarkdown, originalMarkdown, baselineMarkdown, title, originalTitle, isLockedByOther, initialLoading, setDocHasUnsavedChanges]);
+
+  useEffect(() => () => setDocHasUnsavedChanges(false), [setDocHasUnsavedChanges]);
 
   // ── Save ─────────────────────────────────────────────────────────────────────────
   const handleSave = useCallback(async (): Promise<boolean> => {
-    if (!selectedDocId) return false;
+    if (!selectedDocId || isLockedByOther || savingRef.current) return false;
+    savingRef.current = true;
     setLoading(true);
     try {
       // In block mode read from the editor; in code mode currentMarkdown is source of truth.
       const markdown = codeMode ? currentMarkdown : (editorRef.current?.getMarkdown() ?? currentMarkdown);
-      await saveDocContent(selectedDocId, title, markdown);
+      const savedTitle = title;
+      await saveDocContent(selectedDocId, savedTitle, markdown);
+      // Only move the baselines: edits typed while the save was in flight stay pending.
       setOriginalMarkdown(markdown);
-      setCurrentMarkdown(markdown);
+      setBaselineMarkdown(markdown);
+      setOriginalTitle(savedTitle.trim());
       // Keep the editor's mount baseline in sync so a later remount doesn't
       // revert to pre-save content.
       setInitialMarkdown(markdown);
-      setHasChanges(false);
+      setLastSavedAt(Date.now());
       return true;
     } catch {
       toast('Error al guardar documento', 'error');
       return false;
     } finally {
+      savingRef.current = false;
       setLoading(false);
     }
-  }, [selectedDocId, codeMode, currentMarkdown, title, saveDocContent, toast]);
+  }, [selectedDocId, isLockedByOther, codeMode, currentMarkdown, title, saveDocContent, toast]);
+
+  // ── Autosave ─────────────────────────────────────────────────────────────────────
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+  useEffect(() => {
+    if (!autoSave || !hasChanges || isLockedByOther || loading) return;
+    const timer = setTimeout(() => handleSaveRef.current(), AUTOSAVE_DELAY);
+    return () => clearTimeout(timer);
+  }, [autoSave, hasChanges, isLockedByOther, loading, currentMarkdown, title]);
+
+  const toggleAutoSave = () => {
+    const next = !autoSave;
+    setAutoSave(next);
+    try { localStorage.setItem(AUTOSAVE_KEY, String(next)); } catch { /* storage unavailable */ }
+    setShowDocMenu(false);
+  };
+
+  // Keep the "Guardado hace…" label fresh.
+  useEffect(() => {
+    if (!autoSave) return;
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, [autoSave]);
 
   // ── Navigation guard (unsaved changes) ─────────────────────────────────────────────
   const isHandlingRef = useRef(false);
@@ -174,6 +327,19 @@ export default function DocView() {
     isHandlingRef.current = true;
 
     const handlePendingNavigation = async () => {
+      // No prompt when there's nothing of ours to lose.
+      if (!hasChanges || isLockedByOther) {
+        confirmPendingNavigation();
+        isHandlingRef.current = false;
+        return;
+      }
+      // With autosave, save and leave; only fall back to asking if saving failed.
+      if (autoSave && (await handleSave())) {
+        confirmPendingNavigation();
+        isHandlingRef.current = false;
+        return;
+      }
+
       const result = await confirm({
         title: 'Cambios sin guardar',
         message: 'Tienes cambios sin guardar en este documento. ¿Quieres guardarlos antes de salir?',
@@ -427,6 +593,26 @@ export default function DocView() {
             )}
           </div>
 
+          {autoSave ? (
+            !isLockedByOther && (
+              <div
+                className="px-2 py-2 text-[11px] text-muted-foreground flex items-center gap-1.5 select-none whitespace-nowrap"
+                title={lastSavedAt ? new Date(lastSavedAt).toLocaleString() : undefined}
+              >
+                {loading || hasChanges ? (
+                  <>
+                    <div className="w-3 h-3 border-b-2 border-muted-foreground rounded-full animate-spin"></div>
+                    Guardando…
+                  </>
+                ) : (
+                  <>
+                    <CloudCheck className="w-3.5 h-3.5" />
+                    {lastSavedAt ? formatSavedAgo(lastSavedAt, Math.max(now, lastSavedAt)) : 'Guardado'}
+                  </>
+                )}
+              </div>
+            )
+          ) : (
           <button
             onClick={handleSave}
             disabled={!hasChanges || loading || isLockedByOther}
@@ -445,6 +631,7 @@ export default function DocView() {
             )}
             Guardar
           </button>
+          )}
 
           <div className="relative" ref={docMenuRef}>
             <button
@@ -463,6 +650,18 @@ export default function DocView() {
                 >
                   <FileCode className="w-3.5 h-3.5" />
                   {codeMode ? 'Modo bloques' : 'Modo código'}
+                </button>
+                <button
+                  role="menuitemcheckbox"
+                  aria-checked={autoSave}
+                  onClick={toggleAutoSave}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer transition-colors text-left"
+                >
+                  <CloudCheck className="w-3.5 h-3.5" />
+                  <span className="flex-1">Autoguardado</span>
+                  <span className={`relative inline-flex w-7 h-4 rounded-full transition-colors ${autoSave ? 'bg-primary' : 'bg-secondary border border-border'}`}>
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-card shadow transition-all ${autoSave ? 'left-3.5' : 'left-0.5'}`} />
+                  </span>
                 </button>
                 <button
                   disabled={isLockedByOther}
@@ -494,6 +693,7 @@ export default function DocView() {
                 readOnly={isLockedByOther}
                 resolvedUrls={resolvedUrls}
                 onChange={setCurrentMarkdown}
+                onReady={handleEditorReady}
               />
             )}
           </div>

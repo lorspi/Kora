@@ -202,3 +202,40 @@
 
 - **Normalización de saltos de línea al abrir documentos**
   Al cargar un documento, los finales de línea CRLF/CR se normalizan a LF. Es un cambio de una sola vez al volver a guardar y mantiene estable el indicador de cambios sin guardar.
+
+## [1.2.1] — 2026-09-28
+### Added
+
+- **Autoguardado en documentos**
+  Los documentos se guardan automáticamente 1,5 s después de la última edición. La opción está activa por defecto y se puede desactivar desde el menú del documento (interruptor "Autoguardado"); la preferencia se recuerda por navegador. Con el autoguardado activo se oculta el botón "Guardar" y en su lugar se muestra el estado "Guardando…" o "Guardado hace X" (con la fecha exacta al pasar el mouse). Al salir de un documento con cambios pendientes se guarda sin preguntar; el modal de cambios sin guardar solo aparece si el guardado falla.
+
+- **Creación de múltiples tareas a la vez**
+  Al pegar varias líneas en el campo "Crear tarea" se abre el nuevo diálogo "Crear tareas" con una tarea por línea, editable antes de confirmar y con selección de estado y prioridad. El diálogo también se abre desde el nuevo botón "Varias" y desde "Crear tarea" en cada columna del Kanban (con el estado de la columna preseleccionado). Se eliminan automáticamente viñetas, numeraciones, casillas (`- [ ]`) y líneas vacías. Se agregó `createTasks()` al store, que escribe un archivo por tarea pero actualiza el registro de actividad una sola vez.
+
+- **Asignación rápida de responsables en Lista, Kanban y Tabla**
+  Junto a los avatares de cada tarea aparece al pasar el mouse un botón (+) (siempre visible en pantallas táctiles) que abre la lista del equipo para marcar o desmarcar responsables. Cada cambio se guarda al instante, el menú se abre hacia arriba si no hay espacio debajo e incluye buscador cuando el equipo tiene más de 6 personas. No se muestra si otro usuario está editando la tarea.
+
+- **Reordenar estados del flujo de trabajo arrastrando**
+  En la configuración de una lista, cada estado tiene un asa de arrastre para reordenarlo con el mouse o en pantallas táctiles, y también con las flechas ↑ / ↓ del teclado sobre el asa. El nuevo orden se aplica al guardar la configuración y se refleja en las vistas Lista y Kanban. Se agregó una nota indicando que las tareas nuevas se crean en el primer estado.
+
+### Changed
+
+- **Bloqueo de documentos: el primero en abrir conserva la edición**
+  Los bloqueos de documentos ahora viven en un archivo por documento (`/activity/doc-locks/<id>.json`) en lugar de compartir `locks.json` con las tareas, que se reescribía completo en cada bloqueo de tarea y en la limpieza periódica, borrando bloqueos ajenos. La vigencia de un bloqueo se mide con el reloj local de cada cliente (según cuándo se vio cambiar su latido), eliminando falsos vencimientos por diferencias de reloj entre equipos. Si otra sesión sobrescribe un bloqueo vigente sin haberlo visto, la primera lo recupera y la segunda queda en solo lectura. El bloqueo dura 2 minutos, se renueva cada 15 s y al volver a la pestaña, y se libera al salir del documento o cerrar la pestaña. Mientras está en solo lectura, el documento se actualiza cuando quien edita guarda, y al liberarse se recarga la última versión antes de permitir editar.
+
+- **Menú "/" se abre hacia arriba cerca del final de la pantalla**
+  Cuando no hay espacio suficiente debajo del cursor, el menú de bloques se muestra por encima.
+
+- **Pie de tarjetas Kanban siempre visible**
+  El pie de cada tarjeta (subtareas, fecha y responsables) se muestra siempre para alojar el botón de asignación rápida.
+
+### Fixed
+
+- **Modal "Cambios sin guardar" sin haber hecho cambios**
+  El editor emitía un evento de actualización al montarse (`setEditable`), y la conversión Markdown ↔ editor no siempre es idéntica byte a byte, lo que marcaba el documento como modificado. Ahora solo cuentan las transacciones que cambian el contenido y se compara contra la serialización del propio editor además del archivo original. El título se compara contra el valor cargado o guardado (ignorando espacios al final), en lugar del título en vivo de los metadatos.
+
+- **Modal de guardado para usuarios en solo lectura**
+  Mientras otro usuario edita el documento no se registran cambios, por lo que ya no aparece el aviso de cambios sin guardar ni se ejecuta el autoguardado.
+
+- **Modo solo lectura intermitente**
+  El documento dejaba de estar en solo lectura mientras otro usuario seguía editándolo (bloqueos borrados por escrituras concurrentes, relojes desfasados y latidos ralentizados en pestañas en segundo plano). Además, la limpieza periódica ya no reescribe `locks.json`, lo que también evita que se pierdan bloqueos de tareas.

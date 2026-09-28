@@ -48,6 +48,8 @@ interface ProjectState {
   tasks: Task[];
   docs: DocMetadata[];
   locks: ProjectLocks;
+  /** Doc locks, kept apart from task `locks` (see docLockPath). */
+  docLocks: ProjectLocks;
   logs: TaskActivityLog[];
   isOnboarding: boolean;
   
@@ -91,6 +93,8 @@ interface ProjectState {
   
   // Tasks Management
   createTask: (title: string, listId: string, statusId: string, priority: Task['priority']) => Promise<Task>;
+  /** Create several tasks at once (e.g. pasted lines); blank titles are skipped. */
+  createTasks: (titles: string[], listId: string, statusId: string, priority: Task['priority']) => Promise<Task[]>;
   updateTask: (task: Task) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   
@@ -115,7 +119,12 @@ interface ProjectState {
   // Lock mechanism
   lockTask: (taskId: string) => Promise<boolean>;
   unlockTask: (taskId: string) => Promise<void>;
-  lockDoc: (docId: string) => Promise<boolean>;
+  /**
+   * Acquire or renew a document lock for an editor `session`. `claimLive` says the
+   * session has held the lock continuously until now: then a lock another session
+   * wrote without having seen ours (a stale read) is reclaimed instead of obeyed.
+   */
+  lockDoc: (docId: string, session: string, claimLive: boolean) => Promise<boolean>;
   unlockDoc: (docId: string) => Promise<void>;
   
   // Activity logger & notes
@@ -172,6 +181,54 @@ interface ProjectState {
 
 // Helper to save/load persistence state
 const PERSISTENCE_KEY = 'gestor-de-proyectos-state';
+
+/**
+ * How long a document lock stays valid without a visible heartbeat. Generous on
+ * purpose: background tabs may only tick once a minute and shared folders sync
+ * with delay. Leaving the doc releases the lock explicitly, so this only matters
+ * when a session dies without cleaning up.
+ */
+export const DOC_LOCK_TTL = 120000;
+/** A lock whose own expiry is this far in the past is a leftover, whatever the clock skew. */
+const DOC_LOCK_STALE_MARGIN = 10 * 60 * 1000;
+
+/**
+ * Each doc lock lives in its own file, so only the sessions contending for that
+ * doc ever write it (a shared locks.json was rewritten whole by every task
+ * lock/unlock and background cleanup, which silently dropped doc locks).
+ */
+function docLockPath(docId: string): string {
+  return `/activity/doc-locks/${docId}.json`;
+}
+
+async function readDocLockFile(adapter: StorageAdapter, docId: string): Promise<TaskLock | null> {
+  try {
+    if (!(await adapter.fileExists(docLockPath(docId)))) return null;
+    const lock = JSON.parse(await adapter.readTextFile(docLockPath(docId)));
+    return lock && lock.userId ? lock : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Last heartbeat seen per doc lock, timed with OUR clock. */
+const docLockSeen = new Map<string, { stamp: string; seenAt: number }>();
+
+/**
+ * Whether another session's doc lock is still alive. Liveness is judged by when we
+ * last saw its heartbeat change, on our own clock — never by comparing its
+ * expiresAt (the holder's clock) with ours, since machines' clocks drift.
+ */
+export function isDocLockAlive(docId: string, lock: TaskLock, now = Date.now()): boolean {
+  const stamp = `${lock.session ?? lock.userId}:${lock.expiresAt}`;
+  const seen = docLockSeen.get(docId);
+  if (!seen || seen.stamp !== stamp) {
+    if (lock.expiresAt < now - DOC_LOCK_STALE_MARGIN) return false;
+    docLockSeen.set(docId, { stamp, seenAt: now });
+    return true;
+  }
+  return now - seen.seenAt < DOC_LOCK_TTL;
+}
 const SAVED_SESSION_KEY = 'gestor-de-proyectos-saved-session';
 const LAST_OPENED_PROJECT_KEY = 'kora-last-opened-project';
 type PersistenceState = {
@@ -370,6 +427,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     tasks: [],
     docs: [],
     locks: {},
+    docLocks: {},
     logs: [],    isOnboarding: false,
 
     // Doc unsaved changes tracking
@@ -681,6 +739,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         tasks: [],
         docs: [],
         locks: {},
+        docLocks: {},
         logs: [],
         selectedListId: null,
         selectedTaskId: null,
@@ -768,6 +827,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           tasks: [],
           docs: [],
           locks: {},
+          docLocks: {},
           logs: [],
           isOnboarding: false,
           selectedListId: blankList.id,
@@ -1138,6 +1198,7 @@ graph TD
         tasks,
         docs: docsCatalog,
         locks: {},
+        docLocks: {},
         logs,
         trashItems: [],
         isOnboarding: false,
@@ -1176,9 +1237,18 @@ graph TD
           }
         }
         
-        // Rewrite locked statuses back to filesystem if they expired/cleaned
-        if (locksChanged) {
-          await adapter.writeTextFile('/activity/locks.json', JSON.stringify(cleanedLocks, null, 2));
+        // Expired entries are only dropped in memory. Rewriting locks.json here raced
+        // with other users' lock writes and erased them.
+        void locksChanged;
+
+        // Refresh the open doc's lock (the only doc lock this client cares about).
+        const openDocId = get().selectedDocId;
+        let docLocks = get().docLocks;
+        if (openDocId) {
+          const docLock = await readDocLockFile(adapter, openDocId);
+          docLocks = { ...docLocks };
+          if (docLock) docLocks[openDocId] = docLock;
+          else delete docLocks[openDocId];
         }
 
         // Re-read lists catalog
@@ -1244,6 +1314,7 @@ graph TD
           docs,
           logs,
           locks: cleanedLocks,
+          docLocks,
           users,
           activeUser,
           trashItems,
@@ -1442,6 +1513,7 @@ graph TD
         tasks: [],
         docs: [],
         locks: {},
+        docLocks: {},
         logs: [],
         isOnboarding: false,
         selectedListId: null,
@@ -1576,6 +1648,7 @@ graph TD
         tasks: [],
         docs: [],
         locks: {},
+        docLocks: {},
         logs: [],
         isOnboarding: false,
         selectedListId: null,
@@ -1667,40 +1740,64 @@ graph TD
 
     // Create individual task structure file
     createTask: async (title, listId, statusId, priority) => {
+      const [task] = await get().createTasks([title], listId, statusId, priority);
+      if (!task) throw new Error('El título de la tarea está vacío');
+      return task;
+    },
+
+    // Create one JSON file per task; state and the activity log are updated once.
+    createTasks: async (titles, listId, statusId, priority) => {
       const { adapter, tasks, activeUser } = get();
       if (!adapter) throw new Error('Cargar directorio primero');
 
-      // Generate next numeric Code for visually pleasing tasks
-      const projectTasksLength = tasks.length;
-      const formattedCode = `TSK-${String(projectTasksLength + 1).padStart(3, '0')}`;
-      
-      const newTaskId = crypto.randomUUID();
-      const newTask: Task = {
-        id: newTaskId,
-        taskCode: formattedCode,
-        listId,
-        title: title.trim(),
-        description: '',
-        statusId,
-        dueDate: '',
-        assignees: [],
-        priority,
-        tags: [],
-        dependencies: [],
-        subtasks: [],
-        lastEditedBy: activeUser?.id,
-        lastEditedAt: Date.now()
-      };
+      const cleanTitles = titles.map(t => t.trim()).filter(Boolean);
+      const created: Task[] = [];
+      let codeNumber = tasks.length;
 
-      const updatedTasks = [...tasks, newTask];
-      await adapter.writeTextFile(`/tasks/task-${newTaskId}.json`, JSON.stringify(newTask, null, 2));
+      try {
+        for (const title of cleanTitles) {
+          // Generate next numeric Code for visually pleasing tasks
+          codeNumber++;
+          const newTaskId = crypto.randomUUID();
+          const newTask: Task = {
+            id: newTaskId,
+            taskCode: `TSK-${String(codeNumber).padStart(3, '0')}`,
+            listId,
+            title,
+            description: '',
+            statusId,
+            dueDate: '',
+            assignees: [],
+            priority,
+            tags: [],
+            dependencies: [],
+            subtasks: [],
+            lastEditedBy: activeUser?.id,
+            lastEditedAt: Date.now()
+          };
+          await adapter.writeTextFile(`/tasks/task-${newTaskId}.json`, JSON.stringify(newTask, null, 2));
+          created.push(newTask);
+        }
+      } finally {
+        // Keep whatever was written, even if a later write failed.
+        if (created.length > 0) {
+          set({ tasks: [...get().tasks, ...created] });
+          if (activeUser) {
+            const now = Date.now();
+            const newLogs: TaskActivityLog[] = created.map((task, i) => ({
+              id: crypto.randomUUID(),
+              taskId: task.id,
+              userId: activeUser.id,
+              username: activeUser.name,
+              action: 'creó esta tarea',
+              timestamp: now + i
+            })).reverse(); // logs are stored newest first
+            await saveLogsAndRefresh(adapter, [...newLogs, ...get().logs]);
+          }
+        }
+      }
 
-      set({ tasks: updatedTasks });
-      
-      // Log task action
-      await logActivityAction(newTaskId, 'creó esta tarea');
-      
-      return newTask;
+      return created;
     },
 
     // Update existing task file and refresh react state
@@ -2440,59 +2537,58 @@ graph TD
       }
     },
 
-    lockDoc: async (docId) => {
+    lockDoc: async (docId, session, claimLive) => {
       const { adapter, activeUser } = get();
       if (!adapter || !activeUser) return false;
 
       try {
-        let locks: ProjectLocks = {};
-        if (await adapter.fileExists('/activity/locks.json')) {
-          const locksRaw = await adapter.readTextFile('/activity/locks.json');
-          locks = JSON.parse(locksRaw);
+        const existing = await readDocLockFile(adapter, docId);
+        let replaces = existing?.replaces;
+
+        if (existing && existing.session !== session) {
+          // Same user in another tab/session: take it over, as before.
+          if (existing.userId !== activeUser.id) {
+            const alive = isDocLockAlive(docId, existing);
+            const wroteBlindOverOurs = claimLive && existing.replaces !== session;
+            if (alive && !wroteBlindOverOurs) {
+              set((st) => ({ docLocks: { ...st.docLocks, [docId]: existing } }));
+              return false;
+            }
+          }
+          replaces = existing.session;
         }
 
-        const now = Date.now();
-        const activeLock = locks[docId];
-
-        if (activeLock && activeLock.userId !== activeUser.id && activeLock.expiresAt > now) {
-          set({ locks });
-          return false;
-        }
-
-        locks[docId] = {
+        const lock: TaskLock = {
           userId: activeUser.id,
           username: activeUser.name,
-          expiresAt: now + 15000
+          expiresAt: Date.now() + DOC_LOCK_TTL,
+          session,
+          ...(replaces ? { replaces } : {}),
         };
-
-        await adapter.writeTextFile('/activity/locks.json', JSON.stringify(locks, null, 2));
-        set({ locks });
+        await adapter.writeTextFile(docLockPath(docId), JSON.stringify(lock, null, 2));
+        set((st) => ({ docLocks: { ...st.docLocks, [docId]: lock } }));
         return true;
       } catch (err) {
+        // Not a claim: counting a failed write as ours could later "reclaim" a live
+        // lock from its real holder. Without a known holder the doc stays editable.
         console.warn('Silent doc locking failure', err);
-        return true;
+        return false;
       }
     },
 
     unlockDoc: async (docId) => {
-      const { adapter, activeUser, locks } = get();
+      const { adapter, activeUser } = get();
       if (!adapter || !activeUser) return;
 
       try {
-        if (!locks[docId] || locks[docId].userId !== activeUser.id) {
-          return;
-        }
-
-        let freshLocks: ProjectLocks = {};
-        if (await adapter.fileExists('/activity/locks.json')) {
-          const locksRaw = await adapter.readTextFile('/activity/locks.json');
-          freshLocks = JSON.parse(locksRaw);
-        }
-
-        if (freshLocks[docId] && freshLocks[docId].userId === activeUser.id) {
-          delete freshLocks[docId];
-          await adapter.writeTextFile('/activity/locks.json', JSON.stringify(freshLocks, null, 2));
-          set({ locks: freshLocks });
+        const existing = await readDocLockFile(adapter, docId);
+        if (existing && existing.userId === activeUser.id) {
+          await adapter.deleteFile(docLockPath(docId));
+          set((st) => {
+            const docLocks = { ...st.docLocks };
+            delete docLocks[docId];
+            return { docLocks };
+          });
         }
       } catch (e) {
         console.warn('Doc unlock bypass', e);

@@ -112,6 +112,13 @@ export interface TaskLock {
   userId: string;
   username: string;
   expiresAt: number;
+  /** Doc locks only: the editor session (one open DocView) that holds the lock. */
+  session?: string;
+  /**
+   * Doc locks only: session of the lock this one knowingly replaced. A lock written
+   * without having seen ours (a stale read) doesn't beat our live claim.
+   */
+  replaces?: string;
 }
 
 export type TrashItemType = 'task' | 'document' | 'media';

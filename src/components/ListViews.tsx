@@ -8,6 +8,8 @@ import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { Task, TaskStatus, TaskList } from '../types';
 import CustomSelect from './CustomSelect';
+import AssigneePicker from './AssigneePicker';
+import BulkTaskDialog, { parseTaskLines } from './BulkTaskDialog';
 import {
   Check,
   CaretDown as ChevronDown,
@@ -29,6 +31,8 @@ import {
   GearSix as SettingsIcon,
   User,
   PlusCircle,
+  ListPlus,
+  DotsSixVertical as GripVertical,
   Clock
 } from '@phosphor-icons/react';
 
@@ -41,6 +45,7 @@ export default function ListViews() {
     selectedListId, 
     users, 
     createTask, 
+    createTasks,
     updateTask, 
     deleteTask, 
     updateListConfig, 
@@ -50,7 +55,7 @@ export default function ListViews() {
     logs,
     activeUser
   } = useProjectStore();
-  const { toast, confirm, prompt: uiPrompt } = useUI();
+  const { toast, confirm } = useUI();
 
   const [activeTab, setActiveTab] = useState<ActiveViewTab>('list');
   const [quickTitle, setQuickTitle] = useState('');
@@ -59,6 +64,8 @@ export default function ListViews() {
   const [collapsedStatuses, setCollapsedStatuses] = useState<Record<string, boolean>>({});
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverStatusId, setDragOverStatusId] = useState<string | null>(null);
+  // Multi-task dialog: open with prefilled text (e.g. pasted lines) and target status.
+  const [bulkDialog, setBulkDialog] = useState<{ initialText: string; statusId: string } | null>(null);
 
   const activeList = lists.find(l => l.id === selectedListId);
 
@@ -87,18 +94,47 @@ export default function ListViews() {
 
   const listTasks = tasks.filter(t => t.listId === activeList.id);
 
-  const handleQuickTaskAdd = async (statusId: string, customTitle?: string) => {
-    const titleVal = customTitle || quickTitle;
+  const handleQuickTaskAdd = async (statusId: string) => {
+    const titleVal = quickTitle;
     if (!titleVal.trim() || creatingTask) return;
     setCreatingTask(true);
     try {
       await createTask(titleVal, activeList.id, statusId, quickPriority);
-      if (!customTitle) setQuickTitle('');
+      setQuickTitle('');
     } catch (e) {
       toast('Error al crear tarea', 'error');
     } finally {
       setCreatingTask(false);
     }
+  };
+
+  const handleBulkCreate = async (titles: string[], statusId: string, priority: Task['priority']) => {
+    try {
+      const created = await createTasks(titles, activeList.id, statusId, priority);
+      toast(created.length === 1 ? 'Tarea creada' : `${created.length} tareas creadas`, 'success');
+    } catch (e) {
+      toast('Error al crear las tareas', 'error');
+      throw e;
+    }
+  };
+
+  // Pasting several lines into the quick-add input opens the multi-task dialog.
+  const handleQuickPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const lines = parseTaskLines(e.clipboardData.getData('text'));
+    if (lines.length < 2) return;
+    e.preventDefault();
+    const typed = quickTitle.trim();
+    setBulkDialog({
+      initialText: (typed ? [typed, ...lines] : lines).join('\n'),
+      statusId: activeList.statuses[0].id,
+    });
+    setQuickTitle('');
+  };
+
+  /** Locked by someone else editing the task: no inline changes. */
+  const isLockedByOther = (taskId: string) => {
+    const lock = locks[taskId];
+    return !!lock && Date.now() < lock.expiresAt && lock.userId !== activeUser?.id;
   };
 
   const toggleStatusCollapse = (statusId: string) => {
@@ -167,6 +203,16 @@ export default function ListViews() {
 
   return (
     <div id="list-views-container" className="flex-1 flex flex-col h-full bg-background font-body overflow-hidden">
+      {bulkDialog && (
+        <BulkTaskDialog
+          initialText={bulkDialog.initialText}
+          statuses={activeList.statuses}
+          defaultStatusId={bulkDialog.statusId}
+          defaultPriority={quickPriority}
+          onClose={() => setBulkDialog(null)}
+          onCreate={handleBulkCreate}
+        />
+      )}
       
       {/* Workspace Ribbon Title & View Tabs Selector */}
       <div className="bg-card px-3 sm:px-6 pt-4 sm:pt-5 pb-0 border-b border-border shrink-0">
@@ -186,10 +232,11 @@ export default function ListViews() {
               <input
                 id="quick-task-input"
                 type="text"
-                placeholder="Crear tarea..."
+                placeholder="Crear tarea o pegar varias..."
                 className="bg-card border border-input rounded-xl px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground w-full sm:w-60 focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-colors"
                 value={quickTitle}
                 onChange={(e) => setQuickTitle(e.target.value)}
+                onPaste={handleQuickPaste}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') handleQuickTaskAdd(activeList.statuses[0].id);
                 }}
@@ -211,6 +258,13 @@ export default function ListViews() {
                 className={`bg-primary hover:opacity-90 text-primary-foreground font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0 shadow-card ${creatingTask ? 'opacity-60 cursor-not-allowed' : ''}`}
               >
                 <Plus className="w-3.5 h-3.5" /> Agregar
+              </button>
+              <button
+                onClick={() => setBulkDialog({ initialText: quickTitle.trim(), statusId: activeList.statuses[0].id })}
+                className="bg-card hover:bg-accent text-muted-foreground hover:text-foreground border border-border font-semibold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
+                title="Crear varias tareas (una por línea)"
+              >
+                <ListPlus className="w-3.5 h-3.5" /> Varias
               </button>
             </div>
           )}
@@ -347,16 +401,7 @@ export default function ListViews() {
                                       <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${getPriorityBadgeColor(task.priority)}`}>
                                         {getPriorityLabel(task.priority)}
                                       </span>
-                                      <div className="flex -space-x-1.5 shrink-0">
-                                        {task.assignees.map(userId => {
-                                          const userObj = users.find(u => u.id === userId);
-                                          return userObj ? (
-                                            <span key={userId} className="w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: userObj.avatarColor }} title={userObj.name}>
-                                              {userObj.name.charAt(0)}
-                                            </span>
-                                          ) : null;
-                                        })}
-                                      </div>
+                                      <AssigneePicker task={task} disabled={isLockedByOther(task.id)} />
                                     </div>
                                   </div>
                                 </div>
@@ -385,15 +430,8 @@ export default function ListViews() {
                                         <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Tiene notas sin leer" />
                                       )}
                                     </h4>
-                                    <div className="flex -space-x-1.5 shrink-0">
-                                      {task.assignees.map(userId => {
-                                        const userObj = users.find(u => u.id === userId);
-                                        return userObj ? (
-                                          <span key={userId} className="w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: userObj.avatarColor }} title={userObj.name}>
-                                            {userObj.name.charAt(0)}
-                                          </span>
-                                        ) : null;
-                                      })}
+                                    <div className="ml-auto">
+                                      <AssigneePicker task={task} disabled={isLockedByOther(task.id)} />
                                     </div>
                                   </div>
                                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -493,32 +531,21 @@ export default function ListViews() {
                               <FolderLock className="w-2.5 h-2.5" /> En edición: @{locks[task.id].username}
                             </span>
                           )}
-                          {(task.dueDate || task.assignees.length > 0 || task.subtasks.length > 0) && (
-                            <div className="flex items-center justify-between border-t border-border pt-2 shrink-0">
-                              {task.subtasks.length > 0 ? (
-                                <span className="text-[9px] text-muted-foreground font-mono">
-                                  ✓ {task.subtasks.filter(s => s.isCompleted).length}/{task.subtasks.length}
+                          <div className="flex items-center justify-between border-t border-border pt-2 shrink-0">
+                            {task.subtasks.length > 0 ? (
+                              <span className="text-[9px] text-muted-foreground font-mono">
+                                ✓ {task.subtasks.filter(s => s.isCompleted).length}/{task.subtasks.length}
+                              </span>
+                            ) : <span />}
+                            <div className="flex items-center gap-1.5">
+                              {task.dueDate && (
+                                <span className="text-[9px] text-muted-foreground font-semibold flex items-center gap-0.5">
+                                  <Clock className="w-2.5 h-2.5" /> {task.dueDate.replace(/^\d{4}-/, '')}
                                 </span>
-                              ) : <span />}
-                              <div className="flex items-center gap-1.5">
-                                {task.dueDate && (
-                                  <span className="text-[9px] text-muted-foreground font-semibold flex items-center gap-0.5">
-                                    <Clock className="w-2.5 h-2.5" /> {task.dueDate.replace(/^\d{4}-/, '')}
-                                  </span>
-                                )}
-                                <div className="flex -space-x-1 overflow-hidden">
-                                  {task.assignees.map(userId => {
-                                    const u = users.find(x => x.id === userId);
-                                    return u ? (
-                                      <span key={userId} className="w-4 h-4 rounded-full border border-card flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }}>
-                                        {u.name.charAt(0)}
-                                      </span>
-                                    ) : null;
-                                  })}
-                                </div>
-                              </div>
+                              )}
+                              <AssigneePicker task={task} size="sm" disabled={isLockedByOther(task.id)} />
                             </div>
-                          )}
+                          </div>
                           <div className="border-t border-border pt-2 shrink-0 flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <span className="text-[8px] text-muted-foreground mr-1.5">Mover a:</span>
                             {activeList.statuses.filter(s => s.id !== status.id).map(s => (
@@ -537,10 +564,7 @@ export default function ListViews() {
                   </div>
 
                   <button 
-                    onClick={async () => {
-                      const name = await uiPrompt({ title: 'Crear tarea', placeholder: 'Nombre de la tarea' });
-                      if (name && name.trim()) handleQuickTaskAdd(status.id, name);
-                    }}
+                    onClick={() => setBulkDialog({ initialText: '', statusId: status.id })}
                     className="w-full py-1.5 bg-secondary hover:bg-accent text-muted-foreground hover:text-foreground border border-border text-xs rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer font-bold leading-none shadow-card"
                   >
                     <PlusCircle className="w-3.5 h-3.5" />
@@ -572,7 +596,7 @@ export default function ListViews() {
                     const isLocked = locks[task.id] && Date.now() < locks[task.id].expiresAt;
                     const hasUnreadNotesTable = unreadNotesByTask.has(task.id);
                     return (
-                      <tr key={task.id} className="hover:bg-accent/50 transition-colors">
+                      <tr key={task.id} className="hover:bg-accent/50 transition-colors group">
                         <td className="p-3 font-mono text-[10px] font-bold text-muted-foreground text-center">
                           {task.taskCode}
                         </td>
@@ -624,17 +648,7 @@ export default function ListViews() {
                           />
                         </td>
                         <td className="p-3">
-                          <div className="flex -space-x-1.5 overflow-hidden">
-                            {task.assignees.map(userId => {
-                              const u = users.find(x => x.id === userId);
-                              return u ? (
-                                <span key={userId} className="w-5 h-5 rounded-full border-2 border-card flex items-center justify-center text-[8px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: u.avatarColor }} title={u.name}>
-                                  {u.name.charAt(0)}
-                                </span>
-                              ) : null;
-                            })}
-                            {task.assignees.length === 0 && <span className="text-[10px] text-muted-foreground italic">Libre</span>}
-                          </div>
+                          <AssigneePicker task={task} emptyLabel="Libre" disabled={isLockedByOther(task.id)} />
                         </td>
                         <td className="p-3 text-center">
                           <button 
@@ -848,6 +862,54 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
     setStatuses(prev => prev.filter(s => s.id !== statusId));
   };
 
+  // ── Reorder statuses by dragging the grip (pointer events: mouse and touch) ──
+  const [draggingStatusId, setDraggingStatusId] = useState<string | null>(null);
+  const statusRowRefs = React.useRef<Record<string, HTMLDivElement | null>>({});
+
+  const moveStatus = (statusId: string, toIndex: number) => {
+    setStatuses(prev => {
+      const from = prev.findIndex(s => s.id === statusId);
+      const to = Math.max(0, Math.min(prev.length - 1, toIndex));
+      if (from === -1 || from === to) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+
+  const handleGripPointerDown = (e: React.PointerEvent<HTMLButtonElement>, statusId: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDraggingStatusId(statusId);
+  };
+
+  const handleGripPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!draggingStatusId) return;
+    // Target slot = number of other rows whose midpoint is above the pointer.
+    let target = 0;
+    for (const st of statuses) {
+      if (st.id === draggingStatusId) continue;
+      const rect = statusRowRefs.current[st.id]?.getBoundingClientRect();
+      if (rect && e.clientY > rect.top + rect.height / 2) target++;
+    }
+    moveStatus(draggingStatusId, target);
+  };
+
+  const handleGripPointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+    setDraggingStatusId(null);
+  };
+
+  const handleGripKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, statusId: string, index: number) => {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    moveStatus(statusId, index + (e.key === 'ArrowUp' ? -1 : 1));
+    // Keep focus on the moved row's grip.
+    requestAnimationFrame(() => statusRowRefs.current[statusId]?.querySelector<HTMLButtonElement>('[data-status-grip]')?.focus());
+  };
+
   const handleAddStatus = () => {
     if (!newStatusName.trim()) return;
     const newStatus: TaskStatus = {
@@ -888,10 +950,35 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
         {/* Statuses editor */}
         <div className="space-y-3 pt-3 border-t border-border">
           <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Estados del Flujo de Trabajo</label>
+          <p className="text-[10px] text-muted-foreground -mt-1.5">Arrastra para reordenar. Las tareas nuevas se crean en el primer estado.</p>
           
           <div className="space-y-2">
-            {statuses.map((st) => (
-              <div key={st.id} className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-secondary p-2.5 rounded-lg border border-border">
+            {statuses.map((st, index) => (
+              <div
+                key={st.id}
+                ref={(el) => { statusRowRefs.current[st.id] = el; }}
+                className={`flex flex-wrap sm:flex-nowrap items-center gap-2 bg-secondary p-2.5 rounded-lg border transition-shadow ${
+                  draggingStatusId === st.id ? 'border-ring shadow-card-hover relative z-10' : 'border-border'
+                }`}
+              >
+                {/* Drag handle */}
+                <button
+                  type="button"
+                  data-status-grip
+                  onPointerDown={(e) => handleGripPointerDown(e, st.id)}
+                  onPointerMove={handleGripPointerMove}
+                  onPointerUp={handleGripPointerUp}
+                  onPointerCancel={handleGripPointerUp}
+                  onKeyDown={(e) => handleGripKeyDown(e, st.id, index)}
+                  className={`p-0.5 -ml-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0 touch-none ${
+                    draggingStatusId === st.id ? 'cursor-grabbing text-foreground' : 'cursor-grab'
+                  }`}
+                  title="Arrastrar para reordenar (o usar las flechas ↑ ↓)"
+                  aria-label={`Reordenar estado ${st.name}`}
+                >
+                  <GripVertical className="w-4 h-4" />
+                </button>
+
                 {/* Color picker */}
                 <ColorSwatchPickerCompact value={st.color} onChange={(c) => handleStatusColorChange(st.id, c)} />
                 
