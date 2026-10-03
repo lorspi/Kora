@@ -357,10 +357,10 @@ export default function TaskDrawer() {
             )}
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={async () => { const ok = await confirm({ title: 'Eliminar tarea', message: '¿Eliminar definitivamente este archivo JSON de tarea? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteTask(task.id); }} disabled={isLockedByOther} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30 cursor-pointer" title="Eliminar tarea">
+            <button onClick={async () => { const ok = await confirm({ title: 'Eliminar tarea', message: '¿Eliminar definitivamente este archivo JSON de tarea? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteTask(task.id); }} disabled={isLockedByOther} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-destructive transition-colors disabled:opacity-30 cursor-pointer" data-tooltip="Eliminar tarea">
               <Trash2 className="w-4 h-4" />
             </button>
-            <button onClick={closeDrawer} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Cerrar detalles">
+            <button onClick={closeDrawer} className="p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-tooltip="Cerrar detalles">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -624,22 +624,22 @@ export default function TaskDrawer() {
                           <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}>{log.username.charAt(0)}</span>
                           <strong className="text-foreground font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
                           {isUnread && (
-                            <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Nota sin leer" />
+                            <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" data-tooltip="Nota sin leer" />
                           )}
                           {(canEditComment || canDeleteComment) && (
                             <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/log:opacity-100 transition-opacity">
                               {isEditing ? (
                                 <>
-                                  <button onClick={async () => { await editComment(log.id, editingText); setEditingLogId(null); setEditingText(''); }} className="p-0.5 rounded hover:bg-accent text-bento-green transition-colors cursor-pointer" title="Guardar"><Check className="w-3 h-3" /></button>
-                                  <button onClick={() => { setEditingLogId(null); setEditingText(''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground transition-colors cursor-pointer" title="Cancelar"><X className="w-3 h-3" /></button>
+                                  <button onClick={async () => { await editComment(log.id, editingText); setEditingLogId(null); setEditingText(''); }} className="p-0.5 rounded hover:bg-accent text-bento-green transition-colors cursor-pointer" data-tooltip="Guardar"><Check className="w-3 h-3" /></button>
+                                  <button onClick={() => { setEditingLogId(null); setEditingText(''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground transition-colors cursor-pointer" data-tooltip="Cancelar"><X className="w-3 h-3" /></button>
                                 </>
                               ) : (
                                 <>
                                   {canEditComment && (
-                                    <button onClick={() => { setEditingLogId(log.id); setEditingText(log.comment?.text || ''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Editar"><Pencil className="w-3 h-3" /></button>
+                                    <button onClick={() => { setEditingLogId(log.id); setEditingText(log.comment?.text || ''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-tooltip="Editar"><Pencil className="w-3 h-3" /></button>
                                   )}
                                   {canDeleteComment && (
-                                    <button onClick={async () => { const ok = await confirm({ title: 'Eliminar nota', message: '\u00bfEliminar este comentario? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" title="Eliminar"><Trash2 className="w-3 h-3" /></button>
+                                    <button onClick={async () => { const ok = await confirm({ title: 'Eliminar nota', message: '\u00bfEliminar este comentario? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" data-tooltip="Eliminar"><Trash2 className="w-3 h-3" /></button>
                                   )}
                                 </>
                               )}
@@ -708,7 +708,7 @@ export default function TaskDrawer() {
                                 type="button"
                                 onClick={() => removeCommentFile(file.path)}
                                 className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center text-[10px] hover:bg-black"
-                                title="Eliminar imagen"
+                                data-tooltip="Eliminar imagen"
                               >
                                 ×
                               </button>
@@ -717,7 +717,7 @@ export default function TaskDrawer() {
                         </div>
                       )}
                     </div>
-                    <button type="submit" disabled={isLockedByOther || (!newComment.trim() && commentFiles.length === 0)} className="p-3 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-40 shadow-card leading-none" title="Enviar nota">
+                    <button type="submit" disabled={isLockedByOther || (!newComment.trim() && commentFiles.length === 0)} className="p-3 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center shrink-0 disabled:opacity-40 shadow-card leading-none" data-tooltip="Enviar nota">
                       <Send className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -756,7 +756,7 @@ export default function TaskDrawer() {
                         <span className="text-[10px]">{log.action}</span>
                         <span className="text-[8px] font-mono text-muted-foreground ml-auto shrink-0">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                         {canDeleteActivity && (
-                          <button onClick={async () => { const ok = await confirm({ title: 'Eliminar actividad', message: '\u00bfEliminar este registro de actividad? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer opacity-0 group-hover/activity:opacity-100" title="Eliminar actividad"><Trash2 className="w-3 h-3" /></button>
+                          <button onClick={async () => { const ok = await confirm({ title: 'Eliminar actividad', message: '\u00bfEliminar este registro de actividad? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer opacity-0 group-hover/activity:opacity-100" data-tooltip="Eliminar actividad"><Trash2 className="w-3 h-3" /></button>
                         )}
                       </div>
                     </div>

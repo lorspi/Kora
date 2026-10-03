@@ -142,7 +142,7 @@ export default function SearchDialog() {
           <button 
             onClick={() => setSearchOpen(false)}
             className="p-1 hover:bg-accent rounded text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            title="Cerrar"
+            data-tooltip="Cerrar"
           >
             <X className="w-4 h-4" />
           </button>

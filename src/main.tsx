@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import { IconContext } from '@phosphor-icons/react';
 import App from './App.tsx';
 import { UIProvider } from './lib/ui.tsx';
+import { TooltipLayer } from './components/Tooltip.tsx';
 import './index.css';
 
 // Microsoft Clarity (solo se carga si la variable de entorno está definida)
@@ -25,6 +26,7 @@ createRoot(document.getElementById('root')!).render(
     <IconContext.Provider value={{ weight: 'duotone' }}>
       <UIProvider>
         <App />
+        <TooltipLayer />
       </UIProvider>
     </IconContext.Provider>
   </StrictMode>,

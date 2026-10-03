@@ -104,7 +104,8 @@ interface ProjectState {
   deleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
   
   // Markdown Documents
-  createDoc: (title: string, content: string, folder?: string) => Promise<DocMetadata>;
+  /** Creates a doc (opened right away unless `open` is false) */
+  createDoc: (title: string, content: string, folder?: string, open?: boolean) => Promise<DocMetadata>;
   getDocContent: (docId: string) => Promise<string>;
   saveDocContent: (docId: string, title: string, content: string) => Promise<void>;
   deleteDoc: (docId: string) => Promise<void>;
@@ -112,7 +113,11 @@ interface ProjectState {
   createDocFolder: (folderName: string) => Promise<void>;
   moveDocToFolder: (docId: string, folder: string | null) => Promise<void>;
   getDocFolders: () => Promise<string[]>;
-  renameDocFolder: (oldName: string, newName: string) => Promise<void>;
+  /** Doc folders (subfolders of /docs), shared by the sidebar and the documents view */
+  docFolders: string[];
+  refreshDocFolders: () => Promise<void>;
+  /** Returns the folder's new (sanitized) name */
+  renameDocFolder: (oldName: string, newName: string) => Promise<string | void>;
   deleteDocFolder: (folderName: string) => Promise<void>;
   renameDocFile: (docId: string, newFilename: string) => Promise<void>;
   
@@ -164,6 +169,10 @@ interface ProjectState {
   setShowProjectSettings: (show: boolean) => void;
   showAbout: boolean;
   setShowAbout: (show: boolean) => void;
+  /** Documents view (grid of folders and docs); docsFolder is the open folder (null: the root) */
+  showDocs: boolean;
+  docsFolder: string | null;
+  setShowDocs: (show: boolean, folder?: string | null) => void;
   
   // Mobile sidebar
   sidebarOpen: boolean;
@@ -607,6 +616,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           selectedListId: lists[0]?.id || null,
           selectedTaskId: null,
           selectedDocId: null,
+          showDocs: false,
+          docsFolder: null,
+          docFolders: [],
           isLoading: false
         });
 
@@ -744,6 +756,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         selectedListId: null,
         selectedTaskId: null,
         selectedDocId: null,
+        showDocs: false,
+        docsFolder: null,
+        docFolders: [],
         showTrash: false,
         trashItems: [],
         showMediaExplorer: false
@@ -833,6 +848,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           selectedListId: blankList.id,
           selectedTaskId: null,
           selectedDocId: null,
+          showDocs: false,
+          docsFolder: null,
+          docFolders: [],
           showTrash: false,
           trashItems: [],
           showMediaExplorer: false
@@ -1205,6 +1223,9 @@ graph TD
         selectedListId: listAId,
         selectedTaskId: null,
         selectedDocId: null,
+        showDocs: false,
+        docsFolder: null,
+        docFolders: [],
         showMediaExplorer: false
       });
     },
@@ -1519,6 +1540,9 @@ graph TD
         selectedListId: null,
         selectedTaskId: null,
         selectedDocId: null,
+        showDocs: false,
+        docsFolder: null,
+        docFolders: [],
         showMediaExplorer: false,
         showTrash: false,
         trashItems: [],
@@ -1654,6 +1678,9 @@ graph TD
         selectedListId: null,
         selectedTaskId: null,
         selectedDocId: null,
+        showDocs: false,
+        docsFolder: null,
+        docFolders: [],
         showMediaExplorer: false,
         showTrash: false,
         trashItems: [],
@@ -1964,7 +1991,7 @@ graph TD
     },
 
     // Documents (Docs in Markdown format)
-    createDoc: async (title, content, folder) => {
+    createDoc: async (title, content, folder, open = true) => {
       const { adapter, docs, activeUser } = get();
       if (!adapter) throw new Error('No open folder');
 
@@ -2011,7 +2038,8 @@ graph TD
       // Save doc index file info
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
 
-      set({ docs: updatedDocs, selectedDocId: docId });
+      set({ docs: updatedDocs });
+      if (open) get().setSelectedDoc(docId);
       return newDocMeta;
     },
 
@@ -2156,7 +2184,12 @@ graph TD
       const updatedTrash = [trashItem, ...trashItems];
       await adapter.writeTextFile('/trash/items.json', JSON.stringify(updatedTrash, null, 2));
 
-      set({ docs: updatedDocs, trashItems: updatedTrash, selectedDocId: null });
+      const wasOpen = get().selectedDocId === docId;
+      set({
+        docs: updatedDocs,
+        trashItems: updatedTrash,
+        ...(wasOpen ? { selectedDocId: null, showDocs: true, docsFolder: doc.folder ?? null } : {}),
+      });
     },
 
     scanDocuments: async () => {
@@ -2259,12 +2292,14 @@ graph TD
         .replace(/-+/g, '-')
         .replace(/^-+|-+$/g, '');
       
-      if (!sanitized) throw new Error('Invalid folder name');
+      if (!sanitized) throw new Error('Nombre de carpeta no válido');
+      if ((await get().getDocFolders()).includes(sanitized)) throw new Error(`Ya existe una carpeta llamada "${sanitized}"`);
       
       // Create the folder by writing a placeholder (FSA API creates dirs on path traversal)
       // We write and immediately delete a temp file to ensure the directory is created
       const tempPath = `/docs/${sanitized}/.folder`;
       await adapter.writeTextFile(tempPath, '');
+      await get().refreshDocFolders();
     },
 
     moveDocToFolder: async (docId, folder) => {
@@ -2337,6 +2372,13 @@ graph TD
       }
     },
 
+    docFolders: [],
+    refreshDocFolders: async () => {
+      const folders = await get().getDocFolders();
+      const current = get().docFolders;
+      if (folders.length !== current.length || folders.some((f, i) => f !== current[i])) set({ docFolders: folders });
+    },
+
     renameDocFolder: async (oldName, newName) => {
       const { adapter, docs } = get();
       if (!adapter) return;
@@ -2349,6 +2391,7 @@ graph TD
         .replace(/^-+|-+$/g, '');
       
       if (!sanitized || sanitized === oldName) return;
+      if ((await get().getDocFolders()).includes(sanitized)) throw new Error(`Ya existe una carpeta llamada "${sanitized}"`);
 
       // Move all files from old folder to new folder
       const docsInFolder = docs.filter(d => d.folder === oldName);
@@ -2376,8 +2419,13 @@ graph TD
         return d;
       });
 
+      // An empty folder has no docs to recreate it
+      if (docsInFolder.length === 0) await adapter.writeTextFile(`/docs/${sanitized}/.folder`, '');
+
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
-      set({ docs: updatedDocs });
+      set({ docs: updatedDocs, docsFolder: get().docsFolder === oldName ? sanitized : get().docsFolder });
+      await get().refreshDocFolders();
+      return sanitized;
     },
 
     deleteDocFolder: async (folderName) => {
@@ -2412,7 +2460,8 @@ graph TD
       });
 
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
-      set({ docs: updatedDocs });
+      set({ docs: updatedDocs, docsFolder: get().docsFolder === folderName ? null : get().docsFolder });
+      await get().refreshDocFolders();
     },
 
     renameDocFile: async (docId, newFilename) => {
@@ -2720,12 +2769,12 @@ graph TD
           pendingNavigationAction: () => {
             const currentState = get();
             if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
-            set({ showTrash: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+            set({ showTrash: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, showDocs: false, sidebarOpen: false });
           }
         });
         return;
       }
-      set({ showTrash: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+      set({ showTrash: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showMediaExplorer: false, showProjectSettings: false, showAbout: false, showDocs: false, sidebarOpen: false });
     },
 
     deleteMediaFile: async (path: string, name: string, mediaType: 'image' | 'video') => {
@@ -2869,12 +2918,12 @@ graph TD
           pendingNavigationAction: () => {
             const currentState = get();
             if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
-            set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showTrash: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+            set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showTrash: false, showProjectSettings: false, showAbout: false, showDocs: false, sidebarOpen: false });
           }
         });
         return;
       }
-      set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showTrash: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+      set({ showMediaExplorer: show, selectedListId: null, selectedTaskId: null, selectedDocId: null, showTrash: false, showProjectSettings: false, showAbout: false, showDocs: false, sidebarOpen: false });
     },
     setSelectedList: (listId) => {
       const state = get();
@@ -2883,12 +2932,12 @@ graph TD
           pendingNavigationAction: () => {
             const currentState = get();
             if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
-            set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+            set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, showDocs: false, sidebarOpen: false });
           }
         });
         return;
       }
-      set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+      set({ selectedListId: listId, selectedTaskId: null, selectedDocId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, showDocs: false, sidebarOpen: false });
     },
     setSelectedTask: (taskId) => {
       const prevTaskId = get().selectedTaskId;
@@ -2912,6 +2961,11 @@ graph TD
 
     setSelectedDoc: (docId) => {
       const state = get();
+      // The documents view reopens on the folder of the last doc opened
+      const docsFolderOf = (id: string | null) => {
+        const doc = id ? get().docs.find(d => d.id === id) : undefined;
+        return doc ? { docsFolder: doc.folder ?? null } : {};
+      };
       const prevDocId = state.selectedDocId;
 
       // If there are unsaved changes and navigating to a different doc, intercept
@@ -2919,7 +2973,7 @@ graph TD
         set({
           pendingNavigationAction: () => {
             if (prevDocId && prevDocId !== docId) get().unlockDoc(prevDocId);
-            set({ selectedDocId: docId, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+            set({ selectedDocId: docId, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, showDocs: false, ...docsFolderOf(docId), sidebarOpen: false });
           }
         });
         return;
@@ -2928,7 +2982,7 @@ graph TD
       if (prevDocId && prevDocId !== docId) {
         get().unlockDoc(prevDocId);
       }
-      set({ selectedDocId: docId, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, sidebarOpen: false });
+      set({ selectedDocId: docId, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showAbout: false, showDocs: false, ...docsFolderOf(docId), sidebarOpen: false });
     },
     setSearchQuery: (query) => set({ searchQuery: query }),
     setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen }),
@@ -2942,12 +2996,12 @@ graph TD
           pendingNavigationAction: () => {
             const currentState = get();
             if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
-            set({ showProjectSettings: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showAbout: false, sidebarOpen: false });
+            set({ showProjectSettings: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showAbout: false, showDocs: false, sidebarOpen: false });
           }
         });
         return;
       }
-      set({ showProjectSettings: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showAbout: false, sidebarOpen: false });
+      set({ showProjectSettings: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showAbout: false, showDocs: false, sidebarOpen: false });
     },
 
     // Project Administration
@@ -2998,12 +3052,43 @@ graph TD
           pendingNavigationAction: () => {
             const currentState = get();
             if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
-            set({ showAbout: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, sidebarOpen: false });
+            set({ showAbout: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showDocs: false, sidebarOpen: false });
           }
         });
         return;
       }
-      set({ showAbout: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, sidebarOpen: false });
+      set({ showAbout: show, selectedListId: show ? null : get().selectedListId, selectedDocId: null, selectedTaskId: null, showTrash: false, showMediaExplorer: false, showProjectSettings: false, showDocs: false, sidebarOpen: false });
+    },
+
+    // Documents view
+    showDocs: false,
+    docsFolder: null,
+    setShowDocs: (show, folder) => {
+      const state = get();
+      const next = {
+        showDocs: show,
+        ...(folder !== undefined ? { docsFolder: folder } : {}),
+        selectedListId: null,
+        selectedDocId: null,
+        selectedTaskId: null,
+        showTrash: false,
+        showMediaExplorer: false,
+        showProjectSettings: false,
+        showAbout: false,
+        sidebarOpen: false,
+      };
+      if (show && state.docHasUnsavedChanges && state.selectedDocId) {
+        set({
+          pendingNavigationAction: () => {
+            const currentState = get();
+            if (currentState.selectedDocId) get().unlockDoc(currentState.selectedDocId);
+            set(next);
+          }
+        });
+        return;
+      }
+      if (state.selectedDocId) get().unlockDoc(state.selectedDocId);
+      set(next);
     },
 
     // Mobile sidebar

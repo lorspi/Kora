@@ -61,7 +61,7 @@ export default function ThemeToggle() {
     <button
       onClick={toggleTheme}
       className="w-8 h-8 rounded-lg bg-card border border-border shadow-card flex items-center justify-center text-foreground hover:bg-accent transition-all duration-300 ease-out cursor-pointer"
-      title={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+      data-tooltip={isDark ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
       aria-label="Alternar tema claro/oscuro"
     >
       {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}

@@ -215,21 +215,21 @@ export default function MobileNotesDrawer({
                         <span className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7px] font-bold text-white uppercase shrink-0" style={{ backgroundColor: logUser?.avatarColor || '#64748b' }}>{log.username.charAt(0)}</span>
                         <strong className="text-foreground font-bold text-[10px] truncate max-w-[120px]">{log.username}</strong>
                         {isUnread && (
-                          <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Nota sin leer" />
+                          <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" data-tooltip="Nota sin leer" />
                         )}
                         <div className="ml-auto flex items-center gap-0.5">
                           {isEditing ? (
                             <>
-                              <button onClick={async () => { await editComment(log.id, editingText); setEditingLogId(null); setEditingText(''); }} className="p-0.5 rounded hover:bg-accent text-bento-green transition-colors cursor-pointer" title="Guardar"><Check className="w-3 h-3" /></button>
-                              <button onClick={() => { setEditingLogId(null); setEditingText(''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground transition-colors cursor-pointer" title="Cancelar"><X className="w-3 h-3" /></button>
+                              <button onClick={async () => { await editComment(log.id, editingText); setEditingLogId(null); setEditingText(''); }} className="p-0.5 rounded hover:bg-accent text-bento-green transition-colors cursor-pointer" data-tooltip="Guardar"><Check className="w-3 h-3" /></button>
+                              <button onClick={() => { setEditingLogId(null); setEditingText(''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground transition-colors cursor-pointer" data-tooltip="Cancelar"><X className="w-3 h-3" /></button>
                             </>
                           ) : (
                             <>
                               {canEditComment && (
-                                <button onClick={() => { setEditingLogId(log.id); setEditingText(log.comment?.text || ''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer" title="Editar"><Pencil className="w-3 h-3" /></button>
+                                <button onClick={() => { setEditingLogId(log.id); setEditingText(log.comment?.text || ''); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer" data-tooltip="Editar"><Pencil className="w-3 h-3" /></button>
                               )}
                               {canDeleteComment && (
-                                <button onClick={async () => { const ok = await confirm({ title: 'Eliminar nota', message: '\u00bfEliminar este comentario? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" title="Eliminar"><Trash2 className="w-3 h-3" /></button>
+                                <button onClick={async () => { const ok = await confirm({ title: 'Eliminar nota', message: '\u00bfEliminar este comentario? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" data-tooltip="Eliminar"><Trash2 className="w-3 h-3" /></button>
                               )}
                             </>
                           )}
@@ -286,7 +286,7 @@ export default function MobileNotesDrawer({
                     onFocus={() => { if (drawerHeight === 'collapsed') setDrawerHeight('half'); }}
                   />
                   <div className="flex flex-col gap-1 shrink-0">
-                    <button type="submit" disabled={isLockedByOther || (!newComment.trim() && commentFiles.length === 0)} className="p-2 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center disabled:opacity-40 shadow-card leading-none" title="Enviar nota">
+                    <button type="submit" disabled={isLockedByOther || (!newComment.trim() && commentFiles.length === 0)} className="p-2 bg-primary hover:opacity-90 text-primary-foreground font-bold rounded-lg transition-colors cursor-pointer flex items-center justify-center disabled:opacity-40 shadow-card leading-none" data-tooltip="Enviar nota">
                       <Send className="w-3.5 h-3.5" />
                     </button>
                     <label className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors p-2 bg-card border border-border rounded-lg shadow-card flex items-center justify-center">
@@ -335,7 +335,7 @@ export default function MobileNotesDrawer({
                       <span className="text-[10px]">{log.action}</span>
                       <span className="text-[8px] font-mono text-muted-foreground ml-auto shrink-0">{new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       {canDeleteActivity && (
-                        <button onClick={async () => { const ok = await confirm({ title: 'Eliminar actividad', message: '\u00bfEliminar este registro? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" title="Eliminar"><Trash2 className="w-3 h-3" /></button>
+                        <button onClick={async () => { const ok = await confirm({ title: 'Eliminar actividad', message: '\u00bfEliminar este registro? Esta acci\u00f3n no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteComment(log.id); }} className="p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer" data-tooltip="Eliminar"><Trash2 className="w-3 h-3" /></button>
                       )}
                     </div>
                   </div>

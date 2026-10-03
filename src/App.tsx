@@ -11,6 +11,7 @@ import AuthScreen from './components/AuthScreen';
 import Sidebar from './components/Sidebar';
 import ListViews from './components/ListViews';
 const DocView = lazy(() => import('./components/DocView'));
+import DocumentsBrowser from './components/DocumentsBrowser';
 import MediaExplorer from './components/MediaExplorer';
 import TrashView from './components/TrashView';
 import ProjectInfoCards from './components/ProjectInfoCards';
@@ -73,6 +74,7 @@ export default function App() {
     showMediaExplorer,
     showAbout,
     showTrash,
+    showDocs,
     backgroundReload,
     initialize,
     isLoading,
@@ -189,6 +191,8 @@ export default function App() {
               <TrashView />
             ) : showMediaExplorer ? (
               <MediaExplorer />
+            ) : showDocs ? (
+              <DocumentsBrowser />
             ) : selectedDocId ? (
               <Suspense fallback={<div className="flex-1 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>}>
                 <DocView />

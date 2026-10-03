@@ -232,14 +232,14 @@ export default function TrashView() {
                       <button
                         onClick={() => handleRestore(item.id)}
                         className="p-1.5 rounded-lg hover:bg-accent text-bento-green hover:text-bento-green transition-colors cursor-pointer"
-                        title="Restaurar"
+                        data-tooltip="Restaurar"
                       >
                         <RotateCcw className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handlePermanentDelete(item.id)}
                         className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
-                        title="Eliminar permanentemente"
+                        data-tooltip="Eliminar permanentemente"
                       >
                         <TrashIcon className="w-4 h-4" />
                       </button>
@@ -250,14 +250,14 @@ export default function TrashView() {
                       <button
                         onClick={() => handleRestore(item.id)}
                         className="p-1.5 rounded-lg hover:bg-accent text-bento-green transition-colors cursor-pointer"
-                        title="Restaurar"
+                        data-tooltip="Restaurar"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => handlePermanentDelete(item.id)}
                         className="p-1.5 rounded-lg hover:bg-accent text-destructive transition-colors cursor-pointer"
-                        title="Eliminar permanentemente"
+                        data-tooltip="Eliminar permanentemente"
                       >
                         <TrashIcon className="w-3.5 h-3.5" />
                       </button>

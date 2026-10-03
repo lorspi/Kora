@@ -262,7 +262,7 @@ export default function ListViews() {
               <button
                 onClick={() => setBulkDialog({ initialText: quickTitle.trim(), statusId: activeList.statuses[0].id })}
                 className="bg-card hover:bg-accent text-muted-foreground hover:text-foreground border border-border font-semibold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
-                title="Crear varias tareas (una por línea)"
+                data-tooltip="Crear varias tareas (una por línea)"
               >
                 <ListPlus className="w-3.5 h-3.5" /> Varias
               </button>
@@ -378,7 +378,7 @@ export default function ListViews() {
                                     }`}>
                                       {task.title}
                                       {hasUnreadNotes && (
-                                        <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Tiene notas sin leer" />
+                                        <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" data-tooltip="Tiene notas sin leer" />
                                       )}
                                     </h4>
                                     <div className="flex items-center gap-2 ml-auto shrink-0">
@@ -427,7 +427,7 @@ export default function ListViews() {
                                     }`}>
                                       {task.title}
                                       {hasUnreadNotes && (
-                                        <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Tiene notas sin leer" />
+                                        <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" data-tooltip="Tiene notas sin leer" />
                                       )}
                                     </h4>
                                     <div className="ml-auto">
@@ -461,7 +461,7 @@ export default function ListViews() {
                               <button 
                                 onClick={() => setSelectedTask(task.id)}
                                 className="p-1 text-muted-foreground hover:text-bento-blue hover:bg-accent rounded transition-colors hidden group-hover:block shrink-0"
-                                title="Abrir ficha"
+                                data-tooltip="Abrir ficha"
                               >
                                 <Maximize2 className="w-3.5 h-3.5" />
                               </button>
@@ -523,7 +523,7 @@ export default function ListViews() {
                           }`}>
                             {task.title}
                             {hasUnreadNotesKanban && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Tiene notas sin leer" />
+                              <span className="w-1.5 h-1.5 rounded-full bg-bento-blue shrink-0 animate-pulse" data-tooltip="Tiene notas sin leer" />
                             )}
                           </h5>
                           {isLocked && (
@@ -554,7 +554,7 @@ export default function ListViews() {
                                 onClick={(e) => { e.stopPropagation(); updateTask({ ...task, statusId: s.id }); }}
                                 className="w-3 h-3 rounded-full hover:scale-110 active:scale-95 transition-transform"
                                 style={{ backgroundColor: s.color }}
-                                title={`Mover a ${s.name}`}
+                                data-tooltip={`Mover a ${s.name}`}
                               />
                             ))}
                           </div>
@@ -605,7 +605,7 @@ export default function ListViews() {
                             <span className="inline-flex items-center gap-1.5">
                               {task.title}
                               {hasUnreadNotesTable && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-bento-blue shrink-0 animate-pulse" title="Tiene notas sin leer" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-bento-blue shrink-0 animate-pulse" data-tooltip="Tiene notas sin leer" />
                               )}
                             </span>
                           </button>
@@ -654,7 +654,7 @@ export default function ListViews() {
                           <button 
                             onClick={async () => { const ok = await confirm({ title: 'Eliminar tarea', message: '¿Eliminar esta tarea de forma permanente? Esta acción no se puede deshacer.', confirmLabel: 'Eliminar', variant: 'danger' }); if (ok) deleteTask(task.id); }}
                             className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors cursor-pointer"
-                            title="Eliminar"
+                            data-tooltip="Eliminar"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -710,7 +710,7 @@ function ColorSwatchPicker({ value, onChange }: { value: string; onChange: (colo
             value.toLowerCase() === color ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-transparent hover:border-muted-foreground/50'
           }`}
           style={{ backgroundColor: color }}
-          title={color}
+          data-tooltip={color}
         />
       ))}
       {/* Custom color button */}
@@ -722,7 +722,7 @@ function ColorSwatchPicker({ value, onChange }: { value: string; onChange: (colo
             !isPreset ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-muted-foreground/50 hover:border-muted-foreground'
           }`}
           style={!isPreset ? { backgroundColor: value } : undefined}
-          title="Color personalizado"
+          data-tooltip="Color personalizado"
         >
           {isPreset && <Plus className="w-3 h-3 text-muted-foreground" />}
         </button>
@@ -763,7 +763,7 @@ function ColorSwatchPickerCompact({ value, onChange }: { value: string; onChange
         onClick={() => setOpen(!open)}
         className="w-5 h-5 rounded-full border-2 border-border cursor-pointer shrink-0 hover:scale-110 transition-all"
         style={{ backgroundColor: value }}
-        title="Cambiar color"
+        data-tooltip="Cambiar color"
       />
       {open && (
         <div className="absolute z-50 top-7 left-0 bg-card border border-border rounded-xl p-2.5 shadow-xl min-w-[180px]">
@@ -777,7 +777,7 @@ function ColorSwatchPickerCompact({ value, onChange }: { value: string; onChange
                   value.toLowerCase() === color ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-transparent hover:border-muted-foreground/50'
                 }`}
                 style={{ backgroundColor: color }}
-                title={color}
+                data-tooltip={color}
               />
             ))}
             {/* Custom color */}
@@ -789,7 +789,7 @@ function ColorSwatchPickerCompact({ value, onChange }: { value: string; onChange
                   !isPreset ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-muted-foreground/50 hover:border-muted-foreground'
                 }`}
                 style={!isPreset ? { backgroundColor: value } : undefined}
-                title="Color personalizado"
+                data-tooltip="Color personalizado"
               >
                 {isPreset && <Plus className="w-2.5 h-2.5 text-muted-foreground" />}
               </button>
@@ -973,7 +973,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
                   className={`p-0.5 -ml-1 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0 touch-none ${
                     draggingStatusId === st.id ? 'cursor-grabbing text-foreground' : 'cursor-grab'
                   }`}
-                  title="Arrastrar para reordenar (o usar las flechas ↑ ↓)"
+                  data-tooltip="Arrastrar para reordenar (o usar las flechas ↑ ↓)"
                   aria-label={`Reordenar estado ${st.name}`}
                 >
                   <GripVertical className="w-4 h-4" />
@@ -1000,7 +1000,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
                       ? 'bg-bento-green-light text-bento-green border-bento-green/30'
                       : 'bg-secondary text-muted-foreground border-border hover:border-bento-green/50'
                   }`}
-                  title={st.isCompleted ? 'Este estado marca la tarea como terminada' : 'Click para marcar como estado de terminación'}
+                  data-tooltip={st.isCompleted ? 'Este estado marca la tarea como terminada' : 'Click para marcar como estado de terminación'}
                 >
                   {st.isCompleted ? '✓ Terminado' : 'Activo'}
                 </button>
@@ -1010,7 +1010,7 @@ function SettingsPanel({ activeList, updateListConfig, deleteList }: {
                   type="button"
                   onClick={() => handleRemoveStatus(st.id)}
                   className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors cursor-pointer shrink-0"
-                  title="Eliminar estado"
+                  data-tooltip="Eliminar estado"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>

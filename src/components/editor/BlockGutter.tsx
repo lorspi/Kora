@@ -210,14 +210,14 @@ export function BlockGutter({ editor }: { editor: Editor }) {
           <button
             onClick={() => addBelow(hovered.pos)}
             className="p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-pointer transition-colors"
-            title="Añadir bloque debajo"
+            data-tooltip="Añadir bloque debajo"
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
           <button
             onMouseDown={(e) => onGripMouseDown(e, hovered.pos)}
             className="p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent rounded cursor-grab active:cursor-grabbing transition-colors"
-            title="Arrastrar para mover · Clic para opciones"
+            data-tooltip="Arrastrar para mover · Clic para opciones"
           >
             <GripVertical className="w-3.5 h-3.5" />
           </button>

@@ -30,6 +30,8 @@ import {
   FileCode,
   ShieldWarning as ShieldAlert,
   CloudCheck,
+  CaretRight,
+  FolderSimple,
 } from '@phosphor-icons/react';
 import TipTapDocEditor from './editor/TipTapDocEditor';
 import type { TipTapDocEditorHandle } from './editor/TipTapDocEditor';
@@ -80,6 +82,7 @@ export default function DocView() {
     pendingNavigationAction,
     confirmPendingNavigation,
     cancelPendingNavigation,
+    setShowDocs,
   } = useProjectStore();
   const { toast, confirm } = useUI();
 
@@ -514,6 +517,29 @@ export default function DocView() {
       {/* Header */}
       <div className="bg-card border-b border-border px-3 sm:px-6 py-3 sm:py-4 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div className="flex-1 min-w-0">
+          {/* Where the doc lives: back to the documents view or its folder */}
+          <div className="flex items-center gap-1 px-2 mb-0.5 text-[11px] font-semibold text-muted-foreground min-w-0">
+            <button
+              onClick={() => setShowDocs(true, null)}
+              className="hover:text-foreground transition-colors cursor-pointer shrink-0"
+              data-tooltip="Volver a Documentos"
+            >
+              Documentos
+            </button>
+            {docMeta.folder && (
+              <>
+                <CaretRight className="w-3 h-3 shrink-0" weight="bold" />
+                <button
+                  onClick={() => setShowDocs(true, docMeta.folder)}
+                  className="flex items-center gap-1 min-w-0 hover:text-foreground transition-colors cursor-pointer"
+                  data-tooltip="Abrir la carpeta"
+                >
+                  <FolderSimple className="w-3.5 h-3.5 shrink-0 text-bento-yellow" weight="fill" />
+                  <span className="truncate">{docMeta.folder}</span>
+                </button>
+              </>
+            )}
+          </div>
           <input
             type="text"
             disabled={isLockedByOther}
@@ -555,7 +581,7 @@ export default function DocView() {
                   }
                 }}
                 className="text-foreground font-semibold truncate hover:underline hover:text-bento-blue transition-colors cursor-pointer"
-                title="Clic para renombrar archivo"
+                data-tooltip="Clic para renombrar archivo"
               >
                 /docs/{docMeta.folder ? `${docMeta.folder}/` : ''}{docMeta.filename}
               </button>
@@ -570,7 +596,7 @@ export default function DocView() {
               onClick={() => !isLockedByOther && setShowAttachMenu(!showAttachMenu)}
               disabled={isLockedByOther}
               className="p-2 bg-card border border-border text-muted-foreground hover:text-foreground rounded-xl hover:bg-accent transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Adjuntar imagen o video"
+              data-tooltip="Adjuntar imagen o video"
             >
               <Paperclip className="w-3.5 h-3.5" />
               <ChevronDown className="w-3 h-3" />
@@ -597,7 +623,7 @@ export default function DocView() {
             !isLockedByOther && (
               <div
                 className="px-2 py-2 text-[11px] text-muted-foreground flex items-center gap-1.5 select-none whitespace-nowrap"
-                title={lastSavedAt ? new Date(lastSavedAt).toLocaleString() : undefined}
+                data-tooltip={lastSavedAt ? new Date(lastSavedAt).toLocaleString() : undefined}
               >
                 {loading || hasChanges ? (
                   <>
@@ -638,7 +664,7 @@ export default function DocView() {
               onClick={() => setShowDocMenu(!showDocMenu)}
               disabled={isLockedByOther}
               className="p-2 bg-card border border-border text-muted-foreground hover:text-foreground rounded-xl hover:bg-accent transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              title="Opciones del documento"
+              data-tooltip="Opciones del documento"
             >
               <MoreVertical className="w-3.5 h-3.5" />
             </button>
@@ -733,7 +759,7 @@ export default function DocView() {
                       key={file.path}
                       onClick={() => handleInsertFromLibrary(file)}
                       className="group relative flex flex-col items-center rounded-xl border border-border hover:border-bento-blue/50 bg-secondary hover:bg-accent overflow-hidden transition-all cursor-pointer"
-                      title={file.name}
+                      data-tooltip={file.name}
                     >
                       <div className="w-full aspect-square flex items-center justify-center overflow-hidden bg-secondary">
                         {mediaThumbs[file.path] ? (

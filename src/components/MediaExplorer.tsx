@@ -209,7 +209,7 @@ export default function MediaExplorer() {
             onClick={() => scanMedia(true)}
             disabled={loading}
             className="p-2 bg-secondary hover:bg-accent border border-border rounded-xl text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:opacity-40"
-            title="Reescanear medios"
+            data-tooltip="Reescanear medios"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
@@ -367,7 +367,7 @@ const MediaCard: React.FC<MediaCardProps> = ({ item, isDeleting, onPreview, onDe
 
       {/* Info */}
       <div className="p-3 space-y-2">
-        <p className="text-[10px] font-mono text-foreground truncate font-semibold" title={item.name}>
+        <p className="text-[10px] font-mono text-foreground truncate font-semibold" data-tooltip={item.name}>
           {item.name}
         </p>
 

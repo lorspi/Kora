@@ -52,6 +52,7 @@
   --animate-scale-in: scale-in 0.3s ease-out forwards;
   --animate-float: float 3s ease-in-out infinite;
   --animate-pulse-slow: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-tooltip-in: tooltip-in 0.12s ease-out;
 
   @keyframes fade-in {
     from { opacity: 0; transform: translateY(8px); }
@@ -66,6 +67,11 @@
   @keyframes float {
     0%, 100% { transform: translateY(0px); }
     50% { transform: translateY(-6px); }
+  }
+
+  @keyframes tooltip-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   @keyframes pulse-slow {

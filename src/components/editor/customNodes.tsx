@@ -47,7 +47,7 @@ function MermaidNodeView({ node, updateAttributes, editor }: NodeViewProps) {
                 type="button"
                 onClick={() => setExpanded(!expanded)}
                 className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                title={isExpanded ? 'Colapsar código' : 'Editar código'}
+                data-tooltip={isExpanded ? 'Colapsar código' : 'Editar código'}
                 contentEditable={false}
               >
                 {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}
@@ -134,7 +134,7 @@ function SourceTableNodeView({ node, updateAttributes, editor }: NodeViewProps) 
                 type="button"
                 onClick={() => setExpanded(!expanded)}
                 className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                title={isExpanded ? 'Colapsar código' : 'Editar código'}
+                data-tooltip={isExpanded ? 'Colapsar código' : 'Editar código'}
                 contentEditable={false}
               >
                 {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <Code className="w-3.5 h-3.5" />}

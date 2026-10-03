@@ -1,207 +1,39 @@
 # Changelog
 
-## [0.1.22-beta] — 2026-06-17
+## [1.3.0] — 2026-10-02
 
 ### Added
 
-- **Dashboard con estadísticas básicas y configuración del proyecto**
-  Se agregó un nuevo dashboard que muestra estadísticas básicas del proyecto, junto con la configuración inicial del mismo.
+- **Vista de Documentos con cuadrícula de carpetas y documentos**
+  Nueva sección "Documentos" en el área principal, con el mismo diseño del inicio de Nori. Las carpetas se muestran arriba, como tarjetas con icono de carpeta cerrada (y abierta mientras se arrastra un documento sobre ellas) y su número de documentos. Debajo aparecen los documentos en una cuadrícula de tarjetas, ordenados del más reciente al más antiguo, cada una con una vista previa de las primeras líneas del documento dibujada como una página, su título, cuándo se editó y quién lo editó. Al abrir una carpeta, el encabezado muestra la ruta "Documentos › carpeta" y el nombre de la carpeta se puede renombrar ahí mismo. Se conserva la mecánica original de subcarpetas: cada carpeta es una subcarpeta de `/docs` y solo existen en la raíz.
 
-- **Papelera de reciclaje**
-  Implementación de una papelera de reciclaje para gestionar documentos y elementos eliminados, permitiendo su recuperación.
+- **Acciones sobre carpetas y documentos**
+  El botón "Crear" ofrece "Documento en blanco", "Importar Markdown" y, en la raíz, "Carpeta"; los documentos nuevos o importados se guardan en la carpeta abierta. El botón "Escanear documentos" sigue detectando archivos `.md` agregados desde fuera de Kora. Las tarjetas de documento tienen menú contextual (clic derecho o botón "Más opciones") con Abrir, Descargar Markdown, Renombrar, Duplicar, Sacar de la carpeta y Borrar (a la papelera); las de carpeta, con Abrir, Renombrar y Eliminar carpeta (sus documentos pasan a la raíz).
 
-- **Soporte para diagramas en los documentos**
-  Los documentos ahora soportan diagramas, ampliando las capacidades de edición y representación visual.
+- **Arrastrar y soltar documentos**
+  Los documentos se arrastran sobre una carpeta, sobre "Documentos" en la barra lateral o sobre la ruta del encabezado para moverlos, con resaltado de la zona de destino. También se pueden arrastrar uno o varios archivos `.md` del equipo a la ventana para importarlos en la carpeta abierta.
 
-- **Mensaje al intentar salir de un documento sin guardar**
-  Se agregó una advertencia al usuario cuando intenta cerrar o salir de un documento que tiene cambios sin guardar.
+- **Ruta del documento en el editor**
+  Sobre el título del documento se muestra "Documentos › carpeta" para volver a la vista de documentos o a la carpeta del documento.
 
-- **Bloqueo de documento abierto por otro usuario**
-  Ahora cuando un documento está siendo editado por otro usuario, se bloquea para evitar conflictos de edición simultánea.
+- **Tooltips con el estilo de Nori**
+  Los textos de ayuda de los botones ya no usan el tooltip nativo del navegador: aparecen con el estilo de Nori (fondo oscuro, aparición suave tras una breve espera e inmediata al pasar entre botones vecinos), se colocan debajo del elemento o encima si no hay espacio y pueden mostrar atajos de teclado como teclas (por ejemplo, la búsqueda global con Ctrl+K).
 
-## [0.1.23-beta] — 2026-06-17
+### Changed
 
-### Added
+- **Barra lateral: solo carpetas en Documentos**
+  La barra lateral ya no lista los documentos. En su lugar muestra "Documentos" con el número total de documentos y, debajo, sus carpetas con el icono de carpeta abierta para la carpeta activa y cerrada para el resto, el conteo de documentos y los botones de renombrar y eliminar al pasar el mouse; también tienen menú contextual y reciben documentos arrastrados. La carpeta del documento abierto se mantiene resaltada.
 
-- **Sistema de notas no leídas por usuario**
-  Cada usuario puede identificar visualmente qué notas de tareas no ha leído. Las notas sin leer muestran un punto azul pulsante en la tarea, el panel de notas y el sidebar. Al pasar el mouse sobre una nota se marca automáticamente como leída (con debounce de 2s para evitar escrituras excesivas). Las notas propias nunca aparecen como no leídas para su autor.
+- **Estado activo de "Acerca de Kora"**
+  El botón "Acerca de Kora" de la barra lateral se muestra activo mientras esa pantalla está abierta, igual que en Nori.
 
-## [0.1.24-beta] — 2026-06-17
+- **Orden del changelog**
+  Las versiones del changelog se muestran de la más reciente a la más antigua.
 
 ### Fixed
 
-- **Render de tablas en documentos**
-  Los documentos ahora soportan tablas Markdown estilo pipe (`| col1 | col2 |`). Se agregó detección y conversión a `table` HTML tanto en la vista previa (`markdown.tsx`) como en el editor por bloques (`DocView.tsx`), incluyendo un editor de código colapsable tipo mermaid y un comando `/table` en el menú de bloques.
-
-- **Agregados nuevos tipos de contenidos en datos de ejemplo**
-  Se agregaron al seed de datos de ejemplo: un nuevo documento Markdown con diagrama Mermaid y referencia a imagen (`og-image.png`), una nota de tarea con imagen adjunta (`mobile-icon.png`), y cuatro imágenes copiadas desde `public/` a la biblioteca de medios (`og-image.png`, `mobile-icon.png`, `logo-dark.svg`, `logo-light.svg`).
-
-### Changed
-
-- **Quitado encabezado de los diagramas y tablas**
-  Se eliminaron las etiquetas "mermaid" y "tabla (X filas)" del encabezado de los bloques de diagrama y tabla en el editor. El botón de edición ahora se alinea a la derecha.
-
-## [0.1.25-beta] — 2026-06-18
-
-### Added
-
-- **Persistencia de proyectos en el navegador**
-  La lista de proyectos registrados ahora se guarda en `localStorage` y persiste al recargar o cerrar y volver a abrir la pestaña. Se corrigieron tres problemas: (1) `initialize()` ahora siempre relee los proyectos de `localStorage` como fallback, (2) `initializeNewProject()` ya no crea registros duplicados sino que actualiza el proyecto existente, y (3) `goToProjectBrowser()` recarga explícitamente la lista desde `localStorage` al navegar de vuelta.
-
-### Fixed
-
-- **Prevención de tareas duplicadas al hacer clic múltiple en "Agregar"**
-  Se agregó un bloqueo de estado (`creatingTask`) que evita la creación de tareas duplicadas cuando el usuario hace clic repetidamente en el botón "Agregar" mientras se está procesando la primera solicitud. El botón se deshabilita visualmente durante la operación.
-
-- **Arrastre continuo de bloques en el editor de documentos**
-  Al arrastrar un bloque con el grip, ahora se mueve continuamente mientras se mantiene el mouse presionado, en lugar de moverse solo una vez por arrastre.
-
-### Changed
-
-- **Vista Kanban: columnas flexibles al ancho de pantalla**
-  Las columnas del Kanban ahora tienen un ancho mínimo de 288px (`w-72`) pero se expanden automáticamente para llenar el ancho disponible de la pantalla, en lugar de tener un ancho fijo.
-
-- **Ajustes responsive en pantallas de inicio, onboarding y autenticación**
-  Se agregó padding superior e inferior (`pt-14`/`pb-14`) en móvil para que el botón de tema y el texto de versión no se solapen con el contenido. El texto de versión (`VersionBadge`) dejó de ser `fixed` y ahora fluye en el flujo normal debajo de todo.
-
-- **Textos y márgenes reducidos en móvil para pantallas iniciales**
-  En las pantallas de carga, navegador de proyectos, autenticación y onboarding se redujeron: título principal (`text-3xl → text-2xl`), logo (`h-12 → h-10`), descripción (`text-sm → text-xs`), padding de la tarjeta (`p-8 → p-5`), márgenes laterales (`px-6 → px-4`) y espaciado general de formularios. Los tamaños originales se restauran en desktop mediante breakpoints `sm:`.
-
-### Removed
-
-- **Funcionalidad de disco virtual**
-  Se eliminó el modo de disco virtual (IndexedDB) debido a bugs persistentes y problemas de compatibilidad entre navegadores. La aplicación ahora opera exclusivamente con acceso directo al sistema de archivos local.
-
-## [0.1.26-beta] — 2026-06-21
-
-### Added
-
-- **Opción "Salir sin guardar" en documento con cambios**
-  Al intentar salir de un documento con cambios sin guardar, el modal ahora ofrece tres opciones: "Guardar" (guarda y sale), "Salir sin guardar" (descarta los cambios y sale) y "Cancelar" (permanece en el documento). Se agregó el campo `neutralLabel` al sistema de diálogos `confirm()` para soportar un tercer botón opcional.
-
-- **Apartado de accesibilidad en el dashboard**
-  Se agregó una sección de accesibilidad en el dashboard con controles para ajustar el tamaño general de la fuente (4 niveles: Pequeño, Normal, Grande, Extra Grande) y un interruptor para activar o desactivar el modo de alto contraste.
-
-### Fixed
-
-- **Auto-actualización forzada al detectar nueva versión desplegada**
-  Se incrustó la versión de compilación (`__APP_VERSION__`) en el bundle JS mediante Vite `define`. Al cargar la app, se compara esta versión compilada contra `version.txt` del servidor. Si hay diferencia, se eliminan todos los cachés del Service Worker, se desregistra el SW y se recarga la página con un parámetro `?v=...` que evita la caché HTTP del navegador. Todo esto ocurre automáticamente 3 segundos después de detectar la nueva versión, sin intervención del usuario y sin perder los proyectos, sesiones ni auth almacenados en `localStorage`.
-
-### Changed
-
-- **Orden inverso y auto-scroll en notas y actividad de tareas**
-  Se invirtió el orden de visualización de notas y registros de actividad para que los más recientes aparezcan al final (orden tradicional). El scroll del contenedor se posiciona automáticamente al fondo al abrir una tarea o cambiar de pestaña, mostrando el último registro. Se usó `scrollIntoView` con doble `requestAnimationFrame` y `setTimeout` de respaldo para capturar contenido asíncrono como imágenes.
-
-## [0.1.27-beta] — 2026-07-27
-
-### Added
-
-- **Título dinámico en la pestaña del navegador**
-  La pestaña ahora muestra "NombreDelProyecto — Kora" cuando hay un proyecto cargado, y vuelve a "Kora" al cerrar el proyecto. El título se actualiza automáticamente al renombrar el proyecto desde la configuración.
-
-- **Selección de texto entre bloques en documentos**
-  Los bloques del editor de documentos ahora permiten seleccionar texto a través de múltiples bloques arrastrando con el mouse, como en cualquier página web. Los bloques solo se vuelven editables al hacer click simple sin arrastrar. La toolbar de formato también aparece en selecciones cross-block.
-
-- **Carpetas para organizar documentos**
-  Los documentos ahora se pueden agrupar en carpetas reales dentro de `docs/`. Las carpetas se muestran en la barra lateral como secciones colapsables con chevron. Al crear un documento se puede elegir en qué carpeta guardarlo. El escaneo de documentos detecta automáticamente subcarpetas y limpia del catálogo los archivos que ya no existen en disco.
-
-- **Arrastrar y soltar documentos entre carpetas**
-  Los documentos se pueden arrastrar desde la raíz o desde cualquier carpeta hacia otra carpeta o de vuelta a la raíz. Si hay colisión de nombre en el destino, se agrega un sufijo numérico automáticamente (ej: `archivo.md` → `archivo2.md`).
-
-- **Renombrar y eliminar carpetas**
-  Cada carpeta muestra iconos de edición (lápiz y basura) al pasar el mouse. Renombrar una carpeta mueve todos los archivos a la nueva ubicación y elimina la carpeta original. Eliminar una carpeta mueve sus documentos a la raíz antes de borrarla, con confirmación previa.
-
-- **Renombrar archivo desde el editor**
-  En el header del editor de documentos, el path del archivo es clickeable. Al hacer clic se abre un input inline para cambiar el nombre del archivo en disco. Maneja colisiones y asegura la extensión `.md`.
-
-## [1.0.0] — 2026-07-27
-
-### Added
-
-- **Script de release (`npm run release`)**
-  Nuevo script que compila el frontend y genera una carpeta `release/` lista para distribuir. El paquete incluye los scripts de inicio y un archivo LEEME.txt con instrucciones. No requiere Node.js para ejecutarse: Windows usa PowerShell y Linux/macOS usa Python 3.
-
-- **Verificación de versión remota en About**
-  La sección "Acerca de" ahora consulta el `version.txt` del repositorio en GitHub para detectar nuevas versiones. Si hay una versión más reciente disponible, muestra un enlace a la página de releases para descargar la actualización.
-
-- **Archivo LEEME.txt en servidor-local**
-  Instrucciones de uso para el paquete distribuible, con pasos para Windows y Linux/macOS, solución de problemas y notas generales.
-
-### Changed
-
-- **Nueva mecánica de actualización**
-  Se eliminó el sistema de auto-actualización que borraba la caché del navegador y forzaba la recarga. Ahora la verificación de versión se hace contra el repositorio de GitHub y, si hay una versión nueva, se muestra un enlace a los releases en lugar de un botón de actualización automática. Quienes usan la versión en la nube siempre tienen el build más actual; quienes usan el release local ven el aviso y deciden cuándo actualizar.
-
-### Removed
-
-- Lógica de `performUpdate` (borrado de caché, desregistro de service workers, recarga forzada).
-- Archivos obsoletos de `servidor-local/`: `compilar.bat`, `Instrucciones.md`, zips antiguos.
-
-## [1.1.0] — 2026-09-23
-
-### Added
-
-- **Sincronización en tiempo real con Firebase (modo "Equipo en la Nube")**
-  Se agregó un nuevo modo de proyecto que permite a los equipos sincronizar en tiempo real sin depender de la velocidad de servicios de carpetas compartidas como Drive o Mega. Cada equipo conecta su propio proyecto de Firebase (modelo "trae tu propio backend"): desde la opción "Vincular Nuevo Proyecto" se elige "Equipo en la Nube", se siguen las instrucciones paso a paso para crear el proyecto en la consola de Firebase, habilitar Firestore y el inicio de sesión anónimo, y se pega el objeto `firebaseConfig`. Kora se conecta directamente a Firestore desde el navegador, sin backend propio. Se implementó un `FirebaseAdapter` con la misma interfaz que el adaptador de archivos local, de modo que toda la lógica de tareas, listas, documentos, bloqueos de edición y sincronización funciona igual en ambos modos. La actualización en la nube usa suscripciones en tiempo real de Firestore (`onSnapshot`) con un sondeo lento de respaldo, mientras el modo local conserva su sondeo de carpeta. Los datos viven en el proyecto de Firebase del propio equipo.
-
-- **Distinción visual entre proyectos locales y remotos**
-  La interfaz ahora identifica claramente el tipo de almacenamiento de cada proyecto. En el navegador de proyectos, el header del sidebar, el panel "Proyectos Vinculados" y la tarjeta "Base de Datos" del dashboard, los proyectos en la nube muestran un icono de nube con acento naranja y la etiqueta "Equipo en la Nube", mientras que los locales conservan el icono de disco con acento azul y la etiqueta "Carpeta Local".
-
-### Changed
-
-- **Carga diferida del SDK de Firebase**
-  El SDK de Firebase se carga bajo demanda solo cuando se usa el modo "Equipo en la Nube", quedando aislado en su propio bundle. Así, los usuarios que solo trabajan con carpetas locales no cargan esta dependencia, y el bundle principal de la aplicación se mantiene ligero.
-
-
-## [1.1.1] — 2026-09-24
-
-### Added
-
-- **Importar respaldo ZIP en proyectos locales y en la nube**
-  Ahora se puede restaurar un proyecto desde un respaldo. En "Datos del Proyecto", junto a "Respaldar como ZIP", se agregó el botón "Importar respaldo" (disponible para superadministradores), que carga el archivo `.zip` de un respaldo y reemplaza el proyecto actual. Antes de importar, un diálogo de confirmación advierte que la acción reemplazará las listas, tareas, documentos y configuración existentes y no se puede deshacer. La importación funciona igual en carpeta local y en la nube gracias al método `importBackupZip`, que escribe el contenido a través del adaptador de almacenamiento compartido, preserva el identificador del proyecto actual y recarga el estado en memoria. El respaldo ZIP ahora también incluye `trash/items.json` para que la papelera se conserve en un ciclo de exportar e importar.
-
-### Changed
-
-- **Iconografía migrada a Phosphor Icons (peso duotone)**
-  Toda la aplicación pasó de `lucide-react` a `@phosphor-icons/react` con el peso duotone aplicado de forma global mediante un `IconContext.Provider`. Los iconos mantienen su tamaño y ubicación originales; solo cambia el estilo visual a duotone.
-
-- **Onboarding de "Proyecto en la nube" con instrucciones plegables**
-  Las instrucciones paso a paso para crear y configurar el proyecto de Firebase (incluida la plantilla de reglas de seguridad) ahora viven dentro de un acordeón colapsable, cerrado por defecto. Así, quien ya tiene su proyecto creado y configurado solo debe pegar el objeto de configuración, mientras que quien lo hace por primera vez puede desplegar la guía completa.
-
-- **Renombrado "Equipo en la Nube" a "Proyecto en la nube"**
-  Se unificó la nomenclatura en toda la interfaz (navegador de proyectos, header y panel del sidebar, dashboard y diálogo de vinculación de Firebase) para mantener consistencia con "Carpeta local", el otro tipo de proyecto.
-
-### Fixed
-
-- **Error del service worker al cachear peticiones de extensiones del navegador**
-  Al recargar con el service worker activo, las extensiones del navegador disparaban peticiones con esquema `chrome-extension://` que la Cache API no puede almacenar, provocando el error `Failed to execute 'put' on 'Cache': Request scheme 'chrome-extension' is unsupported`. El handler `fetch` ahora ignora cualquier petición cuyo esquema no sea `http`/`https` y las peticiones de otros orígenes, y las escrituras a caché (`cache.put`) manejan correctamente el rechazo de la promesa. Se subió la versión de `CACHE_NAME` para que el nuevo service worker se active y limpie el caché anterior.
-
-- **Aviso de meta etiqueta PWA obsoleta**
-  Se agregó `<meta name="mobile-web-app-capable" content="yes">` (estándar) junto a la variante `apple-mobile-web-app-capable`, eliminando la advertencia de obsolescencia en la consola.
-
-## [1.2.0] — 2026-09-24
-
-### Added
-
-- **Nuevo editor de documentos basado en TipTap**
-  Se reemplazó por completo el editor de bloques anterior por un editor WYSIWYG construido sobre TipTap (núcleo de código abierto, licencia MIT). El editor mantiene intacto el contrato de almacenamiento en disco: los documentos se siguen guardando como Markdown legible, y la conversión Markdown ↔ editor es de ida y vuelta byte a byte para no alterar archivos existentes ni la vista previa de solo lectura. Se conservaron todas las funciones alrededor del editor: guardado, bloqueo colaborativo del documento, aviso de cambios sin guardar al salir, adjuntos (imágenes y video desde archivo o biblioteca de medios), renombrado del archivo y el modo código con Markdown crudo.
-
-- **Controles por bloque (mover, convertir, duplicar, borrar)**
-  Cada bloque muestra al pasar el mouse un botón `+` para insertar un bloque debajo y un asa de arrastre para reordenar. Al hacer clic en el asa se abre un menú contextual para borrar, duplicar o convertir el tipo de bloque (texto, encabezados, listas, lista de tareas, cita y código).
-
-- **Barra flotante de formato y menú de comandos con "/"**
-  Al seleccionar texto aparece una barra flotante con negrita, cursiva, subrayado, tachado, código y enlaces. Escribir `/` abre un menú para insertar bloques (encabezados, listas, cita, código, divisor, diagrama Mermaid y tabla).
-
-- **Diagramas Mermaid y tablas con edición de código**
-  Los diagramas Mermaid se renderizan en vivo y reaccionan al tema claro/oscuro; los bloques de Mermaid y de tabla conservan un editor de código fuente colapsable. Ambos preservan su fuente Markdown original sin reformatearla.
-
-### Changed
-
-- **Placeholder por bloque que sigue al cursor**
-  El texto guía ("Escribe '/' para insertar un bloque…") ahora aparece solo en el bloque activo y desaparece al perder el foco, en lugar de mostrarse en todas las líneas vacías.
-
-- **Normalización de saltos de línea al abrir documentos**
-  Al cargar un documento, los finales de línea CRLF/CR se normalizan a LF. Es un cambio de una sola vez al volver a guardar y mantiene estable el indicador de cambios sin guardar.
+- **Renombrar o crear una carpeta con el nombre de otra existente**
+  Ahora se avisa del conflicto en lugar de mezclar el contenido de ambas carpetas, y renombrar una carpeta vacía ya no la hace desaparecer.
 
 ## [1.2.1] — 2026-09-28
 ### Added
@@ -239,3 +71,205 @@
 
 - **Modo solo lectura intermitente**
   El documento dejaba de estar en solo lectura mientras otro usuario seguía editándolo (bloqueos borrados por escrituras concurrentes, relojes desfasados y latidos ralentizados en pestañas en segundo plano). Además, la limpieza periódica ya no reescribe `locks.json`, lo que también evita que se pierdan bloqueos de tareas.
+
+## [1.2.0] — 2026-09-24
+
+### Added
+
+- **Nuevo editor de documentos basado en TipTap**
+  Se reemplazó por completo el editor de bloques anterior por un editor WYSIWYG construido sobre TipTap (núcleo de código abierto, licencia MIT). El editor mantiene intacto el contrato de almacenamiento en disco: los documentos se siguen guardando como Markdown legible, y la conversión Markdown ↔ editor es de ida y vuelta byte a byte para no alterar archivos existentes ni la vista previa de solo lectura. Se conservaron todas las funciones alrededor del editor: guardado, bloqueo colaborativo del documento, aviso de cambios sin guardar al salir, adjuntos (imágenes y video desde archivo o biblioteca de medios), renombrado del archivo y el modo código con Markdown crudo.
+
+- **Controles por bloque (mover, convertir, duplicar, borrar)**
+  Cada bloque muestra al pasar el mouse un botón `+` para insertar un bloque debajo y un asa de arrastre para reordenar. Al hacer clic en el asa se abre un menú contextual para borrar, duplicar o convertir el tipo de bloque (texto, encabezados, listas, lista de tareas, cita y código).
+
+- **Barra flotante de formato y menú de comandos con "/"**
+  Al seleccionar texto aparece una barra flotante con negrita, cursiva, subrayado, tachado, código y enlaces. Escribir `/` abre un menú para insertar bloques (encabezados, listas, cita, código, divisor, diagrama Mermaid y tabla).
+
+- **Diagramas Mermaid y tablas con edición de código**
+  Los diagramas Mermaid se renderizan en vivo y reaccionan al tema claro/oscuro; los bloques de Mermaid y de tabla conservan un editor de código fuente colapsable. Ambos preservan su fuente Markdown original sin reformatearla.
+
+### Changed
+
+- **Placeholder por bloque que sigue al cursor**
+  El texto guía ("Escribe '/' para insertar un bloque…") ahora aparece solo en el bloque activo y desaparece al perder el foco, en lugar de mostrarse en todas las líneas vacías.
+
+- **Normalización de saltos de línea al abrir documentos**
+  Al cargar un documento, los finales de línea CRLF/CR se normalizan a LF. Es un cambio de una sola vez al volver a guardar y mantiene estable el indicador de cambios sin guardar.
+
+## [1.1.1] — 2026-09-24
+
+### Added
+
+- **Importar respaldo ZIP en proyectos locales y en la nube**
+  Ahora se puede restaurar un proyecto desde un respaldo. En "Datos del Proyecto", junto a "Respaldar como ZIP", se agregó el botón "Importar respaldo" (disponible para superadministradores), que carga el archivo `.zip` de un respaldo y reemplaza el proyecto actual. Antes de importar, un diálogo de confirmación advierte que la acción reemplazará las listas, tareas, documentos y configuración existentes y no se puede deshacer. La importación funciona igual en carpeta local y en la nube gracias al método `importBackupZip`, que escribe el contenido a través del adaptador de almacenamiento compartido, preserva el identificador del proyecto actual y recarga el estado en memoria. El respaldo ZIP ahora también incluye `trash/items.json` para que la papelera se conserve en un ciclo de exportar e importar.
+
+### Changed
+
+- **Iconografía migrada a Phosphor Icons (peso duotone)**
+  Toda la aplicación pasó de `lucide-react` a `@phosphor-icons/react` con el peso duotone aplicado de forma global mediante un `IconContext.Provider`. Los iconos mantienen su tamaño y ubicación originales; solo cambia el estilo visual a duotone.
+
+- **Onboarding de "Proyecto en la nube" con instrucciones plegables**
+  Las instrucciones paso a paso para crear y configurar el proyecto de Firebase (incluida la plantilla de reglas de seguridad) ahora viven dentro de un acordeón colapsable, cerrado por defecto. Así, quien ya tiene su proyecto creado y configurado solo debe pegar el objeto de configuración, mientras que quien lo hace por primera vez puede desplegar la guía completa.
+
+- **Renombrado "Equipo en la Nube" a "Proyecto en la nube"**
+  Se unificó la nomenclatura en toda la interfaz (navegador de proyectos, header y panel del sidebar, dashboard y diálogo de vinculación de Firebase) para mantener consistencia con "Carpeta local", el otro tipo de proyecto.
+
+### Fixed
+
+- **Error del service worker al cachear peticiones de extensiones del navegador**
+  Al recargar con el service worker activo, las extensiones del navegador disparaban peticiones con esquema `chrome-extension://` que la Cache API no puede almacenar, provocando el error `Failed to execute 'put' on 'Cache': Request scheme 'chrome-extension' is unsupported`. El handler `fetch` ahora ignora cualquier petición cuyo esquema no sea `http`/`https` y las peticiones de otros orígenes, y las escrituras a caché (`cache.put`) manejan correctamente el rechazo de la promesa. Se subió la versión de `CACHE_NAME` para que el nuevo service worker se active y limpie el caché anterior.
+
+- **Aviso de meta etiqueta PWA obsoleta**
+  Se agregó `<meta name="mobile-web-app-capable" content="yes">` (estándar) junto a la variante `apple-mobile-web-app-capable`, eliminando la advertencia de obsolescencia en la consola.
+
+## [1.1.0] — 2026-09-23
+
+### Added
+
+- **Sincronización en tiempo real con Firebase (modo "Equipo en la Nube")**
+  Se agregó un nuevo modo de proyecto que permite a los equipos sincronizar en tiempo real sin depender de la velocidad de servicios de carpetas compartidas como Drive o Mega. Cada equipo conecta su propio proyecto de Firebase (modelo "trae tu propio backend"): desde la opción "Vincular Nuevo Proyecto" se elige "Equipo en la Nube", se siguen las instrucciones paso a paso para crear el proyecto en la consola de Firebase, habilitar Firestore y el inicio de sesión anónimo, y se pega el objeto `firebaseConfig`. Kora se conecta directamente a Firestore desde el navegador, sin backend propio. Se implementó un `FirebaseAdapter` con la misma interfaz que el adaptador de archivos local, de modo que toda la lógica de tareas, listas, documentos, bloqueos de edición y sincronización funciona igual en ambos modos. La actualización en la nube usa suscripciones en tiempo real de Firestore (`onSnapshot`) con un sondeo lento de respaldo, mientras el modo local conserva su sondeo de carpeta. Los datos viven en el proyecto de Firebase del propio equipo.
+
+- **Distinción visual entre proyectos locales y remotos**
+  La interfaz ahora identifica claramente el tipo de almacenamiento de cada proyecto. En el navegador de proyectos, el header del sidebar, el panel "Proyectos Vinculados" y la tarjeta "Base de Datos" del dashboard, los proyectos en la nube muestran un icono de nube con acento naranja y la etiqueta "Equipo en la Nube", mientras que los locales conservan el icono de disco con acento azul y la etiqueta "Carpeta Local".
+
+### Changed
+
+- **Carga diferida del SDK de Firebase**
+  El SDK de Firebase se carga bajo demanda solo cuando se usa el modo "Equipo en la Nube", quedando aislado en su propio bundle. Así, los usuarios que solo trabajan con carpetas locales no cargan esta dependencia, y el bundle principal de la aplicación se mantiene ligero.
+
+## [1.0.0] — 2026-07-27
+
+### Added
+
+- **Script de release (`npm run release`)**
+  Nuevo script que compila el frontend y genera una carpeta `release/` lista para distribuir. El paquete incluye los scripts de inicio y un archivo LEEME.txt con instrucciones. No requiere Node.js para ejecutarse: Windows usa PowerShell y Linux/macOS usa Python 3.
+
+- **Verificación de versión remota en About**
+  La sección "Acerca de" ahora consulta el `version.txt` del repositorio en GitHub para detectar nuevas versiones. Si hay una versión más reciente disponible, muestra un enlace a la página de releases para descargar la actualización.
+
+- **Archivo LEEME.txt en servidor-local**
+  Instrucciones de uso para el paquete distribuible, con pasos para Windows y Linux/macOS, solución de problemas y notas generales.
+
+### Changed
+
+- **Nueva mecánica de actualización**
+  Se eliminó el sistema de auto-actualización que borraba la caché del navegador y forzaba la recarga. Ahora la verificación de versión se hace contra el repositorio de GitHub y, si hay una versión nueva, se muestra un enlace a los releases en lugar de un botón de actualización automática. Quienes usan la versión en la nube siempre tienen el build más actual; quienes usan el release local ven el aviso y deciden cuándo actualizar.
+
+### Removed
+
+- Lógica de `performUpdate` (borrado de caché, desregistro de service workers, recarga forzada).
+- Archivos obsoletos de `servidor-local/`: `compilar.bat`, `Instrucciones.md`, zips antiguos.
+
+## [0.1.27-beta] — 2026-07-27
+
+### Added
+
+- **Título dinámico en la pestaña del navegador**
+  La pestaña ahora muestra "NombreDelProyecto — Kora" cuando hay un proyecto cargado, y vuelve a "Kora" al cerrar el proyecto. El título se actualiza automáticamente al renombrar el proyecto desde la configuración.
+
+- **Selección de texto entre bloques en documentos**
+  Los bloques del editor de documentos ahora permiten seleccionar texto a través de múltiples bloques arrastrando con el mouse, como en cualquier página web. Los bloques solo se vuelven editables al hacer click simple sin arrastrar. La toolbar de formato también aparece en selecciones cross-block.
+
+- **Carpetas para organizar documentos**
+  Los documentos ahora se pueden agrupar en carpetas reales dentro de `docs/`. Las carpetas se muestran en la barra lateral como secciones colapsables con chevron. Al crear un documento se puede elegir en qué carpeta guardarlo. El escaneo de documentos detecta automáticamente subcarpetas y limpia del catálogo los archivos que ya no existen en disco.
+
+- **Arrastrar y soltar documentos entre carpetas**
+  Los documentos se pueden arrastrar desde la raíz o desde cualquier carpeta hacia otra carpeta o de vuelta a la raíz. Si hay colisión de nombre en el destino, se agrega un sufijo numérico automáticamente (ej: `archivo.md` → `archivo2.md`).
+
+- **Renombrar y eliminar carpetas**
+  Cada carpeta muestra iconos de edición (lápiz y basura) al pasar el mouse. Renombrar una carpeta mueve todos los archivos a la nueva ubicación y elimina la carpeta original. Eliminar una carpeta mueve sus documentos a la raíz antes de borrarla, con confirmación previa.
+
+- **Renombrar archivo desde el editor**
+  En el header del editor de documentos, el path del archivo es clickeable. Al hacer clic se abre un input inline para cambiar el nombre del archivo en disco. Maneja colisiones y asegura la extensión `.md`.
+
+## [0.1.26-beta] — 2026-06-21
+
+### Added
+
+- **Opción "Salir sin guardar" en documento con cambios**
+  Al intentar salir de un documento con cambios sin guardar, el modal ahora ofrece tres opciones: "Guardar" (guarda y sale), "Salir sin guardar" (descarta los cambios y sale) y "Cancelar" (permanece en el documento). Se agregó el campo `neutralLabel` al sistema de diálogos `confirm()` para soportar un tercer botón opcional.
+
+- **Apartado de accesibilidad en el dashboard**
+  Se agregó una sección de accesibilidad en el dashboard con controles para ajustar el tamaño general de la fuente (4 niveles: Pequeño, Normal, Grande, Extra Grande) y un interruptor para activar o desactivar el modo de alto contraste.
+
+### Fixed
+
+- **Auto-actualización forzada al detectar nueva versión desplegada**
+  Se incrustó la versión de compilación (`__APP_VERSION__`) en el bundle JS mediante Vite `define`. Al cargar la app, se compara esta versión compilada contra `version.txt` del servidor. Si hay diferencia, se eliminan todos los cachés del Service Worker, se desregistra el SW y se recarga la página con un parámetro `?v=...` que evita la caché HTTP del navegador. Todo esto ocurre automáticamente 3 segundos después de detectar la nueva versión, sin intervención del usuario y sin perder los proyectos, sesiones ni auth almacenados en `localStorage`.
+
+### Changed
+
+- **Orden inverso y auto-scroll en notas y actividad de tareas**
+  Se invirtió el orden de visualización de notas y registros de actividad para que los más recientes aparezcan al final (orden tradicional). El scroll del contenedor se posiciona automáticamente al fondo al abrir una tarea o cambiar de pestaña, mostrando el último registro. Se usó `scrollIntoView` con doble `requestAnimationFrame` y `setTimeout` de respaldo para capturar contenido asíncrono como imágenes.
+
+## [0.1.25-beta] — 2026-06-18
+
+### Added
+
+- **Persistencia de proyectos en el navegador**
+  La lista de proyectos registrados ahora se guarda en `localStorage` y persiste al recargar o cerrar y volver a abrir la pestaña. Se corrigieron tres problemas: (1) `initialize()` ahora siempre relee los proyectos de `localStorage` como fallback, (2) `initializeNewProject()` ya no crea registros duplicados sino que actualiza el proyecto existente, y (3) `goToProjectBrowser()` recarga explícitamente la lista desde `localStorage` al navegar de vuelta.
+
+### Fixed
+
+- **Prevención de tareas duplicadas al hacer clic múltiple en "Agregar"**
+  Se agregó un bloqueo de estado (`creatingTask`) que evita la creación de tareas duplicadas cuando el usuario hace clic repetidamente en el botón "Agregar" mientras se está procesando la primera solicitud. El botón se deshabilita visualmente durante la operación.
+
+- **Arrastre continuo de bloques en el editor de documentos**
+  Al arrastrar un bloque con el grip, ahora se mueve continuamente mientras se mantiene el mouse presionado, en lugar de moverse solo una vez por arrastre.
+
+### Changed
+
+- **Vista Kanban: columnas flexibles al ancho de pantalla**
+  Las columnas del Kanban ahora tienen un ancho mínimo de 288px (`w-72`) pero se expanden automáticamente para llenar el ancho disponible de la pantalla, en lugar de tener un ancho fijo.
+
+- **Ajustes responsive en pantallas de inicio, onboarding y autenticación**
+  Se agregó padding superior e inferior (`pt-14`/`pb-14`) en móvil para que el botón de tema y el texto de versión no se solapen con el contenido. El texto de versión (`VersionBadge`) dejó de ser `fixed` y ahora fluye en el flujo normal debajo de todo.
+
+- **Textos y márgenes reducidos en móvil para pantallas iniciales**
+  En las pantallas de carga, navegador de proyectos, autenticación y onboarding se redujeron: título principal (`text-3xl → text-2xl`), logo (`h-12 → h-10`), descripción (`text-sm → text-xs`), padding de la tarjeta (`p-8 → p-5`), márgenes laterales (`px-6 → px-4`) y espaciado general de formularios. Los tamaños originales se restauran en desktop mediante breakpoints `sm:`.
+
+### Removed
+
+- **Funcionalidad de disco virtual**
+  Se eliminó el modo de disco virtual (IndexedDB) debido a bugs persistentes y problemas de compatibilidad entre navegadores. La aplicación ahora opera exclusivamente con acceso directo al sistema de archivos local.
+
+## [0.1.24-beta] — 2026-06-17
+
+### Fixed
+
+- **Render de tablas en documentos**
+  Los documentos ahora soportan tablas Markdown estilo pipe (`| col1 | col2 |`). Se agregó detección y conversión a `table` HTML tanto en la vista previa (`markdown.tsx`) como en el editor por bloques (`DocView.tsx`), incluyendo un editor de código colapsable tipo mermaid y un comando `/table` en el menú de bloques.
+
+- **Agregados nuevos tipos de contenidos en datos de ejemplo**
+  Se agregaron al seed de datos de ejemplo: un nuevo documento Markdown con diagrama Mermaid y referencia a imagen (`og-image.png`), una nota de tarea con imagen adjunta (`mobile-icon.png`), y cuatro imágenes copiadas desde `public/` a la biblioteca de medios (`og-image.png`, `mobile-icon.png`, `logo-dark.svg`, `logo-light.svg`).
+
+### Changed
+
+- **Quitado encabezado de los diagramas y tablas**
+  Se eliminaron las etiquetas "mermaid" y "tabla (X filas)" del encabezado de los bloques de diagrama y tabla en el editor. El botón de edición ahora se alinea a la derecha.
+
+## [0.1.23-beta] — 2026-06-17
+
+### Added
+
+- **Sistema de notas no leídas por usuario**
+  Cada usuario puede identificar visualmente qué notas de tareas no ha leído. Las notas sin leer muestran un punto azul pulsante en la tarea, el panel de notas y el sidebar. Al pasar el mouse sobre una nota se marca automáticamente como leída (con debounce de 2s para evitar escrituras excesivas). Las notas propias nunca aparecen como no leídas para su autor.
+
+## [0.1.22-beta] — 2026-06-17
+
+### Added
+
+- **Dashboard con estadísticas básicas y configuración del proyecto**
+  Se agregó un nuevo dashboard que muestra estadísticas básicas del proyecto, junto con la configuración inicial del mismo.
+
+- **Papelera de reciclaje**
+  Implementación de una papelera de reciclaje para gestionar documentos y elementos eliminados, permitiendo su recuperación.
+
+- **Soporte para diagramas en los documentos**
+  Los documentos ahora soportan diagramas, ampliando las capacidades de edición y representación visual.
+
+- **Mensaje al intentar salir de un documento sin guardar**
+  Se agregó una advertencia al usuario cuando intenta cerrar o salir de un documento que tiene cambios sin guardar.
+
+- **Bloqueo de documento abierto por otro usuario**
+  Ahora cuando un documento está siendo editado por otro usuario, se bloquea para evitar conflictos de edición simultánea.

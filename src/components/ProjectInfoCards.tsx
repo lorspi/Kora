@@ -53,7 +53,7 @@ function UserColorPicker({ value, onChange }: { value: string; onChange: (color:
         onClick={() => setOpen(!open)}
         className="w-7 h-7 rounded-full border-2 border-border cursor-pointer shrink-0 hover:scale-110 transition-all"
         style={{ backgroundColor: value }}
-        title="Cambiar color"
+        data-tooltip="Cambiar color"
       />
       {open && (
         <div className="absolute z-50 top-9 left-0 bg-card border border-border rounded-xl p-2.5 shadow-xl min-w-[180px]">
@@ -67,7 +67,7 @@ function UserColorPicker({ value, onChange }: { value: string; onChange: (color:
                   value.toLowerCase() === color ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-transparent hover:border-muted-foreground/50'
                 }`}
                 style={{ backgroundColor: color }}
-                title={color}
+                data-tooltip={color}
               />
             ))}
             <div className="relative">
@@ -78,7 +78,7 @@ function UserColorPicker({ value, onChange }: { value: string; onChange: (color:
                   !isPreset ? 'border-foreground ring-2 ring-ring ring-offset-1 ring-offset-background scale-110' : 'border-muted-foreground/50 hover:border-muted-foreground'
                 }`}
                 style={!isPreset ? { backgroundColor: value } : undefined}
-                title="Color personalizado"
+                data-tooltip="Color personalizado"
               >
                 {isPreset && <Plus className="w-2.5 h-2.5 text-muted-foreground" />}
               </button>
@@ -385,14 +385,14 @@ export default function ProjectInfoCards() {
                       <button
                         onClick={() => handleSaveUserName(user.id)}
                         className="p-1 rounded hover:bg-accent text-bento-green transition-colors"
-                        title="Guardar"
+                        data-tooltip="Guardar"
                       >
                         <Save className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => setEditingUserId(null)}
                         className="p-1 rounded hover:bg-accent text-muted-foreground transition-colors"
-                        title="Cancelar"
+                        data-tooltip="Cancelar"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -424,7 +424,7 @@ export default function ProjectInfoCards() {
                   <button
                     onClick={() => handleStartEditUser(user)}
                     className="p-1.5 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                    title="Editar"
+                    data-tooltip="Editar"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
@@ -435,7 +435,7 @@ export default function ProjectInfoCards() {
                         className={`p-1.5 rounded-lg hover:bg-accent transition-colors ${
                           user.isSuperAdmin ? 'text-bento-yellow hover:text-bento-orange' : 'text-muted-foreground hover:text-bento-yellow'
                         }`}
-                        title={user.isSuperAdmin ? 'Revocar superadmin' : 'Hacer superadmin'}
+                        data-tooltip={user.isSuperAdmin ? 'Revocar superadmin' : 'Hacer superadmin'}
                       >
                         {user.isSuperAdmin ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
                       </button>
@@ -443,7 +443,7 @@ export default function ProjectInfoCards() {
                         <button
                           onClick={() => handleDeleteUser(user)}
                           className="p-1.5 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                          title="Eliminar usuario"
+                          data-tooltip="Eliminar usuario"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>

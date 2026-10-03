@@ -122,7 +122,7 @@ export default function AssigneePicker({ task, size = 'md', disabled = false, em
               key={userId}
               className={`${avatarClass} rounded-full border-card flex items-center justify-center font-bold text-white uppercase shrink-0`}
               style={{ backgroundColor: u.avatarColor }}
-              title={u.name}
+              data-tooltip={u.name}
             >
               {u.name.charAt(0)}
             </span>
@@ -140,7 +140,7 @@ export default function AssigneePicker({ task, size = 'md', disabled = false, em
           draggable={false}
           aria-label="Asignar responsables"
           aria-expanded={open}
-          title="Asignar responsables"
+          data-tooltip="Asignar responsables"
           className={`${plusClass} rounded-full border border-dashed border-muted-foreground/50 text-muted-foreground hover:text-foreground hover:border-foreground hover:bg-accent flex items-center justify-center shrink-0 transition-opacity cursor-pointer focus-visible:opacity-100 pointer-coarse:opacity-100 ${
             open ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
           }`}

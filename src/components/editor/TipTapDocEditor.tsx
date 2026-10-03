@@ -242,12 +242,12 @@ function FormatBubble({ editor }: { editor: Editor }) {
     >
       {!linkMode ? (
         <>
-          <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }} className={btn(editor.isActive('bold'))} title="Negrita"><Bold className="w-4 h-4" /></button>
-          <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleItalic().run(); }} className={btn(editor.isActive('italic'))} title="Cursiva"><Italic className="w-4 h-4" /></button>
-          <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleUnderline().run(); }} className={btn(editor.isActive('underline'))} title="Subrayado"><Underline className="w-4 h-4" /></button>
-          <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleStrike().run(); }} className={btn(editor.isActive('strike'))} title="Tachado"><Strikethrough className="w-4 h-4" /></button>
-          <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleCode().run(); }} className={btn(editor.isActive('code'))} title="Código"><Code className="w-4 h-4" /></button>
-          <button onMouseDown={(e) => { e.preventDefault(); setLinkUrl(editor.getAttributes('link').href || ''); setLinkMode(true); }} className={btn(editor.isActive('link'))} title="Enlace"><LinkIcon className="w-4 h-4" /></button>
+          <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run(); }} className={btn(editor.isActive('bold'))} data-tooltip="Negrita"><Bold className="w-4 h-4" /></button>
+          <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleItalic().run(); }} className={btn(editor.isActive('italic'))} data-tooltip="Cursiva"><Italic className="w-4 h-4" /></button>
+          <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleUnderline().run(); }} className={btn(editor.isActive('underline'))} data-tooltip="Subrayado"><Underline className="w-4 h-4" /></button>
+          <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleStrike().run(); }} className={btn(editor.isActive('strike'))} data-tooltip="Tachado"><Strikethrough className="w-4 h-4" /></button>
+          <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleCode().run(); }} className={btn(editor.isActive('code'))} data-tooltip="Código"><Code className="w-4 h-4" /></button>
+          <button onMouseDown={(e) => { e.preventDefault(); setLinkUrl(editor.getAttributes('link').href || ''); setLinkMode(true); }} className={btn(editor.isActive('link'))} data-tooltip="Enlace"><LinkIcon className="w-4 h-4" /></button>
         </>
       ) : (
         <div className="flex items-center gap-1 px-1">
@@ -260,7 +260,7 @@ function FormatBubble({ editor }: { editor: Editor }) {
             onChange={(e) => setLinkUrl(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); applyLink(); } if (e.key === 'Escape') { setLinkMode(false); setLinkUrl(''); } }}
           />
-          <button onMouseDown={(e) => { e.preventDefault(); applyLink(); }} className="p-1.5 rounded-lg text-bento-green hover:bg-accent transition-colors cursor-pointer" title="Aplicar enlace"><Check className="w-4 h-4" /></button>
+          <button onMouseDown={(e) => { e.preventDefault(); applyLink(); }} className="p-1.5 rounded-lg text-bento-green hover:bg-accent transition-colors cursor-pointer" data-tooltip="Aplicar enlace"><Check className="w-4 h-4" /></button>
         </div>
       )}
     </BubbleMenu>

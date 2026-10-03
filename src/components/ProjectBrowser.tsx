@@ -239,7 +239,7 @@ export default function ProjectBrowser() {
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-                title="Ver repositorio en GitHub"
+                data-tooltip="Ver repositorio en GitHub"
               >
                 <Github className="w-4 h-4" />
                 GitHub
@@ -309,7 +309,7 @@ export default function ProjectBrowser() {
                             }
                           }}
                           className="p-1 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
-                          title="Desvincular proyecto"
+                          data-tooltip="Desvincular proyecto"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>

@@ -197,7 +197,7 @@ export default function LoadFolderScreen() {
             target="_blank" 
             rel="noopener noreferrer"
             className="flex items-center gap-1.5 hover:text-foreground transition-colors"
-            title="Ver repositorio en GitHub"
+            data-tooltip="Ver repositorio en GitHub"
           >
             <Github className="w-4 h-4" />
             GitHub

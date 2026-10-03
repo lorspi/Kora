@@ -114,7 +114,7 @@ export default function AccessibilitySection() {
               onClick={decreaseFont}
               disabled={isMin}
               className="w-9 h-9 rounded-lg bg-secondary hover:bg-accent border border-border flex items-center justify-center text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-              title="Reducir fuente"
+              data-tooltip="Reducir fuente"
               aria-label="Reducir tamaño de fuente"
             >
               <ZoomOut className="w-4 h-4" />
@@ -132,7 +132,7 @@ export default function AccessibilitySection() {
               onClick={increaseFont}
               disabled={isMax}
               className="w-9 h-9 rounded-lg bg-secondary hover:bg-accent border border-border flex items-center justify-center text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
-              title="Aumentar fuente"
+              data-tooltip="Aumentar fuente"
               aria-label="Aumentar tamaño de fuente"
             >
               <ZoomIn className="w-4 h-4" />
