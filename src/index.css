@@ -483,6 +483,11 @@ body {
   text-decoration: underline;
 }
 
+/* In a read-only document a clic opens the link */
+.ProseMirror[contenteditable="false"] a {
+  cursor: pointer;
+}
+
 /* Task list (checklists) */
 .ProseMirror ul[data-type="taskList"] {
   list-style: none;

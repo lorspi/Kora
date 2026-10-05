@@ -106,6 +106,8 @@ export interface DocMetadata {
   editedBy?: string;
   editedAt?: number;
   createdAt: number;
+  /** Position in the manual order of its folder (or of the root); unset until arranged */
+  order?: number;
 }
 
 export interface TaskLock {

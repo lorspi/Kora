@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.1] — 2026-10-05
+
+### Added
+
+- **Tarjeta flotante para los enlaces de los documentos**
+  Los enlaces de un documento ya se pueden abrir sin estorbar la edición, como en Notion. Al hacer clic en un enlace solo se coloca el cursor, así que se puede seguir escribiendo o seleccionando su texto. Cuando el cursor está dentro del enlace, o el mouse se detiene sobre él, aparece una tarjeta flotante debajo con la dirección (clic para abrirla en una pestaña nueva), un botón para copiarla, "Editar" para cambiarla y otro para quitar el enlace. Ctrl+clic (Cmd+clic en Mac) abre el enlace directamente, Escape oculta la tarjeta y las direcciones escritas sin protocolo (por ejemplo `lorspi.com`) se abren como `https://`. En un documento de solo lectura, un clic abre el enlace y la tarjeta solo muestra abrir y copiar.
+
+- **Orden de los documentos**
+  Junto a "Mis documentos" (o "Documentos en esta carpeta") hay un desplegable, igual al de Nori, para ordenar los documentos por última edición, alfabéticamente por título o en orden manual. La elección se recuerda en el navegador.
+
+- **Orden manual arrastrando documentos**
+  Los documentos se arrastran entre los demás para ordenarlos; una barra indica a qué lado de la tarjeta quedará. Al reordenar con otro orden activo, la vista pasa a orden manual partiendo del orden que se ve en pantalla. El orden se guarda en `/docs/info.json`, por lo que se comparte con el equipo. Los documentos nuevos, importados o recién movidos a una carpeta aparecen primero.
+
+- **Arrastrar documentos a la papelera**
+  Un documento arrastrado sobre "Papelera" en la barra lateral se mueve a la papelera, con el resaltado en rojo de la zona de destino.
+
 ## [1.3.0] — 2026-10-02
 
 ### Added

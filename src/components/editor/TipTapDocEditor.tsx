@@ -44,6 +44,7 @@ import {
 } from '@phosphor-icons/react';
 import { buildExtensions } from './extensions';
 import { BlockGutter } from './BlockGutter';
+import { LinkPopover } from './LinkPopover';
 import { EditorAssetsProvider } from './editorStoreBridge';
 import { pmDocToMarkdown, markdownToTiptapHtml, normalizeMarkdown } from '../../lib/tiptapMarkdown';
 
@@ -325,6 +326,7 @@ const TipTapDocEditor = forwardRef<TipTapDocEditorHandle, TipTapDocEditorProps>(
         <EditorContent editor={editor} />
         {viewReady && editor.isEditable && <BlockGutter editor={editor} />}
         {viewReady && editor.isEditable && <FormatBubble editor={editor} />}
+        {viewReady && <LinkPopover editor={editor} />}
         {viewReady && editor.isEditable && showSlash && <SlashMenu editor={editor} onClose={() => setShowSlash(true)} />}
       </EditorAssetsProvider>
     );

@@ -112,6 +112,8 @@ interface ProjectState {
   scanDocuments: () => Promise<number>;
   createDocFolder: (folderName: string) => Promise<void>;
   moveDocToFolder: (docId: string, folder: string | null) => Promise<void>;
+  /** Stores the manual order of the docs of a folder (or of the root), in the given order */
+  reorderDocs: (ids: string[]) => Promise<void>;
   getDocFolders: () => Promise<string[]>;
   /** Doc folders (subfolders of /docs), shared by the sidebar and the documents view */
   docFolders: string[];
@@ -2350,13 +2352,24 @@ graph TD
       // Update metadata
       const updatedDocs = docs.map(d => {
         if (d.id === docId) {
-          return { ...d, folder: folder || undefined, filename: targetFilename };
+          // A doc just moved has no place in its new folder yet: it goes first in the manual order
+          return { ...d, folder: folder || undefined, filename: targetFilename, order: undefined };
         }
         return d;
       });
 
       await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
       set({ docs: updatedDocs });
+    },
+
+    reorderDocs: async (ids) => {
+      const { adapter, docs } = get();
+      if (!adapter) return;
+      const position = new Map(ids.map((id, i) => [id, i]));
+      const updatedDocs = docs.map(d => (position.has(d.id) ? { ...d, order: position.get(d.id)! } : d));
+      // Shown right away; the file is written after
+      set({ docs: updatedDocs });
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify(updatedDocs, null, 2));
     },
 
     getDocFolders: async () => {

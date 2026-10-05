@@ -36,7 +36,7 @@ import {
 } from '@phosphor-icons/react';
 import ThemeToggle from './ThemeToggle';
 import { ContextMenu, ContextMenuItem } from './ContextMenu';
-import { useDocDrop, useDocFolderActions, DOCS_ROOT } from './DocumentsBrowser';
+import { useDocDrop, useDocFolderActions, DOCS_ROOT, DOCS_TRASH } from './DocumentsBrowser';
 import { loadSavedSessions } from '../store/sessions';
 import { saveDirectoryHandleWithKey } from '../lib/fs';
 
@@ -505,13 +505,15 @@ export default function Sidebar() {
         {/* TRASH */}
         <div>
           <div className="space-y-0.5">
+            {/* A doc dragged here goes to the trash */}
             <button
               onClick={() => setShowTrash(true)}
+              {...dropZone(DOCS_TRASH)}
               className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
                 showTrash
                   ? 'bg-destructive/10 text-destructive border-l-2 border-destructive font-bold'
                   : 'hover:bg-accent text-muted-foreground hover:text-foreground'
-              }`}
+              } ${dropClass(DOCS_TRASH)}`}
             >
               <TrashIcon className="w-3.5 h-3.5 shrink-0" />
               <span className="text-xs font-semibold flex-1">Papelera</span>
