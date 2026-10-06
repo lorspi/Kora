@@ -333,7 +333,7 @@ export default function ProjectOnboarding() {
                 </div>
                 <h3 className="font-semibold text-foreground text-sm font-heading">Con Datos de Ejemplo</h3>
                 <p className="mt-2 text-muted-foreground text-xs leading-relaxed flex-1">
-                  Carga listas y tareas de demostración para explorar todas las funciones.
+                  Carga un proyecto de demostración completo, con equipo, tareas, documentos y medios, para explorar todas las funciones.
                 </p>
                 <span className="mt-4 text-[11px] text-bento-orange font-medium group-hover:underline flex items-center gap-1">
                   Cargar Demo <ArrowRight className="w-3 h-3" />

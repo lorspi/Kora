@@ -9,12 +9,13 @@
  */
 import type { TaskEffort } from '../types';
 
-export const EFFORT_LEVELS: { value: TaskEffort; label: string; description: string }[] = [
-  { value: 'easy', label: 'Fácil', description: 'Se resuelve en un momento' },
-  { value: 'casual', label: 'Casual', description: 'Poco trabajo, sin complicaciones' },
-  { value: 'moderate', label: 'Moderado', description: 'Requiere algo de tiempo y atención' },
-  { value: 'hard', label: 'Difícil', description: 'Trabajo considerable o con incertidumbre' },
-  { value: 'epic', label: 'Épico', description: 'Un gran esfuerzo; considera dividirla' },
+/** `color` fills the meter's bars: from green (a quick win) to red (an epic). */
+export const EFFORT_LEVELS: { value: TaskEffort; label: string; description: string; color: string }[] = [
+  { value: 'easy', label: 'Fácil', description: 'Se resuelve en un momento', color: 'bg-emerald-500' },
+  { value: 'casual', label: 'Casual', description: 'Poco trabajo, sin complicaciones', color: 'bg-lime-500' },
+  { value: 'moderate', label: 'Moderado', description: 'Requiere algo de tiempo y atención', color: 'bg-amber-400' },
+  { value: 'hard', label: 'Difícil', description: 'Trabajo considerable o con incertidumbre', color: 'bg-orange-500' },
+  { value: 'epic', label: 'Épico', description: 'Un gran esfuerzo; considera dividirla', color: 'bg-red-500' },
 ];
 
 /** Options for a select, with "no level" first. */
@@ -28,7 +29,7 @@ export function effortLevel(effort?: TaskEffort | null) {
   return index < 0 ? null : { ...EFFORT_LEVELS[index], rank: index + 1 };
 }
 
-/** Bar meter: as many filled bars as the level's rank. */
+/** Bar meter: as many filled bars as the level's rank, in the level's color. */
 export function EffortMeter({ effort, className = '' }: { effort?: TaskEffort | null; className?: string }) {
   const level = effortLevel(effort);
   return (
@@ -36,7 +37,7 @@ export function EffortMeter({ effort, className = '' }: { effort?: TaskEffort | 
       {EFFORT_LEVELS.map((_, i) => (
         <span
           key={i}
-          className={`w-[3px] rounded-[1px] ${level && i < level.rank ? 'bg-bento-blue' : 'bg-muted-foreground/25'}`}
+          className={`w-[3px] rounded-[1px] ${level && i < level.rank ? level.color : 'bg-muted-foreground/25'}`}
           style={{ height: `${40 + i * 15}%` }}
         />
       ))}

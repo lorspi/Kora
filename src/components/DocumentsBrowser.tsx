@@ -36,6 +36,7 @@ import { DocMetadata } from '../types';
 import type { FirebaseAdapter } from '../lib/firebase';
 import type { DocEditor } from '../lib/docPresence';
 import { markdownToHtml } from '../lib/markdown';
+import { splitLeadingEmoji } from '../lib/emoji';
 import { ContextMenu, ContextMenuItem } from './ContextMenu';
 import { MenuButton, MenuButtonItem } from './MenuButton';
 import { Dropdown } from './Dropdown';
@@ -1013,6 +1014,7 @@ function DocCard({ doc, editor, editingNow, loadContent, dragProps, dragging, dr
 /** A document as a row of the list view */
 function DocRow({ doc, editor, editingNow, dragProps, dragging, dropSide, onOpen, onOpenMenu }: Omit<DocCardProps, 'loadContent'>) {
   const edited = `Editado ${formatRelative(docTime(doc))}${editor ? ` · ${editor}` : ''}`;
+  const { icon, label } = splitLeadingEmoji(doc.title);
   return (
     <div
       {...dragProps}
@@ -1038,9 +1040,15 @@ function DocRow({ doc, editor, editingNow, dragProps, dragging, dropSide, onOpen
           }`}
         />
       )}
-      <FileText className="w-5 h-5 shrink-0 text-bento-orange" />
+      {icon ? (
+        <span className="w-5 h-5 shrink-0 flex items-center justify-center text-base leading-none" aria-hidden="true">
+          {icon}
+        </span>
+      ) : (
+        <FileText className="w-5 h-5 shrink-0 text-bento-orange" />
+      )}
       <div className="min-w-0 flex-1">
-        <h3 className="font-semibold text-foreground text-sm truncate font-heading">{doc.title}</h3>
+        <h3 className="font-semibold text-foreground text-sm truncate font-heading">{label}</h3>
         <p className="sm:hidden text-[11px] text-muted-foreground truncate">{edited}</p>
       </div>
       <span className="hidden sm:block text-[11px] text-muted-foreground truncate max-w-[40%] text-right">{edited}</span>

@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.5.0] — 2026-10-06
+
+### Added
+
+- **Emojis como icono en la lista de documentos**
+  En la vista de lista de Documentos, si el título de un documento empieza por un emoji, ese emoji reemplaza el icono de documento y no se repite en el nombre: "🔧 Herramientas" se muestra como "Herramientas" con el icono 🔧. La vista de cuadrícula no cambia y el título guardado tampoco.
+
+- **Emojis como icono en las listas de tareas**
+  En la barra lateral, una lista cuyo nombre empieza por un emoji muestra ese emoji en lugar del círculo de color, y el resto del nombre a su lado.
+
+- **Nuevo proyecto de ejemplo**
+  "Con Datos de Ejemplo" crea ahora un proyecto completo que recorre todas las funciones de Kora: el lanzamiento de "Origen", una app de suscripción de café. Incluye un equipo de tres personas (con contraseña `kora1234` para entrar como cada una) con notas sin leer en varias listas; cuatro listas con estados propios, iconos de emoji y orden manual; catorce tareas con todas las prioridades y niveles de esfuerzo, subtareas, dependencias, etiquetas, fechas vencidas, de hoy y futuras, y notas con imágenes adjuntas; ocho documentos en la raíz y en las carpetas "Diseño" y "Reuniones" con diagramas Mermaid (flujo, Gantt y secuencia), tablas, listas de tareas, código, enlaces e imágenes; imágenes en la galería de medios, y una tarea y un documento en la papelera para restaurar. Un documento de bienvenida propone un recorrido por todo.
+
+### Changed
+
+- **Colores en el nivel de esfuerzo**
+  Las barras del medidor de esfuerzo toman el color de su nivel: verde para Fácil, verde lima para Casual, amarillo para Moderado, naranja para Difícil y rojo para Épico.
+
+- **Vincular un proyecto desde la barra lateral**
+  "Vincular Nuevo Proyecto" en el desplegable "Administrar Proyectos" abre el mismo paso del inicio para elegir entre una carpeta del computador y un proyecto en la nube, en lugar de pedir solo una carpeta local.
+
 ## [1.4.0] — 2026-10-05
 
 ### Added

@@ -38,7 +38,8 @@ import ThemeToggle from './ThemeToggle';
 import { ContextMenu, ContextMenuItem } from './ContextMenu';
 import { useDocDrop, useDocFolderActions, DOCS_ROOT, DOCS_TRASH } from './DocumentsBrowser';
 import { loadSavedSessions } from '../store/sessions';
-import { saveDirectoryHandleWithKey } from '../lib/fs';
+import NewProjectChooser from './NewProjectChooser';
+import { splitLeadingEmoji } from '../lib/emoji';
 
 export default function Sidebar() {
   const { 
@@ -106,7 +107,7 @@ export default function Sidebar() {
   const projectManagerRef = useRef<HTMLDivElement>(null);
   const [authStatuses, setAuthStatuses] = useState<Record<string, boolean>>({});
   
-  const { registeredProjects, registerProject, unregisterProject, goToProjectBrowser, loadedProjectId, loadProjectById } = useProjectStore();
+  const { registeredProjects, unregisterProject, goToProjectBrowser, loadedProjectId, loadProjectById } = useProjectStore();
 
   // Storage type of the currently loaded project ('FIREBASE' for cloud, else local folder).
   const currentProjectType = registeredProjects.find(p => p.id === loadedProjectId)?.type;
@@ -121,24 +122,11 @@ export default function Sidebar() {
     setAuthStatuses(statuses);
   }, [registeredProjects, showProjectManager]);
 
-  // Handle adding a new project directly from the dropdown
-  const handleAddNewProject = async () => {
+  // Linking a new project opens the same chooser as the home screen: a folder or a cloud project
+  const [showNewProject, setShowNewProject] = useState(false);
+  const handleAddNewProject = () => {
     setShowProjectManager(false);
-    try {
-      if (!('showDirectoryPicker' in window)) {
-        toast('Tu navegador no es compatible con la API de Acceso a Archivos Locales.', 'error');
-        return;
-      }
-      const directoryHandle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-      
-      const projId = registerProject('Cargando...', 'FSA_API');
-      await saveDirectoryHandleWithKey(directoryHandle, `fsa-handle-${projId}`);
-      await loadProjectById(projId);
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        toast(err?.message || 'Error al agregar proyecto', 'error');
-      }
-    }
+    setShowNewProject(true);
   };
 
   // Close dropdown when clicking outside
@@ -427,10 +415,19 @@ export default function Sidebar() {
                     }`}
                   />
                 )}
-                <div className="flex items-center gap-2 truncate min-w-0">
-                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: l.color }}></div>
-                  <span className="text-xs font-semibold truncate">{l.name}</span>
-                </div>
+                {(() => {
+                  const { icon, label } = splitLeadingEmoji(l.name);
+                  return (
+                    <div className="flex items-center gap-2 truncate min-w-0">
+                      {icon ? (
+                        <span className="w-3.5 shrink-0 flex items-center justify-center text-xs leading-none" aria-hidden="true">{icon}</span>
+                      ) : (
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: l.color }}></div>
+                      )}
+                      <span className="text-xs font-semibold truncate">{label}</span>
+                    </div>
+                  );
+                })()}
                 {(() => {
                   const count = unreadNotesByList.get(l.id) || 0;
                   if (count === 0) return null;
@@ -708,6 +705,23 @@ export default function Sidebar() {
       </div>
 
     </aside>
+
+    {showNewProject && (
+      <div
+        className="fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-foreground/20 backdrop-blur-[2px] animate-fade-in"
+        onClick={() => setShowNewProject(false)}
+      >
+        <div
+          className="w-full max-w-3xl max-h-[90vh] overflow-y-auto bg-card border border-border rounded-2xl p-5 sm:p-8 shadow-card-hover animate-scale-in"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <NewProjectChooser
+            onClose={() => setShowNewProject(false)}
+            onError={(message, cancelled) => { if (!cancelled) toast(message, 'error'); }}
+          />
+        </div>
+      </div>
+    )}
 
     {folderMenu && (
       <ContextMenu x={folderMenu.x} y={folderMenu.y} items={buildFolderMenuItems(folderMenu.folder)} onClose={closeFolderMenu} />

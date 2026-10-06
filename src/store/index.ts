@@ -24,6 +24,7 @@ import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDire
 import type { FirebaseAdapter, FirebaseConfig } from '../lib/firebase';
 import { saveFirebaseConfigForProject, loadFirebaseConfigForProject, deleteFirebaseConfigForProject } from '../lib/firebaseConfigStore';
 import { hashPassword } from '../lib/crypto';
+import { buildSampleProject, SAMPLE_MEDIA } from './sampleProject';
 
 /**
  * Storage engine used by the store. Both adapters share the same structural
@@ -923,348 +924,62 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       return newList;
     },
 
-    // Seed sample data adapted for onboarding (keeps first user instead of demo users)
+    // Seed the demo project (see sampleProject.ts): the first user leads a team of demo teammates
     seedSampleProjectOnboarding: async (projectMeta, config, firstUser) => {
       const { adapter } = get();
       if (!adapter) return;
 
-      // Keep only first user as superadmin
-      const users: SystemUser[] = [firstUser];
+      const sample = await buildSampleProject(firstUser);
+      const meta: ProjectMetadata = { ...projectMeta, tags: sample.tags };
 
-      // 1. Lists with complete structure
-      const listAId = 'list-sprint-id';
-      const listStatusesA: TaskStatus[] = [
-        { id: 'todo', name: 'Por Hacer', color: '#d1d5db', isCompleted: false },
-        { id: 'inprogress', name: 'En Desarrollo', color: '#2563eb', isCompleted: false },
-        { id: 'review', name: 'Revisión / QA', color: '#eab308', isCompleted: false },
-        { id: 'done', name: 'Listo / Desplegado', color: '#10b981', isCompleted: true }
-      ];
-      const listA: TaskList = {
-        id: listAId,
-        name: 'Sprint Core Active',
-        color: '#8b5cf6',
-        statuses: listStatusesA,
-        createdAt: Date.now() - 3600000 * 50
-      };
-
-      const listBId = 'list-backlog-id';
-      const listStatusesB: TaskStatus[] = [
-        { id: 'backlog', name: 'Backlog Ideas', color: '#6b7280', isCompleted: false },
-        { id: 'selected', name: 'Para Próximo Sprint', color: '#0ea5e9', isCompleted: false },
-        { id: 'closed', name: 'Archivado', color: '#9ca3af', isCompleted: true }
-      ];
-      const listB: TaskList = {
-        id: listBId,
-        name: 'Product Backlog',
-        color: '#f59e0b',
-        statuses: listStatusesB,
-        createdAt: Date.now() - 3600000 * 48
-      };
-
-      // 2. All sample tasks (with IDs adjusted to firstUser)
-      const task1Id = 'task-001-id';
-      const task2Id = 'task-002-id';
-      const task3Id = 'task-003-id';
-      const task4Id = 'task-004-id';
-
-      const tasks: Task[] = [
-        {
-          id: task1Id,
-          taskCode: 'TSK-001',
-          listId: listAId,
-          title: 'Implementar Persistencia con File System Access API',
-          description: `### Objetivo
-Desarrollar la capa de persistencia directa en el navegador para que lea y escriba directamente sobre la carpeta local seleccionada.
-
-### Requerimientos de formato
-Adherirse estricto al siguiente formato de JSON de almacenamiento:
-- \`config.json\` en la raíz.
-- Guardar tareas individuales en nombres secuenciales dentro de \`/tasks/\`.
-
-### Notas de implementación
-- La File System Access API requiere permisos de escritura del usuario.
-- Siempre tener un plan de escape virtual para navegadores embebidos como el iframe de AI Studio (usar IndexedDB).
-`,
-          statusId: 'inprogress',
-          dueDate: new Date(Date.now() + 3600000 * 24 * 3).toISOString().split('T')[0],
-          assignees: [firstUser.id],
-          priority: 'high',
-          tags: ['File System', 'TypeScript', 'Durable'],
-          dependencies: [],
-          subtasks: [
-            { id: 'subtask-1-1', title: 'Crear adapter con soporte FSA API', isCompleted: true, createdAt: Date.now() },
-            { id: 'subtask-1-2', title: 'Crear fallback transparente en IndexedDB', isCompleted: true, createdAt: Date.now() },
-            { id: 'subtask-1-3', title: 'Exportar/Importar estructura como archivo .zip', isCompleted: false, createdAt: Date.now() }
-          ],
-          lastEditedBy: firstUser.id,
-          lastEditedAt: Date.now()
-        },
-        {
-          id: task2Id,
-          taskCode: 'TSK-002',
-          listId: listAId,
-          title: 'Diseñar Interfaz Minimalista & Altamente Interactiva',
-          description: `### Concepto de diseño
-Queremos un aspecto ultra profesional, limpio, denso y responsivo con colores sobrios y elegantes.
-- **Lista agrupada por estados** con capacidad colapsable.
-- **Vista de tablero Kanban** completo con tarjetas arrastrables.
-- **Vista de tabla estructurada** con edición rápida de campos.
-
-### Tipografía recomendada
-- Encabezados modernos y limpios.
-- JetBrains Mono para códigos de tareas e indicadores.
-`,
-          statusId: 'done',
-          dueDate: new Date(Date.now() - 3600000 * 24).toISOString().split('T')[0],
-          assignees: [firstUser.id],
-          priority: 'medium',
-          tags: ['UI/UX', 'Tailwind', 'Framer Motion'],
-          dependencies: [],
-          subtasks: [
-            { id: 'subtask-2-1', title: 'Definir paleta de colores de estados', isCompleted: true, createdAt: Date.now() },
-            { id: 'subtask-2-2', title: 'Crear componentes de lista reactivos', isCompleted: true, createdAt: Date.now() }
-          ],
-          lastEditedBy: firstUser.id,
-          lastEditedAt: Date.now()
-        },
-        {
-          id: task3Id,
-          taskCode: 'TSK-003',
-          listId: listAId,
-          title: 'Sistema de Locks (Bloqueos de Coflicto de Edición)',
-          description: `### Caso de uso
-Cuando el **Usuario A** está editando una tarea, el **Usuario B** que comparte la misma carpeta de Drive sincronizada no debe poder guardarle cambios ni editar esa tarea simultáneamente.
-
-### Implementación
-- Escribir en un archivo temporal o en \`/activity/locks.json\`.
-- Cada bloqueo expira automáticamente tras un período de inactividad (e.g. 10 segundos de latido offline).
-`,
-          statusId: 'todo',
-          dueDate: new Date(Date.now() + 3600000 * 24 * 7).toISOString().split('T')[0],
-          assignees: [firstUser.id],
-          priority: 'urgent',
-          tags: ['Locks', 'Sincronización', 'Drive'],
-          dependencies: [task1Id],
-          subtasks: [
-            { id: 'subtask-3-1', title: 'Simulador multiusuario interactivo', isCompleted: false, createdAt: Date.now() },
-            { id: 'subtask-3-2', title: 'Escribir locks.json en el disco', isCompleted: false, createdAt: Date.now() }
-          ],
-          lastEditedBy: firstUser.id,
-          lastEditedAt: Date.now()
-        },
-        {
-          id: task4Id,
-          taskCode: 'TSK-004',
-          listId: listBId,
-          title: 'Compilar Ejecutable de Escritorio con Tauri',
-          description: `### Escalar en el futuro
-Este MVP se diseña pensando en empaquetarse en el futuro usando **Tauri** para exportar ejecutables nativos sumamente livianos en Windows, macOS y Linux.
-`,
-          statusId: 'backlog',
-          dueDate: '',
-          assignees: [],
-          priority: 'low',
-          tags: ['Tauri', 'Desktop', 'Escalabilidad'],
-          dependencies: [],
-          subtasks: [],
-          lastEditedBy: firstUser.id,
-          lastEditedAt: Date.now()
-        }
-      ];
-
-      // 3. Documentation
-      const docA: DocMetadata = {
-        id: 'doc-guia-id',
-        title: 'Guía de Arquitectura de Almacenamiento',
-        filename: 'guia.md',
-        editedBy: firstUser.id,
-        editedAt: Date.now(),
-        createdAt: Date.now() - 3600000 * 2
-      };
-      
-      const docAContent = `# Guía - Almacenamiento de Datos del Proyecto
-
-Este proyecto está diseñado para funcionar de manera **totalmente local y privada**. No hay un servidor de base de datos intermedio.
-
-## ¿Cómo funciona la sincronización?
-Tú eres dueño de tus datos. El directorio elegido contiene archivos con formatos legibles por humanos:
-- Las tareas e información del proyecto se almacenan como archivos **JSON** (ej., \`tasks/task-001.json\`).
-- Los documentos son archivos **Markdown (.md)** estándar.
-
-## Sincronización en la Nube
-Puedes sincronizar esta carpeta simplemente alojándola en repositorios como **Google Drive, Dropbox, OneDrive o repositorios Git** en tu computadora. La aplicación detectará los cambios de forma automática gracias al escaneo en segundo plano.
-
-> **Importante:** Al editar en paralelo, el sistema bloqueará archivos que estén siendo leídos y editados por otros compañeros utilizando la sincronización local en el archivo locks.json.
-`;
-
-      const docB: DocMetadata = {
-        id: 'doc-diagrama-id',
-        title: 'Diagrama de Arquitectura del Proyecto',
-        filename: 'diagrama-arquitectura.md',
-        editedBy: firstUser.id,
-        editedAt: Date.now(),
-        createdAt: Date.now() - 3600000 * 1
-      };
-
-      const docBContent = `# Diagrama de Arquitectura del Proyecto
-
-Este documento describe la arquitectura general del sistema **Kora** y cómo fluyen los datos a través de sus componentes principales.
-
-## Diagrama de Flujo de Datos
-
-\`\`\`mermaid
-graph TD
-    A[Usuario] --> B[Interfaz UI - React + Tailwind]
-    B --> C[Zustand Store - Estado Global]
-    C --> D[FileSystemAdapter - Capa de Persistencia]
-    D --> E[(Virtual FS - IndexedDB)]
-    D --> F[(Local FS - File System Access API)]
-    C --> G[Sistema de Locks - Control de Edición Concurrente]
-    G --> H[activitylocks.json]
-    C --> I[Documentos Markdown]
-    I --> J[docs/ - Archivos .md]
-    C --> K[Tareas JSON]
-    K --> L[tasks/ - Archivos .json]
-    C --> M[Actividad y Comentarios]
-    M --> N[activity/logs.json]
-    C --> O[Explorador de Medios]
-    O --> P[attachments/ - Imágenes y Videos]
-    C --> Q[Papelera de Reciclaje]
-    Q --> R[trash/items.json]
-\`\`\`
-
-## Componentes Clave
-
-| Componente        | Tecnología     | Propósito                              |
-|-------------------|----------------|----------------------------------------|
-| UI Frontend       | React + TSX    | Interfaz de usuario interactiva        |
-| Estado            | Zustand        | Manejo de estado global centralizado   |
-| Persistencia      | FSA API / IDB  | Lectura/escritura de archivos locales  |
-| Documentos        | Markdown       | Documentación y notas del proyecto     |
-| Tareas            | JSON           | Gestión de tareas y subtareas          |
-| Medios            | Archivos       | Adjuntos multimedia del proyecto       |
-
-## Vista Previa del Proyecto
-
-![Vista previa del proyecto Kora](attachments/images/og-image.png)
-
-*Imagen promocional del proyecto, ubicada en la carpeta pública de la aplicación.*
-`;
-
-      const docsCatalog = [docA, docB];
-
-      // 4. Activity logs
-      const logs: TaskActivityLog[] = [
-        {
-          id: 'log-1',
-          taskId: task1Id,
-          userId: firstUser.id,
-          username: firstUser.name,
-          action: 'creó la tarea de persistencia FSA',
-          timestamp: Date.now() - 3600000 * 4
-        },
-        {
-          id: 'log-2',
-          taskId: task2Id,
-          userId: firstUser.id,
-          username: firstUser.name,
-          action: 'completó el diseño de la interfaz Kanban y Lists',
-          timestamp: Date.now() - 3600000 * 3
-        },
-        {
-          id: 'log-3',
-          taskId: task3Id,
-          userId: firstUser.id,
-          username: firstUser.name,
-          action: 'comentó sobre la lógica del archivo locks.json',
-          timestamp: Date.now() - 3600000 * 2,
-          comment: {
-            id: 'comment-1',
-            userId: firstUser.id,
-            username: firstUser.name,
-            text: 'He revisado el flujo. Creo que escribir latidos en `/activity/locks.json` cada 5 a 10 segundos es la forma offline de simular sincronización en tiempo real sin sobrecargar el almacenamiento ni la red local.',
-            createdAt: Date.now() - 3600000 * 2
-          }
-        },
-        {
-          id: 'log-4',
-          taskId: task3Id,
-          userId: firstUser.id,
-          username: firstUser.name,
-          action: 'adjuntó el icono móvil del proyecto',
-          timestamp: Date.now() - 3600000 * 1,
-          comment: {
-            id: 'comment-2',
-            userId: firstUser.id,
-            username: firstUser.name,
-            text: 'Aquí está el icono que usaremos para la aplicación móvil. ¿Qué opinan del diseño?',
-            createdAt: Date.now() - 3600000 * 1,
-            attachments: ['/attachments/images/mobile-icon.png']
-          }
-        }
-      ];
-
-      // 5. Write ALL files to directory
       await adapter.writeTextFile('/config.json', JSON.stringify(config, null, 2));
-      await adapter.writeTextFile('/project.json', JSON.stringify(projectMeta, null, 2));
-      await adapter.writeTextFile('/users/users.json', JSON.stringify(users, null, 2));
-      await adapter.writeTextFile('/docs/info.json', JSON.stringify(docsCatalog, null, 2));
-      await adapter.writeTextFile(`/docs/${docA.filename}`, docAContent);
-      await adapter.writeTextFile(`/docs/${docB.filename}`, docBContent);
+      await adapter.writeTextFile('/project.json', JSON.stringify(meta, null, 2));
+      await adapter.writeTextFile('/users/users.json', JSON.stringify(sample.users, null, 2));
+      await adapter.writeTextFile('/docs/info.json', JSON.stringify(sample.docs, null, 2));
+      for (const doc of sample.docs) {
+        const docPath = doc.folder ? `/docs/${doc.folder}/${doc.filename}` : `/docs/${doc.filename}`;
+        await adapter.writeTextFile(docPath, sample.docContents[doc.id]);
+      }
       await adapter.writeTextFile('/activity/locks.json', JSON.stringify({}, null, 2));
-      await adapter.writeTextFile('/activity/logs.json', JSON.stringify(logs, null, 2));
-      await adapter.writeTextFile('/trash/items.json', JSON.stringify([], null, 2));
-
-      // Individual task writes
-      for (const t of tasks) {
+      await adapter.writeTextFile('/activity/logs.json', JSON.stringify(sample.logs, null, 2));
+      await adapter.writeTextFile('/trash/items.json', JSON.stringify(sample.trashItems, null, 2));
+      for (const t of sample.tasks) {
         await adapter.writeTextFile(`/tasks/task-${t.id}.json`, JSON.stringify(t, null, 2));
       }
+      for (const l of sample.lists) {
+        await adapter.writeTextFile(`/lists/${l.id}.json`, JSON.stringify(l, null, 2));
+      }
 
-      // Individual lists writes
-      await adapter.writeTextFile(`/lists/${listA.id}.json`, JSON.stringify(listA, null, 2));
-      await adapter.writeTextFile(`/lists/${listB.id}.json`, JSON.stringify(listB, null, 2));
-
-      // Copy images from public folder to attachments for demo purposes
-      const copyPublicImage = async (publicPath: string, destPath: string) => {
+      // Images for the media gallery, the docs and the notes, from the app's public folder
+      for (const { from, to } of SAMPLE_MEDIA) {
         try {
-          const response = await fetch(publicPath);
-          if (response.ok) {
-            const blob = await response.blob();
-            await adapter.writeBinaryFile(destPath, blob);
-          } else {
-            console.warn(`Image ${publicPath} not found, skipping`);
-          }
+          const response = await fetch(from);
+          if (response.ok) await adapter.writeBinaryFile(to, await response.blob());
+          else console.warn(`Image ${from} not found, skipping`);
         } catch (e) {
-          console.warn(`Could not copy public image: ${publicPath}`, e);
+          console.warn(`Could not copy public image: ${from}`, e);
         }
-      };
+      }
 
-      // Copy demo images from public assets to project attachments
-      await copyPublicImage('/og-image.png', '/attachments/images/og-image.png');
-      await copyPublicImage('/mobile-icon.png', '/attachments/images/mobile-icon.png');
-      await copyPublicImage('/logo-dark.svg', '/attachments/images/logo-dark.svg');
-      await copyPublicImage('/logo-light.svg', '/attachments/images/logo-light.svg');
-
-      // Update state
       set({
-        projectMeta,
+        projectMeta: meta,
         projectConfig: config,
-        users,
-        activeUser: firstUser,
-        lists: [listA, listB],
-        tasks,
-        docs: docsCatalog,
+        users: sample.users,
+        activeUser: sample.activeUser,
+        lists: sample.lists,
+        tasks: sample.tasks,
+        docs: sample.docs,
         locks: {},
         docLocks: {},
-        logs,
-        trashItems: [],
+        logs: sample.logs,
+        trashItems: sample.trashItems,
         isOnboarding: false,
-        selectedListId: listAId,
+        selectedListId: sample.lists[0].id,
         selectedTaskId: null,
         selectedDocId: null,
         showDocs: false,
         docsFolder: null,
-        docFolders: [],
+        docFolders: sample.docFolders,
         showMediaExplorer: false
       });
     },
