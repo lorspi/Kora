@@ -5,8 +5,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useUI } from '../lib/ui';
-import { useProjectStore } from '../store';
+import { useProjectStore, sortTasksByOrder } from '../store';
 import { Task, TaskStatus, TaskList } from '../types';
+import { EffortBadge, EFFORT_OPTIONS } from '../lib/effort';
 import CustomSelect from './CustomSelect';
 import AssigneePicker from './AssigneePicker';
 import BulkTaskDialog, { parseTaskLines } from './BulkTaskDialog';
@@ -46,6 +47,7 @@ export default function ListViews() {
     users, 
     createTask, 
     createTasks,
+    reorderTasks,
     updateTask, 
     deleteTask, 
     updateListConfig, 
@@ -64,6 +66,8 @@ export default function ListViews() {
   const [collapsedStatuses, setCollapsedStatuses] = useState<Record<string, boolean>>({});
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverStatusId, setDragOverStatusId] = useState<string | null>(null);
+  // Where the dragged task would land: next to a task, or at the end of the status (no task)
+  const [dropAt, setDropAt] = useState<{ statusId: string; taskId: string | null; side: 'before' | 'after' } | null>(null);
   // Multi-task dialog: open with prefilled text (e.g. pasted lines) and target status.
   const [bulkDialog, setBulkDialog] = useState<{ initialText: string; statusId: string } | null>(null);
 
@@ -92,7 +96,8 @@ export default function ListViews() {
     );
   }
 
-  const listTasks = tasks.filter(t => t.listId === activeList.id);
+  // In the order the team arranged them by dragging (see sortTasksByOrder)
+  const listTasks = sortTasksByOrder(tasks.filter(t => t.listId === activeList.id));
 
   const handleQuickTaskAdd = async (statusId: string) => {
     const titleVal = quickTitle;
@@ -168,38 +173,77 @@ export default function ListViews() {
   const handleTaskDragEnd = () => {
     setDraggedTaskId(null);
     setDragOverStatusId(null);
+    setDropAt(null);
   };
 
+  // Over the empty part of a status: the task would go at its end
   const handleStatusDragOver = (e: React.DragEvent<HTMLDivElement>, statusId: string) => {
     e.preventDefault();
     setDragOverStatusId(statusId);
+    if (dropAt?.statusId !== statusId || dropAt.taskId !== null) setDropAt({ statusId, taskId: null, side: 'after' });
   };
 
-  const handleStatusDragLeave = (statusId: string) => {
+  // Over a task: it would land above or below it, on the side of the cursor
+  const handleTaskDragOver = (e: React.DragEvent<HTMLElement>, statusId: string, taskId: string) => {
+    if (!draggedTaskId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (dragOverStatusId !== statusId) setDragOverStatusId(statusId);
+    if (taskId === draggedTaskId) {
+      if (dropAt) setDropAt(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const side = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+    if (dropAt?.taskId !== taskId || dropAt.side !== side) setDropAt({ statusId, taskId, side });
+  };
+
+  const handleStatusDragLeave = (e: React.DragEvent<HTMLDivElement>, statusId: string) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
     if (dragOverStatusId === statusId) {
       setDragOverStatusId(null);
+      setDropAt(null);
     }
   };
 
   const handleStatusDrop = async (e: React.DragEvent<HTMLDivElement>, statusId: string) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('text/plain') || draggedTaskId;
+    const target = dropAt;
+    setDraggedTaskId(null);
+    setDragOverStatusId(null);
+    setDropAt(null);
     if (!taskId) return;
     const task = tasks.find(t => t.id === taskId);
-    if (!task || task.statusId === statusId) {
-      setDraggedTaskId(null);
-      setDragOverStatusId(null);
-      return;
+    if (!task) return;
+
+    // The status's tasks in their new order, with the dragged one where it was dropped
+    const current = listTasks.filter(t => t.statusId === statusId).map(t => t.id);
+    const ids = current.filter(id => id !== taskId);
+    let at = ids.length;
+    if (target?.statusId === statusId && target.taskId) {
+      const i = ids.indexOf(target.taskId);
+      if (i >= 0) at = target.side === 'before' ? i : i + 1;
     }
+    ids.splice(at, 0, taskId);
+    if (task.statusId === statusId && ids.every((id, i) => id === current[i])) return;
+
     try {
-      await updateTask({ ...task, statusId });
+      await reorderTasks(taskId, statusId, ids);
     } catch (error) {
       toast('No se pudo mover la tarea', 'error');
-    } finally {
-      setDraggedTaskId(null);
-      setDragOverStatusId(null);
     }
   };
+
+  /** Bar showing where the dragged task would land, on the top or bottom edge of a task */
+  const dropBar = (statusId: string, taskId: string) =>
+    draggedTaskId && dropAt?.statusId === statusId && dropAt.taskId === taskId ? (
+      <span
+        className={`absolute left-2 right-2 h-0.5 rounded-full bg-primary pointer-events-none z-10 ${
+          dropAt.side === 'before' ? '-top-px' : '-bottom-px'
+        }`}
+      />
+    ) : null;
 
   return (
     <div id="list-views-container" className="flex-1 flex flex-col h-full bg-background font-body overflow-hidden">
@@ -320,9 +364,9 @@ export default function ListViews() {
 
                   {!isCollapsed && (
                     <div
-                      className={`divide-y divide-border bg-card ${dragOverStatusId === status.id ? 'border-2 border-dashed border-primary bg-primary/5' : ''}`}
+                      className={`divide-y divide-border bg-card ${dragOverStatusId === status.id && draggedTaskId && listTasks.find(t => t.id === draggedTaskId)?.statusId !== status.id ? 'border-2 border-dashed border-primary bg-primary/5' : ''}`}
                       onDragOver={(e) => handleStatusDragOver(e, status.id)}
-                      onDragLeave={() => handleStatusDragLeave(status.id)}
+                      onDragLeave={(e) => handleStatusDragLeave(e, status.id)}
                       onDrop={(e) => handleStatusDrop(e, status.id)}
                     >
                       {statusTasks.map(task => {
@@ -338,8 +382,10 @@ export default function ListViews() {
                             draggable={!locks[task.id] || Date.now() >= locks[task.id].expiresAt}
                             onDragStart={(e) => handleTaskDragStart(e, task.id)}
                             onDragEnd={handleTaskDragEnd}
-                            className={`p-3.5 hover:bg-accent/50 transition-colors group ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'}`}
+                            onDragOver={(e) => handleTaskDragOver(e, status.id, task.id)}
+                            className={`relative p-3.5 hover:bg-accent/50 transition-colors group ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'} ${draggedTaskId === task.id ? 'opacity-50' : ''}`}
                           >
+                            {dropBar(status.id, task.id)}
                             <div className="flex items-start gap-3 min-w-0">
                               <button 
                                 onClick={(e) => {
@@ -398,6 +444,7 @@ export default function ListViews() {
                                           {task.dueDate}
                                         </span>
                                       )}
+                                      <EffortBadge effort={task.effort} />
                                       <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${getPriorityBadgeColor(task.priority)}`}>
                                         {getPriorityLabel(task.priority)}
                                       </span>
@@ -454,6 +501,7 @@ export default function ListViews() {
                                     <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border ${getPriorityBadgeColor(task.priority)}`}>
                                       {getPriorityLabel(task.priority)}
                                     </span>
+                                    <EffortBadge effort={task.effort} />
                                   </div>
                                 </div>
                               </div>
@@ -487,9 +535,9 @@ export default function ListViews() {
               return (
                 <div
                   key={status.id}
-                  className={`min-w-72 flex-1 bg-card border border-border rounded-xl p-3 flex flex-col max-h-[85vh] shadow-card ${dragOverStatusId === status.id ? 'border-primary border-2 bg-primary/5' : ''}`}
+                  className={`min-w-72 flex-1 bg-card border border-border rounded-xl p-3 flex flex-col max-h-[85vh] shadow-card ${dragOverStatusId === status.id && draggedTaskId && listTasks.find(t => t.id === draggedTaskId)?.statusId !== status.id ? 'border-primary border-2 bg-primary/5' : ''}`}
                   onDragOver={(e) => handleStatusDragOver(e, status.id)}
-                  onDragLeave={() => handleStatusDragLeave(status.id)}
+                  onDragLeave={(e) => handleStatusDragLeave(e, status.id)}
                   onDrop={(e) => handleStatusDrop(e, status.id)}
                 >
                   <div className="flex items-center justify-between pb-3 border-b border-border mb-3 shrink-0">
@@ -509,14 +557,25 @@ export default function ListViews() {
                           draggable={!isLocked}
                           onDragStart={(e) => handleTaskDragStart(e, task.id)}
                           onDragEnd={handleTaskDragEnd}
+                          onDragOver={(e) => handleTaskDragOver(e, status.id, task.id)}
                           onClick={() => setSelectedTask(task.id)}
-                          className={`bg-card hover:bg-accent/50 p-3 rounded-lg border border-border hover:border-bento-blue/40 transition-all ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'} group shadow-card flex flex-col gap-2.5`}
+                          className={`relative bg-card hover:bg-accent/50 p-3 rounded-lg border border-border hover:border-bento-blue/40 transition-all ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'} ${draggedTaskId === task.id ? 'opacity-50' : ''} group shadow-card flex flex-col gap-2.5`}
                         >
+                          {draggedTaskId && dropAt?.statusId === status.id && dropAt.taskId === task.id && (
+                            <span
+                              className={`absolute left-1 right-1 h-0.5 rounded-full bg-primary pointer-events-none ${
+                                dropAt.side === 'before' ? '-top-[5px]' : '-bottom-[5px]'
+                              }`}
+                            />
+                          )}
                           <div className="flex items-center justify-between gap-2.5">
                             <span className="text-[9px] font-mono text-muted-foreground font-bold">{task.taskCode}</span>
-                            <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded border ${getPriorityBadgeColor(task.priority)}`}>
-                              {getPriorityLabel(task.priority)}
-                            </span>
+                            <div className="flex items-center gap-1">
+                              <EffortBadge effort={task.effort} compact />
+                              <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded border ${getPriorityBadgeColor(task.priority)}`}>
+                                {getPriorityLabel(task.priority)}
+                              </span>
+                            </div>
                           </div>
                           <h5 className={`text-xs font-semibold text-foreground group-hover:text-bento-blue leading-snug break-words inline-flex items-center gap-1.5 ${
                             status.isCompleted ? 'line-through text-muted-foreground' : ''
@@ -587,6 +646,7 @@ export default function ListViews() {
                     <th className="p-3 w-36">Estado</th>
                     <th className="p-3 w-28">Vencimiento</th>
                     <th className="p-3 w-28">Prioridad</th>
+                    <th className="p-3 w-28">Esfuerzo</th>
                     <th className="p-3 w-24">Asignados</th>
                     <th className="p-3 w-16 text-center">Acción</th>
                   </tr>
@@ -648,6 +708,15 @@ export default function ListViews() {
                           />
                         </td>
                         <td className="p-3">
+                          <CustomSelect
+                            size="sm"
+                            className="inline-flex min-w-[90px]"
+                            value={task.effort ?? ''}
+                            onChange={(value) => updateTask({ ...task, effort: (value || undefined) as Task['effort'] })}
+                            options={EFFORT_OPTIONS}
+                          />
+                        </td>
+                        <td className="p-3">
                           <AssigneePicker task={task} emptyLabel="Libre" disabled={isLockedByOther(task.id)} />
                         </td>
                         <td className="p-3 text-center">
@@ -663,7 +732,7 @@ export default function ListViews() {
                     );
                   })}
                   {listTasks.length === 0 && (
-                    <tr><td colSpan={7} className="p-6 text-center text-muted-foreground italic text-xs">No hay tareas en esta lista. Usa el campo de arriba para crear una.</td></tr>
+                    <tr><td colSpan={8} className="p-6 text-center text-muted-foreground italic text-xs">No hay tareas en esta lista. Usa el campo de arriba para crear una.</td></tr>
                   )}
                 </tbody>
               </table>

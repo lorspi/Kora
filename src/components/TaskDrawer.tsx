@@ -10,6 +10,7 @@ import { Task, SystemUser } from '../types';
 import { MarkdownPreview } from '../lib/markdown';
 import MobileNotesDrawer from './MobileNotesDrawer';
 import CustomSelect from './CustomSelect';
+import { EffortMeter, EFFORT_LEVELS, EFFORT_OPTIONS } from '../lib/effort';
 import {
   X,
   Trash as Trash2,
@@ -474,6 +475,37 @@ export default function TaskDrawer() {
                           { value: 'high', label: 'Alta' },
                           { value: 'urgent', label: 'Urgente' },
                         ]}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                        Nivel de esfuerzo <span className="normal-case font-semibold tracking-normal">(opcional)</span>
+                      </span>
+                      <CustomSelect
+                        disabled={isLockedByOther}
+                        className="w-full"
+                        value={task.effort ?? ''}
+                        onChange={(value) => updateTask({ ...task, effort: (value || undefined) as Task['effort'] })}
+                        options={EFFORT_OPTIONS}
+                        renderOption={(option, selected) => {
+                          const level = EFFORT_LEVELS.find((l) => l.value === option.value);
+                          return (
+                            <span className="flex items-center gap-2 min-w-0">
+                              {level ? <EffortMeter effort={level.value} /> : <span className="w-4.75" />}
+                              <span className="min-w-0">
+                                <span className={`block ${selected ? 'font-bold' : ''}`}>{option.label}</span>
+                                {level && <span className="block text-[10px] text-muted-foreground">{level.description}</span>}
+                              </span>
+                            </span>
+                          );
+                        }}
+                        renderValue={(option) => (
+                          <span className="flex items-center gap-2">
+                            {option.value && <EffortMeter effort={option.value as Task['effort']} />}
+                            <span className={option.value ? '' : 'text-muted-foreground'}>{option.label}</span>
+                          </span>
+                        )}
                       />
                     </div>
 

@@ -70,8 +70,30 @@ export default function Sidebar() {
     setShowTrash,
     trashItems,
     tasks,
-    logs
+    logs,
+    reorderLists
   } = useProjectStore();
+
+  // ── Arranging the task lists by dragging ──
+  const [draggedListId, setDraggedListId] = useState<string | null>(null);
+  const [listDropAt, setListDropAt] = useState<{ id: string; side: 'before' | 'after' } | null>(null);
+  const dropList = async () => {
+    const target = listDropAt;
+    const id = draggedListId;
+    setDraggedListId(null);
+    setListDropAt(null);
+    if (!id || !target || target.id === id) return;
+    const current = lists.map((l) => l.id);
+    const ids = current.filter((x) => x !== id);
+    const at = ids.indexOf(target.id) + (target.side === 'after' ? 1 : 0);
+    ids.splice(at, 0, id);
+    if (ids.every((x, i) => x === current[i])) return;
+    try {
+      await reorderLists(ids);
+    } catch {
+      toast('No se pudo guardar el orden de las listas', 'error');
+    }
+  };
   const { toast, confirm } = useUI();
   const { updateAvailable } = useUpdateCheck();
 
@@ -368,17 +390,43 @@ export default function Sidebar() {
             </form>
           )}
 
-          <div className="space-y-0.5">
+          <div
+            className="space-y-0.5"
+            onDragOver={(e) => { if (draggedListId) e.preventDefault(); }}
+            onDrop={(e) => { if (!draggedListId) return; e.preventDefault(); dropList(); }}
+          >
             {lists.map(l => (
               <button
                 key={l.id}
                 onClick={() => setSelectedList(l.id)}
-                className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors group ${
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', l.name);
+                  setDraggedListId(l.id);
+                }}
+                onDragEnd={() => { setDraggedListId(null); setListDropAt(null); }}
+                onDragOver={(e) => {
+                  if (!draggedListId) return;
+                  e.preventDefault();
+                  if (l.id === draggedListId) { if (listDropAt) setListDropAt(null); return; }
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const side = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                  if (listDropAt?.id !== l.id || listDropAt.side !== side) setListDropAt({ id: l.id, side });
+                }}
+                className={`relative w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors group ${draggedListId === l.id ? 'opacity-50 ' : ''}${
                   selectedListId === l.id && selectedDocId === null
                     ? 'bg-bento-blue-light text-bento-blue border-l-2 border-bento-blue font-bold' 
                     : 'hover:bg-accent text-muted-foreground hover:text-foreground'
                 }`}
               >
+                {draggedListId && listDropAt?.id === l.id && (
+                  <span
+                    className={`absolute left-1 right-1 h-0.5 rounded-full bg-bento-blue pointer-events-none ${
+                      listDropAt.side === 'before' ? '-top-px' : '-bottom-px'
+                    }`}
+                  />
+                )}
                 <div className="flex items-center gap-2 truncate min-w-0">
                   <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: l.color }}></div>
                   <span className="text-xs font-semibold truncate">{l.name}</span>

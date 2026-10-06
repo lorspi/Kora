@@ -44,6 +44,8 @@ export interface TaskList {
   color: string;
   statuses: TaskStatus[];
   createdAt: number;
+  /** Position in the sidebar, set when arranged by dragging; unset until then */
+  order?: number;
 }
 
 export interface Subtask {
@@ -52,6 +54,9 @@ export interface Subtask {
   isCompleted: boolean;
   createdAt: number;
 }
+
+/** Optional effort level of a task (labels in lib/effort). */
+export type TaskEffort = 'easy' | 'casual' | 'moderate' | 'hard' | 'epic';
 
 export interface Task {
   id: string; // UUID
@@ -63,11 +68,15 @@ export interface Task {
   dueDate: string; // YYYY-MM-DD
   assignees: string[]; // List of User UUIDs
   priority: 'low' | 'medium' | 'high' | 'urgent';
+  /** Optional effort level */
+  effort?: TaskEffort;
   tags: string[];
   dependencies: string[]; // List of Task UUIDs
   subtasks: Subtask[];
   lastEditedBy?: string; // User UUID
   lastEditedAt?: number;
+  /** Position within its status, set when arranged by dragging; unset until then */
+  order?: number;
 }
 
 export interface ActivityComment {
@@ -121,6 +130,12 @@ export interface TaskLock {
    * without having seen ours (a stale read) doesn't beat our live claim.
    */
   replaces?: string;
+  /**
+   * Doc locks only: written by a realtime collaborative session (cloud projects).
+   * Other collaborative sessions edit alongside it; older Kora versions, which
+   * don't know the flag, still treat the doc as taken and open it read-only.
+   */
+  collab?: boolean;
 }
 
 export type TrashItemType = 'task' | 'document' | 'media';

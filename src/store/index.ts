@@ -88,6 +88,8 @@ interface ProjectState {
   
   // Lists Management
   createList: (name: string, color: string) => Promise<TaskList>;
+  /** Arrange the task lists in the sidebar: `ids` in their new order. */
+  reorderLists: (ids: string[]) => Promise<void>;
   updateListConfig: (listId: string, name: string, color: string, statuses: TaskStatus[]) => Promise<void>;
   deleteList: (listId: string) => Promise<void>;
   
@@ -96,6 +98,11 @@ interface ProjectState {
   /** Create several tasks at once (e.g. pasted lines); blank titles are skipped. */
   createTasks: (titles: string[], listId: string, statusId: string, priority: Task['priority']) => Promise<Task[]>;
   updateTask: (task: Task) => Promise<void>;
+  /**
+   * Place a task (dragged in the list or kanban) in `statusId`, at its position in
+   * `orderedIds`: the ids of that status's tasks in their new order.
+   */
+  reorderTasks: (taskId: string, statusId: string, orderedIds: string[]) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   
   // Subtasks
@@ -131,8 +138,10 @@ interface ProjectState {
    * session has held the lock continuously until now: then a lock another session
    * wrote without having seen ours (a stale read) is reclaimed instead of obeyed.
    */
-  lockDoc: (docId: string, session: string, claimLive: boolean) => Promise<boolean>;
+  lockDoc: (docId: string, session: string, claimLive: boolean, collab?: boolean) => Promise<boolean>;
   unlockDoc: (docId: string) => Promise<void>;
+  /** Read a doc's lock as stored right now (also refreshes it in `docLocks`). */
+  readDocLock: (docId: string) => Promise<TaskLock | null>;
   
   // Activity logger & notes
   addComment: (taskId: string, commentText: string, attachments?: string[]) => Promise<void>;
@@ -188,6 +197,34 @@ interface ProjectState {
   registerFirebaseProject: (name: string, config: FirebaseConfig, spaceId?: string) => string;
   unregisterProject: (projectId: string) => void;
   goToProjectBrowser: () => void;
+}
+
+/** Gap between the positions of arranged tasks, so a move usually rewrites only the moved task. */
+const TASK_ORDER_STEP = 1024;
+
+/**
+ * Tasks in display order: arranged ones by their position, then the never-arranged ones
+ * (e.g. new) by code, as before tasks could be arranged.
+ */
+export function sortTasksByOrder(tasks: Task[]): Task[] {
+  return [...tasks].sort((a, b) => {
+    const ao = typeof a.order === 'number';
+    const bo = typeof b.order === 'number';
+    if (ao && bo) return a.order! - b.order!;
+    if (ao !== bo) return ao ? -1 : 1;
+    return a.taskCode.localeCompare(b.taskCode);
+  });
+}
+
+/** Task lists in sidebar order: arranged ones by position, then the rest as created. */
+function sortListsInPlace(lists: TaskList[]): TaskList[] {
+  return lists.sort((a, b) => {
+    const ao = typeof a.order === 'number';
+    const bo = typeof b.order === 'number';
+    if (ao && bo) return a.order! - b.order!;
+    if (ao !== bo) return ao ? -1 : 1;
+    return a.createdAt - b.createdAt;
+  });
 }
 
 // Helper to save/load persistence state
@@ -584,7 +621,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         }
 
         // Sort structures
-        lists.sort((a, b) => a.createdAt - b.createdAt);
+        sortListsInPlace(lists);
         tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
 
         // Check for saved session (remember me) — per-project only
@@ -1264,10 +1301,23 @@ graph TD
         // with other users' lock writes and erased them.
         void locksChanged;
 
-        // Refresh the open doc's lock (the only doc lock this client cares about).
+        // Refresh the open doc's lock. The documents view also shows who is editing
+        // each doc, so there every lock is read.
         const openDocId = get().selectedDocId;
         let docLocks = get().docLocks;
-        if (openDocId) {
+        if (get().showDocs) {
+          docLocks = {};
+          try {
+            for (const file of await adapter.listFiles('/activity/doc-locks')) {
+              if (!file.endsWith('.json')) continue;
+              const id = file.slice(0, -5);
+              const lock = await readDocLockFile(adapter, id);
+              if (lock) docLocks[id] = lock;
+            }
+          } catch {
+            // No doc locks folder yet
+          }
+        } else if (openDocId) {
           const docLock = await readDocLockFile(adapter, openDocId);
           docLocks = { ...docLocks };
           if (docLock) docLocks[openDocId] = docLock;
@@ -1283,7 +1333,7 @@ graph TD
             lists.push(JSON.parse(listRaw));
           }
         }
-        lists.sort((a, b) => a.createdAt - b.createdAt);
+        sortListsInPlace(lists);
 
         // Re-read tasks
         const taskFiles = await adapter.listFiles('/tasks');
@@ -1720,6 +1770,25 @@ graph TD
     },
 
     // Update list settings, names, and status flow
+    reorderLists: async (ids) => {
+      const { adapter, lists } = get();
+      if (!adapter) return;
+      const position = new Map(ids.map((id, i) => [id, i]));
+      const changed: TaskList[] = [];
+      const updatedLists = sortListsInPlace(lists.map((l) => {
+        const order = position.get(l.id);
+        if (order === undefined || l.order === order) return l;
+        const next = { ...l, order };
+        changed.push(next);
+        return next;
+      }));
+      // Shown right away; the files are written after
+      set({ lists: updatedLists });
+      for (const l of changed) {
+        await adapter.writeTextFile(`/lists/${l.id}.json`, JSON.stringify(l, null, 2));
+      }
+    },
+
     updateListConfig: async (listId, name, color, statuses) => {
       const { adapter, lists } = get();
       if (!adapter) return;
@@ -1864,6 +1933,11 @@ graph TD
           changeDesc = `cambió el título a "${task.title}"`;
         } else if (originalTask.dueDate !== task.dueDate) {
           changeDesc = `cambió la fecha límite a "${task.dueDate || 'Sin fecha'}"`;
+        } else if ((originalTask.effort ?? '') !== (task.effort ?? '')) {
+          const effortNames: Record<string, string> = { easy: 'Fácil', casual: 'Casual', moderate: 'Moderado', hard: 'Difícil', epic: 'Épico' };
+          changeDesc = task.effort
+            ? `cambió el nivel de esfuerzo a "${effortNames[task.effort] ?? task.effort}"`
+            : 'quitó el nivel de esfuerzo';
         } else if (originalTask.assignees.length !== task.assignees.length) {
           changeDesc = `actualizó el equipo asignado`;
         } else if (originalTask.description !== task.description) {
@@ -1872,6 +1946,58 @@ graph TD
           changeDesc = `modificó campos de la tarea`;
         }
         await logActivityAction(task.id, changeDesc);
+      }
+    },
+
+    reorderTasks: async (taskId, statusId, orderedIds) => {
+      const { adapter, tasks, activeUser } = get();
+      if (!adapter) return;
+      const byId = new Map(tasks.map((t) => [t.id, t]));
+      const moved = byId.get(taskId);
+      const at = orderedIds.indexOf(taskId);
+      if (!moved || at < 0) return;
+
+      // Usually only the moved task changes: it takes a position between its new neighbors.
+      // The first arrangement of a status (or a gap worn too thin) numbers them all.
+      const others = orderedIds.filter((id) => id !== taskId).map((id) => byId.get(id)).filter((t): t is Task => !!t);
+      const lo = others[at - 1]?.order;
+      const hi = others[at]?.order;
+      let order: number | null = null;
+      if (others.every((t) => typeof t.order === 'number')) {
+        if (lo === undefined && hi === undefined) order = TASK_ORDER_STEP;
+        else if (lo === undefined) order = hi! - TASK_ORDER_STEP;
+        else if (hi === undefined) order = lo + TASK_ORDER_STEP;
+        else if (hi - lo > 1e-6) order = (lo + hi) / 2;
+      }
+
+      const statusChanged = moved.statusId !== statusId;
+      const movedTask: Task = {
+        ...moved,
+        statusId,
+        order: order ?? (at + 1) * TASK_ORDER_STEP,
+        ...(statusChanged ? { lastEditedBy: activeUser?.id, lastEditedAt: Date.now() } : {}),
+      };
+      const changed: Task[] = [movedTask];
+      if (order === null) {
+        orderedIds.forEach((id, i) => {
+          const t = byId.get(id);
+          if (!t || id === taskId || t.order === (i + 1) * TASK_ORDER_STEP) return;
+          changed.push({ ...t, order: (i + 1) * TASK_ORDER_STEP });
+        });
+      }
+
+      // Shown right away; the files are written after
+      const changedById = new Map(changed.map((t) => [t.id, t]));
+      set({ tasks: get().tasks.map((t) => changedById.get(t.id) ?? t) });
+      for (const t of changed) {
+        await adapter.writeTextFile(`/tasks/task-${t.id}.json`, JSON.stringify(t, null, 2));
+      }
+
+      if (statusChanged) {
+        const listObj = get().lists.find((l) => l.id === moved.listId);
+        const oldSt = listObj?.statuses.find((s) => s.id === moved.statusId)?.name || moved.statusId;
+        const newSt = listObj?.statuses.find((s) => s.id === statusId)?.name || statusId;
+        await logActivityAction(taskId, `cambió el estado de "${oldSt}" a "${newSt}"`);
       }
     },
 
@@ -2599,7 +2725,7 @@ graph TD
       }
     },
 
-    lockDoc: async (docId, session, claimLive) => {
+    lockDoc: async (docId, session, claimLive, collab = false) => {
       const { adapter, activeUser } = get();
       if (!adapter || !activeUser) return false;
 
@@ -2608,8 +2734,9 @@ graph TD
         let replaces = existing?.replaces;
 
         if (existing && existing.session !== session) {
-          // Same user in another tab/session: take it over, as before.
-          if (existing.userId !== activeUser.id) {
+          // Same user in another tab/session: take it over, as before. Collaborative
+          // sessions share the doc, so they just take turns refreshing the lock.
+          if (existing.userId !== activeUser.id && !(collab && existing.collab)) {
             const alive = isDocLockAlive(docId, existing);
             const wroteBlindOverOurs = claimLive && existing.replaces !== session;
             if (alive && !wroteBlindOverOurs) {
@@ -2626,6 +2753,7 @@ graph TD
           expiresAt: Date.now() + DOC_LOCK_TTL,
           session,
           ...(replaces ? { replaces } : {}),
+          ...(collab ? { collab: true } : {}),
         };
         await adapter.writeTextFile(docLockPath(docId), JSON.stringify(lock, null, 2));
         set((st) => ({ docLocks: { ...st.docLocks, [docId]: lock } }));
@@ -2655,6 +2783,19 @@ graph TD
       } catch (e) {
         console.warn('Doc unlock bypass', e);
       }
+    },
+
+    readDocLock: async (docId) => {
+      const { adapter } = get();
+      if (!adapter) return null;
+      const lock = await readDocLockFile(adapter, docId);
+      set((st) => {
+        const docLocks = { ...st.docLocks };
+        if (lock) docLocks[docId] = lock;
+        else delete docLocks[docId];
+        return { docLocks };
+      });
+      return lock;
     },
 
     addComment: async (taskId, commentText, attachments) => {

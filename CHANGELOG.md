@@ -1,5 +1,36 @@
 # Changelog
 
+## [1.4.0] — 2026-10-05
+
+### Added
+
+- **Edición colaborativa en tiempo real en proyectos en la nube**
+  En los proyectos de Firebase, varias personas pueden editar el mismo documento a la vez, como en Google Docs: los cambios de cada una aparecen en el documento de las demás mientras escriben y se combinan sin conflictos (con Yjs). Se ve el cursor de texto de cada persona con una etiqueta con su nombre y su color, y también lo que tiene seleccionado. En el encabezado del documento aparecen los avatares de quienes lo están editando. Ya no hace falta esperar a que otro termine: el documento solo pasa a solo lectura si lo tiene abierto alguien con una versión anterior de Kora. Deshacer (Ctrl+Z) deshace solo los cambios propios.
+  No requiere servidor ni cambiar las reglas de seguridad: la colaboración viaja por la misma colección de Firestore del proyecto. El archivo Markdown de /docs sigue siendo la copia guardada: quien escribe lo guarda a los pocos segundos y, si el archivo quedara atrás, otro de los editores lo guarda. Si el archivo cambia fuera de una sesión colaborativa, la siguiente sesión parte de su contenido. Los proyectos locales siguen funcionando con el bloqueo de siempre.
+
+- **Quién está editando cada documento**
+  En la vista de Documentos, cada documento muestra los avatares de las personas que lo tienen abierto en ese momento (con sus nombres al pasar el mouse), tanto en proyectos en la nube como locales.
+
+- **Vista de lista en Documentos**
+  Junto al orden de los documentos hay un selector para alternar entre la cuadrícula de tarjetas y una lista compacta con el título, cuándo se editó y quién lo editó. La lista conserva el menú contextual, el arrastre a carpetas o a la papelera y el orden manual (arrastrando arriba o abajo de otro documento). La elección se recuerda en el navegador.
+
+- **Ordenar tareas arrastrando**
+  En las vistas Lista y Kanban las tareas se arrastran entre las demás para ordenarlas; una barra indica dónde quedará. Al soltarla en otro estado, la tarea cambia de estado y queda en esa posición. El orden se guarda en el archivo de cada tarea, por lo que se comparte con el equipo; las tareas nuevas aparecen al final.
+
+- **Nivel de esfuerzo en tareas**
+  Campo opcional en la ficha de la tarea con cinco niveles: Fácil, Casual, Moderado, Difícil y Épico. Se muestra como un medidor de cinco barras de altura creciente que se llenan de izquierda a derecha según el esfuerzo (Fácil llena la más baja; Épico, todas), en las vistas Lista y Kanban; se puede cambiar desde una nueva columna en la vista Tabla y su cambio queda en el historial de la tarea.
+
+- **Ordenar las listas de tareas**
+  Las listas de la barra lateral se arrastran arriba o abajo de las demás para ordenarlas; una barra indica dónde quedará. El orden se guarda en el archivo de cada lista, por lo que se comparte con el equipo; las listas nuevas aparecen al final.
+
+### Changed
+
+- **Autoguardado en documentos colaborativos**
+  Mientras un documento se edita en tiempo real, el autoguardado siempre está activo y el modo código es de solo lectura (para editar se vuelve al modo bloques).
+
+- **Lecturas más ligeras en proyectos en la nube**
+  Al listar archivos de una carpeta, Kora ya solo descarga los de esa carpeta en lugar de todos los del proyecto.
+
 ## [1.3.1] — 2026-10-05
 
 ### Added

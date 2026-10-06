@@ -13,8 +13,15 @@
  * The on-disk contract is unchanged: documents are raw Markdown strings. The editor
  * round-trips to the exact same dialect (see lib/tiptapMarkdown), so the read-only
  * MarkdownPreview elsewhere and the unsaved-changes diff keep working.
+ *
+ * In cloud (Firebase) projects the doc is edited collaboratively in real time
+ * (lib/collab): instead of one editor holding the lock, everyone edits at once and
+ * sees the others' cursors. The file stays the saved copy: whoever edits saves it
+ * shortly after, and the others save too if it is still behind the shared state.
+ * If collaboration is unavailable (or someone on an older version holds the doc),
+ * the lock-based flow applies as in local projects.
  */
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useUI } from '../lib/ui';
 import { useProjectStore, DOC_LOCK_TTL, isDocLockAlive } from '../store';
 import {
@@ -34,8 +41,12 @@ import {
   FolderSimple,
 } from '@phosphor-icons/react';
 import TipTapDocEditor from './editor/TipTapDocEditor';
-import type { TipTapDocEditorHandle } from './editor/TipTapDocEditor';
+import type { TipTapDocEditorHandle, EditorCollab } from './editor/TipTapDocEditor';
 import { normalizeMarkdown } from '../lib/tiptapMarkdown';
+import type { FirebaseAdapter } from '../lib/firebase';
+import type { CollabSession, CollabPeer } from '../lib/collab';
+
+type CollabModule = typeof import('../lib/collab');
 
 /** Per-device preference; autosave is on unless the user turned it off. */
 const AUTOSAVE_KEY = 'kora-doc-autosave';
@@ -43,6 +54,15 @@ const AUTOSAVE_KEY = 'kora-doc-autosave';
 const AUTOSAVE_DELAY = 1500;
 /** Lock renewal interval; must stay well under DOC_LOCK_TTL. */
 const LOCK_HEARTBEAT = 15000;
+/**
+ * Collaborative docs: when the pending change is someone else's, give its author
+ * time to save it before saving it ourselves (randomized so the others don't all
+ * save at once).
+ */
+const REMOTE_SAVE_DELAY = 6000;
+const REMOTE_SAVE_JITTER = 4000;
+/** Longest a change waits for a pause in the typing before it is saved anyway. */
+const MAX_SAVE_WAIT = 10000;
 
 function loadAutoSavePref(): boolean {
   try {
@@ -95,6 +115,24 @@ export default function DocView() {
 
   const docMeta = docs.find((d) => d.id === selectedDocId);
 
+  // ── Realtime collaboration (cloud projects) ──────────────────────────────────────
+  const isCloud = adapter?.getMode() === 'FIREBASE';
+  // Which session the doc was opened with; null session = lock-based editing.
+  const [collabInfo, setCollabInfo] = useState<{ docId: string; session: CollabSession | null } | null>(null);
+  const collab = collabInfo?.docId === selectedDocId ? collabInfo.session : null;
+  // How to lock the open doc; null while it is still unknown whether it's collaborative.
+  const lockMode: 'collab' | 'plain' | null = !isCloud
+    ? 'plain'
+    : collabInfo?.docId === selectedDocId ? (collabInfo.session ? 'collab' : 'plain') : null;
+  const [collabGen, setCollabGen] = useState(0);
+  const [savedHash, setSavedHash] = useState<string | null>(null);
+  const [peers, setPeers] = useState<CollabPeer[]>([]);
+  const collabModRef = useRef<CollabModule | null>(null);
+  // Hash of the file as loaded, and of the editor's serialization of it.
+  const fileHashesRef = useRef<{ file: string; canonical: string } | null>(null);
+  const lastChangeRemoteRef = useRef(false);
+  const dirtySinceRef = useRef<number | null>(null);
+
   const [title, setTitle] = useState('');
   const [currentMarkdown, setCurrentMarkdown] = useState('');
   const [initialMarkdown, setInitialMarkdown] = useState('');
@@ -130,10 +168,45 @@ export default function DocView() {
   // ── Load document ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedDocId) return;
+    const docId = selectedDocId;
+    let cancelled = false;
+    let session: CollabSession | null = null;
     setInitialLoading(true);
-    getDocContent(selectedDocId).then((text) => {
-      const normalized = normalizeMarkdown(text);
-      const docTitle = docMeta?.title || 'Sin Título';
+    setCollabInfo(null);
+    (async () => {
+      const normalized = normalizeMarkdown(await getDocContent(docId));
+      const st = useProjectStore.getState();
+      if (st.adapter?.getMode() === 'FIREBASE' && st.activeUser) {
+        try {
+          // Someone on an older Kora holds the doc with a plain lock: stay with locks.
+          const lock = await st.readDocLock(docId);
+          const plainHolder = !!lock && !lock.collab && lock.userId !== st.activeUser.id && isDocLockAlive(docId, lock);
+          if (!plainHolder) {
+            const mod = await import('../lib/collab');
+            collabModRef.current = mod;
+            session = await mod.openCollabSession(st.adapter as FirebaseAdapter, docId, normalized, {
+              id: st.activeUser.id,
+              name: st.activeUser.name,
+              color: st.activeUser.avatarColor || '#64748b',
+            });
+            if (session) {
+              fileHashesRef.current = {
+                file: mod.hashMarkdown(normalized),
+                canonical: mod.hashMarkdown(mod.canonicalMarkdown(normalized)),
+              };
+            }
+          }
+        } catch (err) {
+          console.warn('Collaborative editing unavailable, using locks', err);
+          session = null;
+        }
+      }
+      if (cancelled) {
+        session?.destroy();
+        return;
+      }
+      const meta = useProjectStore.getState().docs.find((d) => d.id === docId);
+      const docTitle = meta?.title || 'Sin Título';
       takeBaselineRef.current = true;
       setInitialMarkdown(normalized);
       setCurrentMarkdown(normalized);
@@ -141,13 +214,61 @@ export default function DocView() {
       setBaselineMarkdown(normalized);
       setTitle(docTitle);
       setOriginalTitle(docTitle);
-      setLastSavedAt(docMeta?.editedAt ?? docMeta?.createdAt ?? null);
+      setLastSavedAt(meta?.editedAt ?? meta?.createdAt ?? null);
       setHasChanges(false);
       setCodeMode(false);
+      lastChangeRemoteRef.current = false;
+      setSavedHash(session?.savedHash ?? null);
+      setCollabInfo({ docId, session });
       setInitialLoading(false);
-    });
+    })();
+    return () => {
+      cancelled = true;
+      session?.destroy();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDocId, docMeta?.id]);
+  }, [selectedDocId, docMeta?.id, collabGen]);
+
+  // Follow who else is in the doc and what the file holds; reopen if re-seeded.
+  useEffect(() => {
+    if (!collab) {
+      setPeers([]);
+      return;
+    }
+    const sync = () => {
+      setPeers(collab.getPeers());
+      setSavedHash(collab.savedHash);
+    };
+    sync();
+    const unsubscribe = collab.subscribe(sync);
+    const unsubscribeReset = collab.onReset(() => setCollabGen((g) => g + 1));
+    return () => {
+      unsubscribe();
+      unsubscribeReset();
+    };
+  }, [collab]);
+
+  const editorCollab = useMemo<EditorCollab | null>(
+    () => (collab && collabModRef.current
+      ? { extensions: collab.editorExtensions(), isRemote: collabModRef.current.isRemoteTransaction }
+      : null),
+    [collab]
+  );
+
+  const handleEditorChange = useCallback((markdown: string, remote: boolean) => {
+    lastChangeRemoteRef.current = remote;
+    setCurrentMarkdown(markdown);
+  }, []);
+
+  // Someone else renamed the doc while we hadn't touched the title: follow it.
+  useEffect(() => {
+    if (!collab || !docMeta) return;
+    if (title.trim() === originalTitle.trim() && docMeta.title !== originalTitle.trim()) {
+      setTitle(docMeta.title);
+      setOriginalTitle(docMeta.title);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collab, docMeta?.title]);
 
   // The editor reports its serialization on mount: on a fresh load that becomes the
   // baseline; after leaving code mode it is simply the current content.
@@ -181,7 +302,8 @@ export default function DocView() {
   // lock without having seen it (a stale read), our claim reclaims it and the late
   // arrival drops to read-only. See lockDoc in the store.
   useEffect(() => {
-    if (!selectedDocId || !activeUser) return;
+    if (!selectedDocId || !activeUser || !lockMode) return;
+    const shared = lockMode === 'collab';
     const session = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     sessionRef.current = session;
     claimUntilRef.current = 0;
@@ -195,7 +317,7 @@ export default function DocView() {
         try {
           // Our own clock only: we've held it continuously if the last renewal is within the TTL.
           const claimLive = claimUntilRef.current > Date.now();
-          const ok = await lockDoc(selectedDocId, session, claimLive);
+          const ok = await lockDoc(selectedDocId, session, claimLive, shared);
           if (!closed) claimUntilRef.current = ok ? Date.now() + DOC_LOCK_TTL : 0;
         } finally {
           inFlight = false;
@@ -224,13 +346,15 @@ export default function DocView() {
       release();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDocId, activeUser?.id]);
+  }, [selectedDocId, activeUser?.id, lockMode]);
 
   // ── Locked-by-other status ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedDocId || !activeUser) return;
     const activeLock = docLocks[selectedDocId];
-    const heldByOther = !!activeLock && activeLock.userId !== activeUser.id && isDocLockAlive(selectedDocId, activeLock);
+    // Collaborative sessions don't exclude each other.
+    const heldByOther = !!activeLock && activeLock.userId !== activeUser.id && !(collab && activeLock.collab)
+      && isDocLockAlive(selectedDocId, activeLock);
     const ourClaimWins = heldByOther && claimUntilRef.current > Date.now() && activeLock.replaces !== sessionRef.current;
     if (heldByOther && !ourClaimWins) {
       setIsLockedByOther(true);
@@ -240,7 +364,7 @@ export default function DocView() {
       setLockingUser(null);
     }
     if (ourClaimWins) acquireLockRef.current?.();
-  }, [selectedDocId, activeUser?.id, docLocks]);
+  }, [selectedDocId, activeUser?.id, docLocks, collab]);
 
   // While read-only, follow the editor's saves; when the lock passes to us, start
   // from the latest saved version rather than what we loaded earlier.
@@ -254,21 +378,33 @@ export default function DocView() {
     prevLockedRef.current = isLockedByOther;
     prevEditedAtRef.current = docMeta?.editedAt;
     prevDocIdRef.current = selectedDocId;
-    // A different doc is loaded by the load effect above.
-    if (docChanged || initialLoading) return;
+    // A different doc is loaded by the load effect above; a collaborative one is
+    // kept current by the session.
+    if (docChanged || initialLoading || collab) return;
     if ((wasLocked && !isLockedByOther) || (isLockedByOther && editedChanged)) reloadFromDisk();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDocId, isLockedByOther, docMeta?.editedAt]);
 
   // ── Track changes and sync to store for navigation interception ───────────────────
   // Nothing counts as a change while someone else holds the doc: we can't save it.
+  // A collaborative doc has changes while the file is behind the shared content.
   useEffect(() => {
-    const markdownChanged = currentMarkdown !== originalMarkdown && currentMarkdown !== baselineMarkdown;
+    let markdownChanged: boolean;
+    const mod = collabModRef.current;
+    if (collab && mod) {
+      const hash = mod.hashMarkdown(currentMarkdown);
+      const file = fileHashesRef.current;
+      markdownChanged = hash !== savedHash && !(file && savedHash === file.file && hash === file.canonical);
+    } else {
+      markdownChanged = currentMarkdown !== originalMarkdown && currentMarkdown !== baselineMarkdown;
+    }
     const titleChanged = title.trim() !== originalTitle.trim();
     const changed = !isLockedByOther && !initialLoading && (markdownChanged || titleChanged);
+    if (!changed) dirtySinceRef.current = null;
+    else if (dirtySinceRef.current === null) dirtySinceRef.current = Date.now();
     setHasChanges(changed);
     setDocHasUnsavedChanges(changed);
-  }, [currentMarkdown, originalMarkdown, baselineMarkdown, title, originalTitle, isLockedByOther, initialLoading, setDocHasUnsavedChanges]);
+  }, [currentMarkdown, originalMarkdown, baselineMarkdown, title, originalTitle, isLockedByOther, initialLoading, setDocHasUnsavedChanges, collab, savedHash]);
 
   useEffect(() => () => setDocHasUnsavedChanges(false), [setDocHasUnsavedChanges]);
 
@@ -279,9 +415,14 @@ export default function DocView() {
     setLoading(true);
     try {
       // In block mode read from the editor; in code mode currentMarkdown is source of truth.
-      const markdown = codeMode ? currentMarkdown : (editorRef.current?.getMarkdown() ?? currentMarkdown);
+      // A collaborative doc's code mode is a read-only view: the editor's content counts.
+      const markdown = codeMode && !collab ? currentMarkdown : (editorRef.current?.getMarkdown() ?? currentMarkdown);
       const savedTitle = title;
       await saveDocContent(selectedDocId, savedTitle, markdown);
+      if (collab) {
+        await collab.markSaved(markdown);
+        setSavedHash(collab.savedHash);
+      }
       // Only move the baselines: edits typed while the save was in flight stay pending.
       setOriginalMarkdown(markdown);
       setBaselineMarkdown(markdown);
@@ -298,16 +439,23 @@ export default function DocView() {
       savingRef.current = false;
       setLoading(false);
     }
-  }, [selectedDocId, isLockedByOther, codeMode, currentMarkdown, title, saveDocContent, toast]);
+  }, [selectedDocId, isLockedByOther, codeMode, collab, currentMarkdown, title, saveDocContent, toast]);
 
   // ── Autosave ─────────────────────────────────────────────────────────────────────
   const handleSaveRef = useRef(handleSave);
   handleSaveRef.current = handleSave;
+  // Collaborative docs always autosave: the others' edits must reach the file too.
+  const effectiveAutoSave = autoSave || !!collab;
   useEffect(() => {
-    if (!autoSave || !hasChanges || isLockedByOther || loading) return;
-    const timer = setTimeout(() => handleSaveRef.current(), AUTOSAVE_DELAY);
+    if (!effectiveAutoSave || !hasChanges || isLockedByOther || loading || (collab && codeMode)) return;
+    let delay = collab && lastChangeRemoteRef.current
+      ? REMOTE_SAVE_DELAY + Math.random() * REMOTE_SAVE_JITTER
+      : AUTOSAVE_DELAY;
+    // Nonstop typing (ours or others') would otherwise postpone the save forever.
+    if (dirtySinceRef.current !== null) delay = Math.min(delay, Math.max(0, dirtySinceRef.current + MAX_SAVE_WAIT - Date.now()));
+    const timer = setTimeout(() => handleSaveRef.current(), delay);
     return () => clearTimeout(timer);
-  }, [autoSave, hasChanges, isLockedByOther, loading, currentMarkdown, title]);
+  }, [effectiveAutoSave, collab, codeMode, hasChanges, isLockedByOther, loading, currentMarkdown, title]);
 
   const toggleAutoSave = () => {
     const next = !autoSave;
@@ -318,10 +466,10 @@ export default function DocView() {
 
   // Keep the "Guardado hace…" label fresh.
   useEffect(() => {
-    if (!autoSave) return;
+    if (!effectiveAutoSave) return;
     const timer = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(timer);
-  }, [autoSave]);
+  }, [effectiveAutoSave]);
 
   // ── Navigation guard (unsaved changes) ─────────────────────────────────────────────
   const isHandlingRef = useRef(false);
@@ -337,7 +485,7 @@ export default function DocView() {
         return;
       }
       // With autosave, save and leave; only fall back to asking if saving failed.
-      if (autoSave && (await handleSave())) {
+      if (effectiveAutoSave && (await handleSave())) {
         confirmPendingNavigation();
         isHandlingRef.current = false;
         return;
@@ -619,7 +767,32 @@ export default function DocView() {
             )}
           </div>
 
-          {autoSave ? (
+          {peers.length > 0 && (() => {
+            const people = peers.filter((p, i) => peers.findIndex((q) => q.userId === p.userId) === i);
+            return (
+              <div
+                className="flex items-center -space-x-1.5 px-1 select-none"
+                data-tooltip={`Editando ahora: ${people.map((p) => p.name).join(', ')}`}
+              >
+                {people.slice(0, 4).map((p) => (
+                  <span
+                    key={p.userId}
+                    className="w-6 h-6 rounded-full ring-2 ring-card flex items-center justify-center text-[10px] font-bold text-white uppercase"
+                    style={{ backgroundColor: p.color }}
+                  >
+                    {p.name.charAt(0)}
+                  </span>
+                ))}
+                {people.length > 4 && (
+                  <span className="w-6 h-6 rounded-full ring-2 ring-card bg-secondary flex items-center justify-center text-[9px] font-bold text-muted-foreground">
+                    +{people.length - 4}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
+          {effectiveAutoSave ? (
             !isLockedByOther && (
               <div
                 className="px-2 py-2 text-[11px] text-muted-foreground flex items-center gap-1.5 select-none whitespace-nowrap"
@@ -679,14 +852,16 @@ export default function DocView() {
                 </button>
                 <button
                   role="menuitemcheckbox"
-                  aria-checked={autoSave}
+                  aria-checked={effectiveAutoSave}
                   onClick={toggleAutoSave}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer transition-colors text-left"
+                  disabled={!!collab}
+                  data-tooltip={collab ? 'En la edición en tiempo real los cambios siempre se guardan solos' : undefined}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer transition-colors text-left disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <CloudCheck className="w-3.5 h-3.5" />
                   <span className="flex-1">Autoguardado</span>
-                  <span className={`relative inline-flex w-7 h-4 rounded-full transition-colors ${autoSave ? 'bg-primary' : 'bg-secondary border border-border'}`}>
-                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-card shadow transition-all ${autoSave ? 'left-3.5' : 'left-0.5'}`} />
+                  <span className={`relative inline-flex w-7 h-4 rounded-full transition-colors ${effectiveAutoSave ? 'bg-primary' : 'bg-secondary border border-border'}`}>
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-card shadow transition-all ${effectiveAutoSave ? 'left-3.5' : 'left-0.5'}`} />
                   </span>
                 </button>
                 <button
@@ -713,12 +888,13 @@ export default function DocView() {
           <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
             {!initialLoading && (
               <TipTapDocEditor
-                key={selectedDocId}
+                key={`${selectedDocId}:${collab?.epoch ?? 'local'}:${collabGen}`}
                 ref={editorRef}
                 initialMarkdown={initialMarkdown}
+                collab={editorCollab}
                 readOnly={isLockedByOther}
                 resolvedUrls={resolvedUrls}
-                onChange={setCurrentMarkdown}
+                onChange={handleEditorChange}
                 onReady={handleEditorReady}
               />
             )}
@@ -726,8 +902,14 @@ export default function DocView() {
         </div>
       ) : (
         <div className="flex-1 overflow-hidden flex flex-col">
+          {collab && (
+            <div className="px-6 py-2 border-b border-border bg-secondary text-[11px] text-muted-foreground shrink-0 select-none">
+              En la edición en tiempo real el modo código es de solo lectura. Vuelve al modo bloques para editar.
+            </div>
+          )}
           <textarea
             disabled={isLockedByOther}
+            readOnly={!!collab}
             className="flex-1 w-full bg-card text-foreground p-6 text-xs font-mono focus:outline-none resize-none leading-relaxed disabled:opacity-60"
             style={{ tabSize: 2 }}
             value={currentMarkdown}

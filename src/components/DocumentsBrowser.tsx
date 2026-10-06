@@ -8,7 +8,8 @@
  * preview, like the projects home of Nori. Folders are shown above the documents (only at
  * the root: a folder holds documents, not other folders), documents are dragged onto a
  * folder (here or in the sidebar) to move them, onto the trash to delete them or among the
- * others to arrange them, and both have context menus.
+ * others to arrange them, and both have context menus. The documents can also be shown as a
+ * list, and each one shows who is editing it right now.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -26,10 +27,14 @@ import {
   ClockCounterClockwise,
   HandGrabbing,
   SortAscending,
+  SquaresFour,
+  Rows,
 } from '@phosphor-icons/react';
 import { useUI } from '../lib/ui';
-import { useProjectStore } from '../store';
+import { useProjectStore, isDocLockAlive } from '../store';
 import { DocMetadata } from '../types';
+import type { FirebaseAdapter } from '../lib/firebase';
+import type { DocEditor } from '../lib/docPresence';
 import { markdownToHtml } from '../lib/markdown';
 import { ContextMenu, ContextMenuItem } from './ContextMenu';
 import { MenuButton, MenuButtonItem } from './MenuButton';
@@ -207,6 +212,100 @@ function sortDocs(docs: DocMetadata[], sort: DocSort): DocMetadata[] {
 // Where a dragged card would land among the others (manual order)
 type ReorderTarget = { id: string; side: 'before' | 'after' };
 
+// ─── Grid or list ─────────────────────────────────────────────────────────────
+
+type DocLayout = 'grid' | 'list';
+const DOC_LAYOUT_KEY = 'kora-doc-layout';
+
+function getDocLayout(): DocLayout {
+  try {
+    return localStorage.getItem(DOC_LAYOUT_KEY) === 'list' ? 'list' : 'grid';
+  } catch {
+    return 'grid';
+  }
+}
+
+function setDocLayoutPreference(layout: DocLayout) {
+  try {
+    localStorage.setItem(DOC_LAYOUT_KEY, layout);
+  } catch {}
+}
+
+// ─── Who is editing each document ─────────────────────────────────────────────
+
+/**
+ * Other people with each document open right now: the collaborative sessions of a cloud
+ * project, plus the editing locks (local projects, or older Kora versions in the cloud).
+ */
+function useDocEditors(): Record<string, DocEditor[]> {
+  const { adapter, activeUser, docLocks, users } = useProjectStore();
+  const [cloud, setCloud] = useState<Record<string, DocEditor[]>>({});
+
+  useEffect(() => {
+    setCloud({});
+    if (!adapter || adapter.getMode() !== 'FIREBASE') return;
+    let closed = false;
+    let unsubscribe = () => {};
+    import('../lib/docPresence').then(({ subscribeDocEditors }) => {
+      if (!closed) unsubscribe = subscribeDocEditors(adapter as FirebaseAdapter, setCloud);
+    });
+    return () => {
+      closed = true;
+      unsubscribe();
+    };
+  }, [adapter]);
+
+  // Every lock is read while this view is open (see backgroundReload); start right away.
+  useEffect(() => {
+    useProjectStore.getState().backgroundReload();
+  }, []);
+
+  return useMemo(() => {
+    const byDoc: Record<string, DocEditor[]> = {};
+    const add = (docId: string, userId: string, name: string, color: string) => {
+      if (userId === activeUser?.id) return;
+      const user = users.find((u) => u.id === userId);
+      const list = (byDoc[docId] ||= []);
+      if (!list.some((e) => e.userId === userId)) {
+        list.push({ userId, name: user?.name || name, color: user?.avatarColor || color });
+      }
+    };
+    Object.entries(cloud).forEach(([docId, list]) => list.forEach((e) => add(docId, e.userId, e.name, e.color)));
+    Object.entries(docLocks).forEach(([docId, lock]) => {
+      if (isDocLockAlive(docId, lock)) add(docId, lock.userId, lock.username, '#64748b');
+    });
+    return byDoc;
+  }, [cloud, docLocks, users, activeUser?.id]);
+}
+
+/** Avatars of the people editing a document right now */
+function EditingNow({ editors }: { editors?: DocEditor[] }) {
+  if (!editors || editors.length === 0) return null;
+  const names = editors.map((e) => e.name).join(', ');
+  return (
+    <div
+      className="flex items-center -space-x-1.5 shrink-0"
+      data-tooltip={`Editando ahora: ${names}`}
+      aria-label={`Editando ahora: ${names}`}
+    >
+      {editors.slice(0, 3).map((e) => (
+        <span
+          key={e.userId}
+          className="w-5 h-5 rounded-full ring-2 ring-card flex items-center justify-center text-[9px] font-bold text-white uppercase"
+          style={{ backgroundColor: e.color }}
+        >
+          {e.name.charAt(0)}
+        </span>
+      ))}
+      {editors.length > 3 && (
+        <span className="w-5 h-5 rounded-full ring-2 ring-card bg-secondary flex items-center justify-center text-[8px] font-bold text-muted-foreground">
+          +{editors.length - 3}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** Title of an imported Markdown file: its first heading, or the file name */
 function titleFromMarkdown(content: string, filename: string): string {
   const heading = content.match(/^#\s+(.+)$/m)?.[1]?.trim();
@@ -263,6 +362,12 @@ export default function DocumentsBrowser() {
     setSort(next);
     setDocSortPreference(next);
   };
+  const [layout, setLayout] = useState<DocLayout>(getDocLayout);
+  const changeLayout = (next: DocLayout) => {
+    setLayout(next);
+    setDocLayoutPreference(next);
+  };
+  const editorsByDoc = useDocEditors();
   const visibleDocs = useMemo(
     () => sortDocs(docs.filter((d) => (d.folder ?? null) === currentFolder), sort),
     [docs, currentFolder, sort]
@@ -465,7 +570,7 @@ export default function DocumentsBrowser() {
       setReorderTarget(null);
     },
     // Another card dragged over this one: it would land on the side of the cursor (the grid
-    // takes the drop, so it also works in the gap between cards)
+    // takes the drop, so it also works in the gap between cards). In the list, above or below.
     onDragOver: (e: React.DragEvent) => {
       if (!draggedId || !e.dataTransfer.types.includes(DOC_DRAG_TYPE)) return;
       if (draggedId === doc.id) {
@@ -473,7 +578,8 @@ export default function DocumentsBrowser() {
         return;
       }
       const rect = e.currentTarget.getBoundingClientRect();
-      const side = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+      const before = layout === 'list' ? e.clientY < rect.top + rect.height / 2 : e.clientX < rect.left + rect.width / 2;
+      const side = before ? 'before' : 'after';
       if (reorderTarget?.id !== doc.id || reorderTarget.side !== side) setReorderTarget({ id: doc.id, side });
     },
   });
@@ -670,21 +776,44 @@ export default function DocumentsBrowser() {
             <h2 className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">
               {currentFolder ? 'Documentos en esta carpeta' : 'Mis documentos'} <span className="font-mono">({visibleDocs.length})</span>
             </h2>
-            {visibleDocs.length > 1 && (
-              <Dropdown
-                value={sort}
-                options={SORT_OPTIONS.map(({ Icon, ...o }) => ({
-                  ...o,
-                  icon: <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />,
-                }))}
-                onChange={changeSort}
-                size="sm"
-                menuClassName="w-44"
-                optionClassName=""
-                title="Orden de los documentos"
-                ariaLabel="Orden de los documentos"
-              />
-            )}
+            <div className="flex items-center gap-2">
+              {visibleDocs.length > 1 && (
+                <Dropdown
+                  value={sort}
+                  options={SORT_OPTIONS.map(({ Icon, ...o }) => ({
+                    ...o,
+                    icon: <Icon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />,
+                  }))}
+                  onChange={changeSort}
+                  size="sm"
+                  menuClassName="w-44"
+                  optionClassName=""
+                  title="Orden de los documentos"
+                  ariaLabel="Orden de los documentos"
+                />
+              )}
+              {visibleDocs.length > 0 && (
+                <div className="flex items-center p-0.5 rounded-lg border border-border bg-card" role="group" aria-label="Vista de los documentos">
+                  {([
+                    { value: 'grid', label: 'Cuadrícula', Icon: SquaresFour },
+                    { value: 'list', label: 'Lista', Icon: Rows },
+                  ] as const).map(({ value, label, Icon }) => (
+                    <button
+                      key={value}
+                      onClick={() => changeLayout(value)}
+                      aria-pressed={layout === value}
+                      aria-label={`Vista de ${label.toLowerCase()}`}
+                      data-tooltip={`Vista de ${label.toLowerCase()}`}
+                      className={`p-1 rounded-md transition-colors cursor-pointer ${
+                        layout === value ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" weight={layout === value ? 'fill' : 'regular'} />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           {visibleDocs.length === 0 ? (
             <div className="text-center py-16 px-6 border border-dashed border-border rounded-2xl">
@@ -706,6 +835,22 @@ export default function DocumentsBrowser() {
                 </>
               )}
             </div>
+          ) : layout === 'list' ? (
+            <div {...reorderZone} className="border border-border rounded-2xl bg-card">
+              {visibleDocs.map((doc) => (
+                <DocRow
+                  key={doc.id}
+                  doc={doc}
+                  editor={editorName(doc)}
+                  editingNow={editorsByDoc[doc.id]}
+                  dragProps={docDrag(doc)}
+                  dragging={draggedId === doc.id}
+                  dropSide={draggedId && reorderTarget?.id === doc.id ? reorderTarget.side : null}
+                  onOpen={() => setSelectedDoc(doc.id)}
+                  onOpenMenu={(x, y) => setMenu({ x, y, doc })}
+                />
+              ))}
+            </div>
           ) : (
             <div {...reorderZone} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {visibleDocs.map((doc) => (
@@ -713,6 +858,7 @@ export default function DocumentsBrowser() {
                   key={doc.id}
                   doc={doc}
                   editor={editorName(doc)}
+                  editingNow={editorsByDoc[doc.id]}
                   loadContent={getDocContent}
                   dragProps={docDrag(doc)}
                   dragging={draggedId === doc.id}
@@ -797,6 +943,8 @@ export function useDocFolderActions() {
 interface DocCardProps {
   doc: DocMetadata;
   editor?: string;
+  /** People editing the document right now */
+  editingNow?: DocEditor[];
   loadContent: (docId: string) => Promise<string>;
   /** Native drag props, to drop the card on a folder */
   dragProps: React.HTMLAttributes<HTMLDivElement> & { draggable: boolean };
@@ -807,7 +955,7 @@ interface DocCardProps {
   onOpenMenu: (x: number, y: number) => void;
 }
 
-function DocCard({ doc, editor, loadContent, dragProps, dragging, dropSide, onOpen, onOpenMenu }: DocCardProps) {
+function DocCard({ doc, editor, editingNow, loadContent, dragProps, dragging, dropSide, onOpen, onOpenMenu }: DocCardProps) {
   return (
     <div
       {...dragProps}
@@ -842,6 +990,9 @@ function DocCard({ doc, editor, loadContent, dragProps, dragging, dropSide, onOp
             {editor ? ` · ${editor}` : ''}
           </p>
         </div>
+        <div className="pt-0.5">
+          <EditingNow editors={editingNow} />
+        </div>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -855,6 +1006,57 @@ function DocCard({ doc, editor, loadContent, dragProps, dragging, dropSide, onOp
           <DotsThree className="w-4 h-4" weight="bold" />
         </button>
       </div>
+    </div>
+  );
+}
+
+/** A document as a row of the list view */
+function DocRow({ doc, editor, editingNow, dragProps, dragging, dropSide, onOpen, onOpenMenu }: Omit<DocCardProps, 'loadContent'>) {
+  const edited = `Editado ${formatRelative(docTime(doc))}${editor ? ` · ${editor}` : ''}`;
+  return (
+    <div
+      {...dragProps}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onOpen();
+      }}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onOpenMenu(e.clientX, e.clientY);
+      }}
+      className={`relative group flex items-center gap-3 pl-4 pr-2 py-2.5 border-b border-border last:border-b-0 first:rounded-t-2xl last:rounded-b-2xl hover:bg-accent transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        dragging ? 'opacity-50' : ''
+      }`}
+    >
+      {/* Where the dragged row would land: a bar on that edge */}
+      {dropSide && (
+        <span
+          className={`absolute left-2 right-2 h-0.5 rounded-full bg-bento-orange pointer-events-none ${
+            dropSide === 'before' ? '-top-px' : '-bottom-px'
+          }`}
+        />
+      )}
+      <FileText className="w-5 h-5 shrink-0 text-bento-orange" />
+      <div className="min-w-0 flex-1">
+        <h3 className="font-semibold text-foreground text-sm truncate font-heading">{doc.title}</h3>
+        <p className="sm:hidden text-[11px] text-muted-foreground truncate">{edited}</p>
+      </div>
+      <span className="hidden sm:block text-[11px] text-muted-foreground truncate max-w-[40%] text-right">{edited}</span>
+      <EditingNow editors={editingNow} />
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          const rect = e.currentTarget.getBoundingClientRect();
+          onOpenMenu(rect.left, rect.bottom + 4);
+        }}
+        className="p-1 rounded-lg text-muted-foreground hover:text-foreground hover:bg-card transition-colors shrink-0 cursor-pointer"
+        data-tooltip="Más opciones"
+        aria-label="Más opciones"
+      >
+        <DotsThree className="w-4 h-4" weight="bold" />
+      </button>
     </div>
   );
 }

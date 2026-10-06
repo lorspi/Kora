@@ -21,7 +21,8 @@ import {
 } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import { BubbleMenu } from '@tiptap/react/menus';
-import type { Editor } from '@tiptap/core';
+import type { Editor, AnyExtension } from '@tiptap/core';
+import type { Transaction } from '@tiptap/pm/state';
 import {
   TextB as Bold,
   TextItalic as Italic,
@@ -64,15 +65,28 @@ export interface TipTapDocEditorHandle {
   focus: () => void;
 }
 
+/** Binds the editor to a realtime collaborative session (see lib/collab). */
+export interface EditorCollab {
+  /** Extensions that sync the document and draw the other people's cursors. */
+  extensions: AnyExtension[];
+  /** Whether a transaction carries someone else's edit. */
+  isRemote: (tr: Transaction) => boolean;
+}
+
 interface TipTapDocEditorProps {
-  /** Initial markdown content (already loaded from disk). */
+  /** Initial markdown content (already loaded from disk). Ignored when collaborative. */
   initialMarkdown: string;
+  /** Collaborative session; the content then comes from it instead of initialMarkdown. */
+  collab?: EditorCollab | null;
   /** Whether editing is disabled (e.g. locked by another user). */
   readOnly?: boolean;
   /** Resolved attachment URLs (relative path -> object/remote URL) for media nodes. */
   resolvedUrls: Record<string, string>;
-  /** Called with the current Markdown whenever the document changes. */
-  onChange: (markdown: string) => void;
+  /**
+   * Called with the current Markdown whenever the document changes. `remote` is
+   * true when the change is someone else's edit arriving through collaboration.
+   */
+  onChange: (markdown: string, remote: boolean) => void;
   /**
    * Called once the editor is created, with its serialization of the initial content.
    * The round-trip is not always byte-identical to the file, so this is the baseline
@@ -271,13 +285,16 @@ function FormatBubble({ editor }: { editor: Editor }) {
 // ─── Main editor component ─────────────────────────────────────────────────────────
 
 const TipTapDocEditor = forwardRef<TipTapDocEditorHandle, TipTapDocEditorProps>(
-  ({ initialMarkdown, readOnly = false, resolvedUrls, onChange, onReady }, ref) => {
+  ({ initialMarkdown, collab = null, readOnly = false, resolvedUrls, onChange, onReady }, ref) => {
     const [showSlash, setShowSlash] = useState(true);
     const [viewReady, setViewReady] = useState(false);
 
     const editor = useEditor({
-      extensions: buildExtensions(),
-      content: markdownToTiptapHtml(normalizeMarkdown(initialMarkdown)),
+      extensions: collab
+        ? [...buildExtensions({ collaborative: true }), ...collab.extensions]
+        : buildExtensions(),
+      // A collaborative document's content comes from the shared state.
+      content: collab ? undefined : markdownToTiptapHtml(normalizeMarkdown(initialMarkdown)),
       editable: !readOnly,
       editorProps: {
         attributes: {
@@ -292,7 +309,7 @@ const TipTapDocEditor = forwardRef<TipTapDocEditorHandle, TipTapDocEditorProps>(
         // `update` also fires for non-content events (e.g. setEditable); only real
         // document edits should count as changes.
         if (!transaction.docChanged) return;
-        onChange(pmDocToMarkdown(e.getJSON() as any));
+        onChange(pmDocToMarkdown(e.getJSON() as any), !!collab && collab.isRemote(transaction));
       },
     });
 

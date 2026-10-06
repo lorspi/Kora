@@ -25,12 +25,14 @@ import { MermaidNode, SourceTable, MediaVideo, MediaImage } from './customNodes'
  */
 const CoexistingCode = Code.extend({ excludes: '' });
 
-export function buildExtensions(options?: { placeholder?: string }) {
+export function buildExtensions(options?: { placeholder?: string; collaborative?: boolean }) {
   return [
     StarterKit.configure({
       // We supply our own link handling, code mark and source-preserving blocks.
       link: false,
       code: false,
+      // Collaborative editing brings its own (per-user) undo history.
+      ...(options?.collaborative ? { undoRedo: false as const } : {}),
       // StarterKit's codeBlock stays (plain ``` fences). Its horizontalRule,
       // headings, lists, blockquote, bold/italic/strike/underline are used.
     }),

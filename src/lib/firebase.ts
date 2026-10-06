@@ -36,6 +36,8 @@ import {
   where,
   onSnapshot,
   type Firestore,
+  type DocumentReference,
+  type CollectionReference,
 } from 'firebase/firestore';
 import { getAuth, signInAnonymously, type Auth } from 'firebase/auth';
 import { normalizePath } from './fs';
@@ -258,6 +260,20 @@ export class FirebaseAdapter {
     return collection(this.db, 'kora', this.spaceId, 'files');
   }
 
+  /**
+   * Raw Firestore access for the realtime collaboration layer (lib/collab). Its
+   * records live in the same collection as the files, so the security rules teams
+   * already have cover them, but they carry no `path` field: file listings and the
+   * change subscription (both filtered on `path`) never see them.
+   */
+  collabAccess(): { db: Firestore; collection: CollectionReference; docRef: (id: string) => DocumentReference } {
+    return {
+      db: this.db,
+      collection: this.filesCollection(),
+      docRef: (id: string) => doc(this.db, 'kora', this.spaceId, 'files', id),
+    };
+  }
+
   private fileDoc(path: string) {
     return doc(this.db, 'kora', this.spaceId, 'files', pathToDocId(path));
   }
@@ -322,11 +338,11 @@ export class FirebaseAdapter {
   async deleteDirectory(subFolder: string): Promise<void> {
     await this.authReady;
     const prefix = this.folderPrefix(subFolder);
-    const snap = await getDocs(this.filesCollection());
+    const snap = await getDocs(this.filesUnder(prefix));
     const deletions: Promise<void>[] = [];
     snap.forEach((d) => {
       const p = normalizePath((d.data() as any).path || '');
-      if (p === prefix.replace(/\/$/, '') || p.startsWith(prefix)) {
+      if (p.startsWith(prefix)) {
         deletions.push(deleteDoc(d.ref));
       }
     });
@@ -339,11 +355,20 @@ export class FirebaseAdapter {
     return folder;
   }
 
+  /**
+   * Files whose path starts with `prefix`, as a range query on `path`. Only
+   * downloads that folder, and never the collaboration documents (lib/collab),
+   * which share the collection but have no `path` field.
+   */
+  private filesUnder(prefix: string) {
+    return query(this.filesCollection(), where('path', '>=', prefix), where('path', '<', prefix + ''));
+  }
+
   /** List file names (not full paths) that are direct children of a folder. */
   async listFiles(subFolder: string): Promise<string[]> {
     await this.authReady;
     const prefix = this.folderPrefix(subFolder);
-    const snap = await getDocs(this.filesCollection());
+    const snap = await getDocs(this.filesUnder(prefix));
     const names: string[] = [];
     snap.forEach((d) => {
       const p = normalizePath((d.data() as any).path || '');
@@ -362,7 +387,7 @@ export class FirebaseAdapter {
   async listDirectories(subFolder: string): Promise<string[]> {
     await this.authReady;
     const prefix = this.folderPrefix(subFolder);
-    const snap = await getDocs(this.filesCollection());
+    const snap = await getDocs(this.filesUnder(prefix));
     const dirs = new Set<string>();
     snap.forEach((d) => {
       const p = normalizePath((d.data() as any).path || '');
