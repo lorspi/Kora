@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.1] — 2026-10-08
+
+### Added
+
+- **Mover tareas a otra lista**
+  Una tarea se puede llevar a otra lista de dos formas: arrastrándola desde las vistas Lista o Kanban hasta la lista en la barra lateral (que se resalta al pasar por encima), o desde el detalle de la tarea, donde el nombre de la lista en el encabezado es ahora un desplegable con todas las listas. La tarea conserva su estado si la lista de destino tiene uno con el mismo nombre; si no, pasa al primer estado de esa lista. Queda al final de su estado y el cambio se anota en la actividad de la tarea.
+
+### Changed
+
+- **Emoji en el título de la lista**
+  Si el nombre de una lista empieza por un emoji, el título de la lista muestra ese emoji en lugar del círculo de color, igual que en la barra lateral.
+
 ## [1.5.0] — 2026-10-06
 
 ### Added

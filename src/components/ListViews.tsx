@@ -11,6 +11,7 @@ import { EffortBadge, EFFORT_OPTIONS } from '../lib/effort';
 import CustomSelect from './CustomSelect';
 import AssigneePicker from './AssigneePicker';
 import BulkTaskDialog, { parseTaskLines } from './BulkTaskDialog';
+import { splitLeadingEmoji } from '../lib/emoji';
 import {
   Check,
   CaretDown as ChevronDown,
@@ -38,6 +39,9 @@ import {
 } from '@phosphor-icons/react';
 
 type ActiveViewTab = 'list' | 'kanban' | 'table' | 'settings';
+
+/** Drag data type of a task, so a list in the sidebar can take it */
+export const TASK_DRAG_TYPE = 'application/x-kora-task';
 
 export default function ListViews() {
   const { 
@@ -166,6 +170,8 @@ export default function ListViews() {
 
   const handleTaskDragStart = (e: React.DragEvent<HTMLDivElement>, taskId: string) => {
     e.dataTransfer.setData('text/plain', taskId);
+    // Lets the lists in the sidebar take the task
+    e.dataTransfer.setData(TASK_DRAG_TYPE, taskId);
     e.dataTransfer.effectAllowed = 'move';
     setDraggedTaskId(taskId);
   };
@@ -262,10 +268,21 @@ export default function ListViews() {
       <div className="bg-card px-3 sm:px-6 pt-4 sm:pt-5 pb-0 border-b border-border shrink-0">
         <div className="flex flex-col gap-3 sm:gap-4 mb-4">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: activeList.color }}></div>
-            <h1 className="text-lg sm:text-xl font-bold text-foreground flex items-center gap-2 font-heading truncate">
-              {activeList.name}
-            </h1>
+            {(() => {
+              const { icon, label } = splitLeadingEmoji(activeList.name);
+              return (
+                <>
+                  {icon ? (
+                    <span className="shrink-0 text-lg sm:text-xl leading-none" aria-hidden="true">{icon}</span>
+                  ) : (
+                    <div className="w-3.5 h-3.5 rounded-full shrink-0" style={{ backgroundColor: activeList.color }}></div>
+                  )}
+                  <h1 className="text-lg sm:text-xl font-bold text-foreground flex items-center gap-2 font-heading truncate">
+                    {label}
+                  </h1>
+                </>
+              );
+            })()}
             <span className="text-xs bg-secondary text-muted-foreground font-mono px-2 py-0.5 rounded-full border border-border shrink-0">
               {listTasks.length} {listTasks.length === 1 ? 'tarea' : 'tareas'}
             </span>

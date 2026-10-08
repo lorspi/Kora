@@ -10,6 +10,8 @@ import { Task, SystemUser } from '../types';
 import { MarkdownPreview } from '../lib/markdown';
 import MobileNotesDrawer from './MobileNotesDrawer';
 import CustomSelect from './CustomSelect';
+import { Dropdown } from './Dropdown';
+import { splitLeadingEmoji } from '../lib/emoji';
 import { EffortMeter, EFFORT_LEVELS, EFFORT_OPTIONS } from '../lib/effort';
 import {
   X,
@@ -48,6 +50,7 @@ export default function TaskDrawer() {
     users, 
     activeUser, 
     updateTask, 
+    moveTaskToList,
     deleteTask, 
     addSubtask, 
     toggleSubtask, 
@@ -347,9 +350,41 @@ export default function TaskDrawer() {
 
         {/* Task Header ribbon */}
         <div className="p-4 border-b border-border flex items-center justify-between shrink-0 bg-card">
-          <div className="flex items-center gap-2 overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0">
+            <Dropdown
+              value={activeList.id}
+              options={lists.map((l) => {
+                const { icon, label } = splitLeadingEmoji(l.name);
+                return {
+                  value: l.id,
+                  label,
+                  icon: icon ? (
+                    <span className="w-3.5 shrink-0 flex items-center justify-center text-xs leading-none" aria-hidden="true">{icon}</span>
+                  ) : (
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: l.color }} />
+                  ),
+                };
+              })}
+              onChange={async (listId) => {
+                if (listId === activeList.id) return;
+                try {
+                  await moveTaskToList(task.id, listId);
+                  toast(`Tarea movida a "${lists.find((l) => l.id === listId)?.name ?? 'la lista'}"`, 'success');
+                } catch {
+                  toast('No se pudo mover la tarea', 'error');
+                }
+              }}
+              disabled={isLockedByOther}
+              align="left"
+              size="sm"
+              className="font-bold text-muted-foreground hover:text-foreground max-w-56"
+              menuClassName="w-56 max-h-72 overflow-y-auto"
+              optionClassName=""
+              title="Mover a otra lista"
+              ariaLabel="Lista de la tarea"
+            />
             <span className="text-[10px] bg-secondary border border-border font-bold font-mono text-muted-foreground px-2 py-1 rounded truncate">
-              {activeList.name} &gt; {task.taskCode}
+              {task.taskCode}
             </span>
             {blockerTask && (
               <span className="text-[9px] bg-destructive/20 text-destructive border border-destructive/40 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">

@@ -104,6 +104,11 @@ interface ProjectState {
    * `orderedIds`: the ids of that status's tasks in their new order.
    */
   reorderTasks: (taskId: string, statusId: string, orderedIds: string[]) => Promise<void>;
+  /**
+   * Move a task to another list. It keeps its status when the list has one with the same
+   * id or name (or takes the list's first status) and goes at the end of it.
+   */
+  moveTaskToList: (taskId: string, listId: string) => Promise<void>;
   deleteTask: (taskId: string) => Promise<void>;
   
   // Subtasks
@@ -1714,6 +1719,26 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         const newSt = listObj?.statuses.find((s) => s.id === statusId)?.name || statusId;
         await logActivityAction(taskId, `cambió el estado de "${oldSt}" a "${newSt}"`);
       }
+    },
+
+    moveTaskToList: async (taskId, listId) => {
+      const { adapter, tasks, lists, activeUser } = get();
+      if (!adapter) return;
+      const task = tasks.find((t) => t.id === taskId);
+      const target = lists.find((l) => l.id === listId);
+      if (!task || !target || task.listId === listId || target.statuses.length === 0) return;
+      const source = lists.find((l) => l.id === task.listId);
+      const statusName = source?.statuses.find((s) => s.id === task.statusId)?.name.trim().toLowerCase();
+      const status =
+        target.statuses.find((s) => s.id === task.statusId) ??
+        target.statuses.find((s) => s.name.trim().toLowerCase() === statusName) ??
+        target.statuses[0];
+
+      const { order: _order, ...rest } = task;
+      const movedTask: Task = { ...rest, listId, statusId: status.id, lastEditedBy: activeUser?.id, lastEditedAt: Date.now() };
+      set({ tasks: get().tasks.map((t) => (t.id === taskId ? movedTask : t)) });
+      await adapter.writeTextFile(`/tasks/task-${taskId}.json`, JSON.stringify(movedTask, null, 2));
+      await logActivityAction(taskId, `movió la tarea de la lista "${source?.name ?? task.listId}" a "${target.name}"`);
     },
 
     // Move task to trash instead of permanently deleting

@@ -40,6 +40,7 @@ import { useDocDrop, useDocFolderActions, DOCS_ROOT, DOCS_TRASH } from './Docume
 import { loadSavedSessions } from '../store/sessions';
 import NewProjectChooser from './NewProjectChooser';
 import { splitLeadingEmoji } from '../lib/emoji';
+import { TASK_DRAG_TYPE } from './ListViews';
 
 export default function Sidebar() {
   const { 
@@ -72,7 +73,8 @@ export default function Sidebar() {
     trashItems,
     tasks,
     logs,
-    reorderLists
+    reorderLists,
+    moveTaskToList
   } = useProjectStore();
 
   // ── Arranging the task lists by dragging ──
@@ -93,6 +95,24 @@ export default function Sidebar() {
       await reorderLists(ids);
     } catch {
       toast('No se pudo guardar el orden de las listas', 'error');
+    }
+  };
+
+  // ── Moving a task to another list by dropping it on the list ──
+  const [taskDropListId, setTaskDropListId] = useState<string | null>(null);
+  // Dragged tasks come from the open list, so it doesn't take them
+  const isTaskDrag = (e: React.DragEvent, listId: string) =>
+    !draggedListId && listId !== selectedListId && e.dataTransfer.types.includes(TASK_DRAG_TYPE);
+  const dropTask = async (e: React.DragEvent, listId: string) => {
+    const taskId = e.dataTransfer.getData(TASK_DRAG_TYPE);
+    setTaskDropListId(null);
+    if (!taskId) return;
+    const list = lists.find((l) => l.id === listId);
+    try {
+      await moveTaskToList(taskId, listId);
+      toast(`Tarea movida a "${list?.name ?? 'la lista'}"`, 'success');
+    } catch {
+      toast('No se pudo mover la tarea', 'error');
     }
   };
   const { toast, confirm } = useUI();
@@ -395,6 +415,12 @@ export default function Sidebar() {
                 }}
                 onDragEnd={() => { setDraggedListId(null); setListDropAt(null); }}
                 onDragOver={(e) => {
+                  if (isTaskDrag(e, l.id)) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    if (taskDropListId !== l.id) setTaskDropListId(l.id);
+                    return;
+                  }
                   if (!draggedListId) return;
                   e.preventDefault();
                   if (l.id === draggedListId) { if (listDropAt) setListDropAt(null); return; }
@@ -402,7 +428,16 @@ export default function Sidebar() {
                   const side = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
                   if (listDropAt?.id !== l.id || listDropAt.side !== side) setListDropAt({ id: l.id, side });
                 }}
-                className={`relative w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors group ${draggedListId === l.id ? 'opacity-50 ' : ''}${
+                onDragLeave={(e) => {
+                  if (taskDropListId === l.id && !e.currentTarget.contains(e.relatedTarget as Node | null)) setTaskDropListId(null);
+                }}
+                onDrop={(e) => {
+                  if (!isTaskDrag(e, l.id)) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  dropTask(e, l.id);
+                }}
+                className={`relative w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors group ${draggedListId === l.id ? 'opacity-50 ' : ''}${taskDropListId === l.id ? 'bg-bento-blue/10 ring-1 ring-bento-blue/50 ' : ''}${
                   selectedListId === l.id && selectedDocId === null
                     ? 'bg-bento-blue-light text-bento-blue border-l-2 border-bento-blue font-bold' 
                     : 'hover:bg-accent text-muted-foreground hover:text-foreground'
