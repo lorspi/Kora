@@ -76,7 +76,7 @@ Para un proyecto en la nube, cambia `KORA_PROJECT_DIR` por `"KORA_FIREBASE_CONFI
 | `kora_list_docs` / `kora_read_doc` | Lista y lee documentos. |
 | `kora_create_doc` / `kora_update_doc` | Crea o edita documentos. |
 
-También incluye el prompt **`desarrollar_ticket`** (en Claude Code: `/mcp__kora__desarrollar_ticket TSK-012`), que carga el ticket con su contexto, propone un plan y mantiene Kora al día mientras se desarrolla: lo pasa a *En Desarrollo*, marca subtareas y, al terminar, comenta lo hecho y lo mueve a *Revisión*.
+También incluye el prompt **`desarrollar_ticket`** (en Claude Code: `/mcp__kora__desarrollar_ticket TSK-012`), que carga el ticket con su contexto, propone un plan y mantiene Kora al día mientras se desarrolla: lo pasa al estado de trabajo en curso de su lista (como *En Desarrollo*), marca subtareas y, al terminar, comenta lo hecho y lo mueve al de revisión (como *Revisión*).
 
 ## Ejemplos de uso
 

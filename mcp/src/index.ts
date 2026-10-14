@@ -430,8 +430,8 @@ server.registerPrompt(
             `1. Léelo con kora_get_task y revisa sus dependencias (si alguna está pendiente, avísame).\n` +
             `2. Busca contexto con kora_search y kora_read_doc (especificaciones, decisiones, notas técnicas).\n` +
             `3. Propón un plan breve alineado con la descripción, criterios de aceptación y subtareas. Si falta información, pregúntame.\n` +
-            `4. Cuando empecemos, mueve el ticket a "En Desarrollo"; al avanzar, marca subtareas completadas.\n` +
-            `5. Al terminar, deja un comentario con el resumen de lo hecho y mueve el ticket a "Revisión".`,
+            `4. Cuando empecemos, mueve el ticket al estado de su lista que indique trabajo en curso (p. ej. "En Desarrollo"); al avanzar, marca subtareas completadas.\n` +
+            `5. Al terminar, deja un comentario con el resumen de lo hecho y mueve el ticket al estado de revisión de su lista (p. ej. "Revisión"). Los estados de cada lista aparecen en kora_get_project; si no hay uno equivalente, pregúntame.`,
         },
       },
     ],
