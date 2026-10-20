@@ -1,12 +1,5 @@
 # Changelog
 
-## [1.6.0] — 2026-10-14
-
-### Added
-
-- **Integración con Claude**
-  La nueva carpeta `mcp/` contiene un servidor MCP que conecta un proyecto de Kora con Claude Code o Claude Desktop, en carpeta local o en la nube. Desde una conversación, Claude puede crear tareas (también varias a la vez) y cambiar su estado, lista, prioridad, fecha, esfuerzo, asignados, etiquetas y dependencias, gestionar subtareas, comentar y mandar tareas a la papelera. También puede leer un ticket completo con su actividad, buscar en tareas y documentos, y leer, crear o editar documentos para tener el contexto necesario al desarrollarlo. El prompt `desarrollar_ticket` guía el desarrollo de un ticket y mantiene Kora al día: lo pasa al estado de trabajo en curso de su lista (como "En Desarrollo"), marca subtareas y, al terminar, comenta lo hecho y lo mueve al de revisión (como "Revisión"). Los cambios aparecen en la app como cualquier otro, quedan en la actividad a nombre del usuario configurado y nunca se aplican sobre una tarea o un documento que alguien tenga abierto. Las instrucciones de instalación están en `mcp/README.md`.
-
 ## [1.5.1] — 2026-10-08
 
 ### Added

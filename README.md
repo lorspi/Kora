@@ -66,10 +66,6 @@ npm run dev
 ```
 4. Accede a la herramienta en tu servidor local: [localhost:8080](http://localhost:8080/)
 
-## Integración con Claude
-
-La carpeta [`mcp/`](./mcp) contiene un servidor MCP para crear y gestionar tareas y consultar documentos de un proyecto de Kora desde Claude Code o Claude Desktop. Consulta su [README](./mcp/README.md) para instalarlo.
-
 ## Stack Tecnológico
 
 - React 19
