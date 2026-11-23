@@ -4,21 +4,24 @@
  */
 
 /**
- * Realtime collaborative editing of documents in cloud (Firebase) projects.
+ * Realtime collaborative editing of documents in cloud projects (Firebase or
+ * Cloudflare).
  *
  * Several people can edit the same document at once, Google Docs style: their
  * edits merge as they type (Yjs CRDT) and everyone sees the others' text cursors
  * and selections. There is no Kora server: the transport is the team's own
- * Firestore, through the same `files` collection the rest of the project uses, so
- * the security rules teams already have keep working.
+ * backend, through the realtime records of its adapter (lib/records): Firestore
+ * documents in the same `files` collection the rest of the project uses (so the
+ * security rules teams already have keep working), or the records of the team's
+ * Cloudflare backend.
  *
  * The Markdown file in /docs stays the source of truth on disk. The collaborative
  * state only lives while people edit: it is seeded from the file, editors keep
  * saving the merged result back to the file (see DocView), and when the file
  * changes outside a collaborative session the state is re-seeded from it.
  *
- * Firestore records (ids in the files collection, none has a `path` field, so file
- * listings and the change subscription never see them):
+ * Records (in Firestore, ids in the files collection; none has a `path` field, so
+ * file listings and the change subscription never see them):
  *   collab-state~{docId}            { epoch, seed }  Base Yjs state of the current
  *                                    epoch (written on creation, re-seed, compaction).
  *   collab-saved~{docId}            { epoch, hash }  Hash of the last Markdown saved to
@@ -40,19 +43,7 @@ import type { Transaction } from '@tiptap/pm/state';
 import { prosemirrorJSONToYDoc, ySyncPluginKey } from '@tiptap/y-tiptap';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCaret from '@tiptap/extension-collaboration-caret';
-import {
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  onSnapshot,
-  query,
-  where,
-  runTransaction,
-  writeBatch,
-  type DocumentData,
-} from 'firebase/firestore';
-import type { FirebaseAdapter } from './firebase';
+import type { CloudAdapterLike, RecordStore } from './records';
 import { PEER_KIND, PEER_ACTIVE_WINDOW } from './docPresence';
 import { buildExtensions } from '../components/editor/extensions';
 import { markdownToTiptapHtml, normalizeMarkdown, pmDocToMarkdown } from './tiptapMarkdown';
@@ -170,7 +161,8 @@ export interface CollabPeer {
   color: string;
 }
 
-type Access = ReturnType<FirebaseAdapter['collabAccess']>;
+type Access = RecordStore;
+type DocumentData = Record<string, any>;
 
 /**
  * One open document, connected to its collaborative state. Created by
@@ -210,14 +202,13 @@ export class CollabSession {
 
   /** Subscribe to the shared state; resolves once the existing edits are applied. */
   async start(): Promise<void> {
-    const { collection, docRef } = this.fx;
+    const fx = this.fx;
 
     this.ydoc.on('update', this.onLocalUpdate);
     this.awareness.on('update', this.onAwarenessUpdate);
 
     // Re-seeded under us (the file changed while nobody was editing): start over.
-    this.unsubs.push(onSnapshot(docRef(stateId(this.docId)), (snap) => {
-      const data = snap.data();
+    this.unsubs.push(fx.watch(stateId(this.docId), (data) => {
       if (!data || data.epoch !== this.epoch) {
         this.resetListeners.forEach((fn) => fn());
         return;
@@ -228,18 +219,17 @@ export class CollabSession {
       }
     }, (err) => console.warn('Collab state subscription error', err)));
 
-    this.unsubs.push(onSnapshot(docRef(savedId(this.docId)), (snap) => {
-      const data = snap.data();
+    this.unsubs.push(fx.watch(savedId(this.docId), (data) => {
       if (data && data.epoch === this.epoch && typeof data.hash === 'string' && data.hash !== this.savedHash) {
         this.savedHash = data.hash;
         this.emit();
       }
     }, (err) => console.warn('Collab saved subscription error', err)));
 
-    this.unsubs.push(onSnapshot(query(collection, where('peerDoc', '==', this.docId)), (snap) => {
+    this.unsubs.push(fx.watchQuery('peerDoc', this.docId, (changes) => {
       const now = Date.now();
-      snap.docChanges().forEach((change) => {
-        const data = change.doc.data();
+      changes.forEach((change) => {
+        const data = change.data || {};
         const clientId = Number(data.clientId);
         if (!clientId || clientId === this.ydoc.clientID) return;
         if (change.type === 'removed') {
@@ -261,15 +251,15 @@ export class CollabSession {
     await new Promise<void>((resolve) => {
       let first = true;
       const stream = `${this.docId}:${this.epoch}`;
-      this.unsubs.push(onSnapshot(query(collection, where('stream', '==', stream)), (snap) => {
+      this.unsubs.push(fx.watchQuery('stream', stream, (changes) => {
         const updates: Uint8Array[] = [];
-        snap.docChanges().forEach((change) => {
+        changes.forEach((change) => {
           if (change.type === 'removed') {
-            this.knownUpdates.delete(change.doc.id);
+            this.knownUpdates.delete(change.id);
             return;
           }
-          this.knownUpdates.add(change.doc.id);
-          const u = change.doc.data().u;
+          this.knownUpdates.add(change.id);
+          const u = change.data?.u;
           if (typeof u === 'string') updates.push(fromBase64(u));
         });
         if (updates.length) {
@@ -334,7 +324,7 @@ export class CollabSession {
     this.savedHash = hash;
     this.emit();
     try {
-      await setDoc(this.fx.docRef(savedId(this.docId)), {
+      await this.fx.set(savedId(this.docId), {
         kind: SAVED_KIND,
         docId: this.docId,
         epoch: this.epoch,
@@ -365,7 +355,7 @@ export class CollabSession {
     const merged = Y.mergeUpdates(this.pending);
     this.pending = [];
     try {
-      await setDoc(this.fx.docRef(updateId(this.docId)), {
+      await this.fx.set(updateId(this.docId), {
         kind: UPDATE_KIND,
         updDoc: this.docId,
         stream: `${this.docId}:${this.epoch}`,
@@ -394,21 +384,14 @@ export class CollabSession {
     const folded = Array.from(this.knownUpdates);
     const seed = toBase64(Y.encodeStateAsUpdate(this.ydoc));
     if (seed.length > MAX_SEED_LENGTH) return;
-    const { db, docRef } = this.fx;
     try {
-      const ok = await runTransaction(db, async (tx) => {
-        const cur = await tx.get(docRef(stateId(this.docId)));
-        if (!cur.exists() || cur.data().epoch !== this.epoch) return false;
-        tx.update(cur.ref, { seed, at: Date.now() });
-        return true;
-      });
+      const { ok } = await this.fx.transact(
+        { id: stateId(this.docId), field: 'epoch', expect: this.epoch },
+        [{ op: 'update', id: stateId(this.docId), data: { seed, at: Date.now() } }]
+      );
       if (!ok) return;
       this.lastSeed = seed;
-      for (let i = 0; i < folded.length; i += 400) {
-        const batch = writeBatch(db);
-        folded.slice(i, i + 400).forEach((id) => batch.delete(docRef(id)));
-        await batch.commit();
-      }
+      await this.fx.removeMany(folded);
     } catch (err) {
       console.warn('Collaborative compaction skipped', err);
     }
@@ -435,7 +418,7 @@ export class CollabSession {
     if (this.destroyed) return;
     const clientId = this.ydoc.clientID;
     try {
-      await setDoc(this.fx.docRef(peerId(this.docId, clientId)), {
+      await this.fx.set(peerId(this.docId, clientId), {
         kind: PEER_KIND,
         peerDoc: this.docId,
         clientId,
@@ -490,7 +473,7 @@ export class CollabSession {
     this.resetListeners.clear();
     this.ydoc.off('update', this.onLocalUpdate);
     this.awareness.off('update', this.onAwarenessUpdate);
-    deleteDoc(this.fx.docRef(peerId(this.docId, this.ydoc.clientID))).catch(() => {});
+    this.fx.remove(peerId(this.docId, this.ydoc.clientID)).catch(() => {});
     this.awareness.destroy();
     // The doc itself is left to GC: the editor may still be unmounting with it.
   }
@@ -499,36 +482,34 @@ export class CollabSession {
 /**
  * Join (or start) the collaborative session of a document. `fileMarkdown` is the
  * document as currently saved. Returns null if collaboration isn't possible for it
- * (e.g. too large for a Firestore document); the caller then falls back to locks.
+ * (e.g. too large for a single cloud record); the caller then falls back to locks.
  */
 export async function openCollabSession(
-  adapter: FirebaseAdapter,
+  adapter: CloudAdapterLike,
   docId: string,
   fileMarkdown: string,
   user: CollabUser
 ): Promise<CollabSession | null> {
   await adapter.ready();
-  const fx = adapter.collabAccess();
-  const stateRef = fx.docRef(stateId(docId));
-  const savedRef = fx.docRef(savedId(docId));
+  const fx = adapter.records();
   const fileHash = hashMarkdown(fileMarkdown);
 
-  const [stateSnap, savedSnap, peersSnap] = await Promise.all([
-    getDoc(stateRef),
-    getDoc(savedRef),
-    getDocs(query(fx.collection, where('peerDoc', '==', docId))),
+  const [stateData, savedData, peers] = await Promise.all([
+    fx.get(stateId(docId)),
+    fx.get(savedId(docId)),
+    fx.query('peerDoc', docId),
   ]);
 
   const now = Date.now();
   let othersActive = false;
-  peersSnap.forEach((d) => {
-    const t = Number(d.data().t);
+  peers.forEach((d) => {
+    const t = Number(d.data?.t);
     if (t > now - PEER_ACTIVE_WINDOW) othersActive = true;
-    else if (!(t > now - PEER_GC_AGE)) deleteDoc(d.ref).catch(() => {});
+    else if (!(t > now - PEER_GC_AGE)) fx.remove(d.id).catch(() => {});
   });
 
-  let state: DocumentData | null = stateSnap.exists() ? stateSnap.data() : null;
-  const saved = savedSnap.exists() ? savedSnap.data() : null;
+  let state: DocumentData | null = stateData;
+  const saved: DocumentData | null = savedData;
   // The shared state is reused unless the file moved on without it (edited outside
   // a collaborative session). Someone still editing keeps it either way: their next
   // save brings the file up to date.
@@ -536,23 +517,20 @@ export async function openCollabSession(
   if (!state || typeof state.seed !== 'string' || (fileMovedOn && !othersActive)) {
     const seed = seedFromMarkdown(fileMarkdown);
     if (seed.length > MAX_SEED_LENGTH) return null;
-    const seenEpoch = state?.epoch ?? null;
-    state = await runTransaction(fx.db, async (tx) => {
-      const cur = await tx.get(stateRef);
-      const curData = cur.exists() ? cur.data() : null;
-      // Someone else (re)seeded it meanwhile: join theirs.
-      if ((curData?.epoch ?? null) !== seenEpoch) return curData;
-      const next = { kind: STATE_KIND, docId, epoch: randomId(), seed, at: Date.now() };
-      tx.set(stateRef, next);
-      tx.set(savedRef, { kind: SAVED_KIND, docId, epoch: next.epoch, hash: fileHash, by: user.id, at: Date.now() });
-      return next;
-    });
+    const seenEpoch: string | null = state?.epoch ?? null;
+    const next = { kind: STATE_KIND, docId, epoch: randomId(), seed, at: Date.now() };
+    const res = await fx.transact({ id: stateId(docId), field: 'epoch', expect: seenEpoch }, [
+      { op: 'set', id: stateId(docId), data: next },
+      { op: 'set', id: savedId(docId), data: { kind: SAVED_KIND, docId, epoch: next.epoch, hash: fileHash, by: user.id, at: Date.now() } },
+    ]);
+    // Someone else (re)seeded it meanwhile: join theirs.
+    state = res.ok ? next : res.current;
     if (!state || typeof state.seed !== 'string') return null;
     // Edits of the previous epoch are no longer reachable.
     if (seenEpoch) {
       const current = `${docId}:${state.epoch}`;
-      getDocs(query(fx.collection, where('updDoc', '==', docId)))
-        .then((snap) => snap.forEach((d) => { if (d.data().stream !== current) deleteDoc(d.ref).catch(() => {}); }))
+      fx.query('updDoc', docId)
+        .then((items) => fx.removeMany(items.filter((d) => d.data?.stream !== current).map((d) => d.id)))
         .catch(() => {});
     }
   }

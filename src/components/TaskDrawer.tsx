@@ -40,6 +40,12 @@ import {
 
 type TaskDetailTab = 'details' | 'subtasks' | 'dependencies';
 
+/** Width of the task panel (desktop), remembered in this browser. */
+const PANEL_WIDTH_KEY = 'kora-task-panel-width';
+const MIN_PANEL_WIDTH = 380;
+const defaultPanelWidth = () => Math.round(Math.min(Math.max(window.innerWidth * 0.42, 440), 900));
+const clampPanelWidth = (w: number) => Math.round(Math.min(Math.max(w, MIN_PANEL_WIDTH), Math.max(MIN_PANEL_WIDTH, window.innerWidth - 480)));
+
 export default function TaskDrawer() {
   const { toast, confirm } = useUI();
   const { 
@@ -69,6 +75,52 @@ export default function TaskDrawer() {
 
   const task = tasks.find(t => t.id === selectedTaskId);
   const activeList = lists.find(l => l?.id === task?.listId);
+
+  // Width chosen by dragging the edge (remembered); until then it follows the window.
+  const [userWidth, setUserWidth] = useState<number | null>(() => {
+    try {
+      const saved = Number(localStorage.getItem(PANEL_WIDTH_KEY));
+      if (saved > 0) return saved;
+    } catch { /* storage unavailable */ }
+    return null;
+  });
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const panelWidth = userWidth !== null ? clampPanelWidth(userWidth) : defaultPanelWidth();
+  void viewportWidth; // re-render on resize so the width above follows the window
+  const panelWidthRef = useRef(panelWidth);
+  panelWidthRef.current = panelWidth;
+  const setPanelWidth = (w: number | null) => setUserWidth(w);
+
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidth = panelWidthRef.current;
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    const onMove = (ev: PointerEvent) => {
+      const w = clampPanelWidth(startWidth + (startX - ev.clientX));
+      panelWidthRef.current = w;
+      setPanelWidth(w);
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+      try {
+        localStorage.setItem(PANEL_WIDTH_KEY, String(panelWidthRef.current));
+      } catch { /* storage unavailable */ }
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  };
 
   const [isLockedByOther, setIsLockedByOther] = useState(false);
   const [lockingUser, setLockingUser] = useState<string | null>(null);
@@ -328,16 +380,32 @@ export default function TaskDrawer() {
   const closeDrawer = () => setSelectedTask(null);
 
   return (
-    <div
-      id="task-drawer-overlay"
-      className="fixed inset-0 bg-foreground/20 backdrop-blur-[1px] z-40 flex justify-end font-body cursor-pointer"
-      onClick={closeDrawer}
+    <aside
+      id="task-drawer-panel"
+      aria-label={`Tarea ${task.taskCode}`}
+      // Below lg: full screen over the app. From lg: a resizable column to the right
+      // of the open view, so other tasks stay a click away.
+      className="@container fixed inset-0 z-40 lg:relative lg:z-auto lg:inset-auto lg:shrink-0 lg:w-(--task-panel-w) lg:max-w-[calc(100vw-480px)] bg-card lg:border-l border-border h-full flex flex-col select-none font-body animate-fade-in"
+      style={{ ['--task-panel-w' as any]: `${panelWidth}px` }}
     >
+      {/* Drag the left edge to resize the panel (desktop) */}
       <div
-        id="task-drawer-panel"
-        className="w-full max-w-4xl bg-card border-l border-border h-full flex flex-col relative select-none shadow-card-hover animate-fade-in cursor-default"
-        onClick={(e) => e.stopPropagation()}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Cambiar el ancho del panel"
+        onPointerDown={startResize}
+        onDoubleClick={() => {
+          setPanelWidth(null);
+          try {
+            localStorage.removeItem(PANEL_WIDTH_KEY);
+          } catch { /* storage unavailable */ }
+        }}
+        className="hidden lg:block absolute left-0 inset-y-0 -translate-x-1/2 w-2 z-10 cursor-col-resize group/resize"
+        data-tooltip="Arrastra para cambiar el ancho (doble clic: restablecer)"
       >
+        <div className="mx-auto h-full w-0.5 bg-transparent group-hover/resize:bg-bento-blue/60 transition-colors" />
+      </div>
+      <div className="relative flex-1 min-h-0 flex flex-col">
         
         {isLockedByOther && (
           <div className="bg-bento-yellow-light border-b border-border p-3 flex items-center gap-2.5 text-bento-yellow text-xs shrink-0 select-none">
@@ -402,11 +470,11 @@ export default function TaskDrawer() {
           </div>
         </div>
 
-        {/* Dual Layout Main scroll body */}
-        <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+        {/* Dual Layout Main scroll body (side by side when the panel is wide enough) */}
+        <div className="flex-1 overflow-hidden flex flex-col @3xl:flex-row">
           
           {/* Column Left */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-16 md:pb-6 space-y-6 border-r border-border bg-card">
+          <div className="flex-1 overflow-y-auto p-4 @lg:p-6 pb-16 @3xl:pb-6 space-y-6 @3xl:border-r border-border bg-card">
             
             {blockerTask && (
               <div className="p-3.5 bg-destructive/20 border border-destructive/40 rounded-xl text-destructive text-xs">
@@ -485,7 +553,7 @@ export default function TaskDrawer() {
 
               <div className="p-4">
                 {detailTab === 'details' && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 @md:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Estado de Tarea</span>
                       <CustomSelect
@@ -566,7 +634,7 @@ export default function TaskDrawer() {
                       </div>
                     </div>
 
-                    <div className="space-y-2.5 col-span-1 sm:col-span-2">
+                    <div className="space-y-2.5 col-span-1 @md:col-span-2">
                       <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider block">Etiquetas / Tags</span>
                       <form onSubmit={handleAddTag} className="flex gap-1.5">
                         <input type="text" disabled={isLockedByOther} className="bg-card border border-input rounded-lg px-2.5 py-1 text-[11px] text-foreground placeholder-muted-foreground focus:outline-none w-full shadow-card" placeholder="Escribir TAG..." value={newTag} onChange={(e) => setNewTag(e.target.value)} />
@@ -648,8 +716,8 @@ export default function TaskDrawer() {
             </div>
           </div>
 
-          {/* Column Right - Activity & Notes (desktop only) */}
-          <div className="hidden md:flex w-96 shrink-0 overflow-hidden p-6 bg-secondary flex-col gap-3">
+          {/* Column Right - Activity & Notes (wide panel only; otherwise a bottom sheet) */}
+          <div className="hidden @3xl:flex w-96 shrink-0 overflow-hidden p-6 bg-secondary flex-col gap-3">
 
             {/* Tabs */}
             <div className="flex gap-4 text-xs font-semibold text-muted-foreground border-b border-border shrink-0">
@@ -886,6 +954,6 @@ export default function TaskDrawer() {
           </div>
         )}
       </div>
-    </div>
+    </aside>
   );
 }

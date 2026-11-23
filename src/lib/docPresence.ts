@@ -8,8 +8,7 @@
  * records that collaborative editing sessions keep (see lib/collab), without
  * loading the editing machinery itself.
  */
-import { onSnapshot, query, where } from 'firebase/firestore';
-import type { FirebaseAdapter } from './firebase';
+import type { CloudAdapterLike } from './records';
 
 /** `kind` of the presence record of one collaborative editing session. */
 export const PEER_KIND = 'kora-collab-peer';
@@ -31,10 +30,10 @@ export interface DocEditor {
  * changing, whatever the writer's clock says.
  */
 export function subscribeDocEditors(
-  adapter: FirebaseAdapter,
+  adapter: CloudAdapterLike,
   onChange: (byDoc: Record<string, DocEditor[]>) => void
 ): () => void {
-  const fx = adapter.collabAccess();
+  const fx = adapter.records();
   const entries = new Map<string, DocEditor & { docId: string; seenAt: number }>();
 
   const emit = () => {
@@ -52,18 +51,18 @@ export function subscribeDocEditors(
   let closed = false;
   adapter.ready().then(() => {
     if (closed) return;
-    unsub = onSnapshot(query(fx.collection, where('kind', '==', PEER_KIND)), (snap) => {
+    unsub = fx.watchQuery('kind', PEER_KIND, (changes) => {
       const now = Date.now();
-      snap.docChanges().forEach((change) => {
+      changes.forEach((change) => {
         if (change.type === 'removed') {
-          entries.delete(change.doc.id);
+          entries.delete(change.id);
           return;
         }
-        const d = change.doc.data();
+        const d = change.data || {};
         // A renewal we just watched happen is fresh; a record found already there
         // is as old as its own timestamp says (capped to the window).
         const age = change.type === 'added' ? Math.min(Math.max(now - Number(d.t || 0), 0), PEER_ACTIVE_WINDOW + 1) : 0;
-        entries.set(change.doc.id, {
+        entries.set(change.id, {
           docId: String(d.peerDoc),
           userId: String(d.userId),
           name: String(d.name || ''),

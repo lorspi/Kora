@@ -111,8 +111,8 @@ export default function MobileNotesDrawer({
 
   const heightClass = {
     collapsed: 'h-[3.5rem]',
-    half: 'h-[50vh]',
-    full: 'h-[85vh]',
+    half: 'h-1/2',
+    full: 'h-[85%]',
   };
 
   const cycleHeight = () => {
@@ -146,7 +146,7 @@ export default function MobileNotesDrawer({
   return (
     <div
       ref={drawerRef}
-      className={`md:hidden fixed bottom-0 left-0 right-0 z-30 bg-secondary border-t border-border rounded-t-2xl shadow-card-hover transition-all duration-300 ease-in-out flex flex-col ${heightClass[drawerHeight]}`}
+      className={`@3xl:hidden absolute bottom-0 left-0 right-0 z-30 bg-secondary border-t border-border rounded-t-2xl shadow-card-hover transition-all duration-300 ease-in-out flex flex-col ${heightClass[drawerHeight]}`}
     >
       {/* Drag handle */}
       <div

@@ -8,6 +8,7 @@ import { useProjectStore } from '../store';
 import { useUI } from '../lib/ui';
 import { SystemUser } from '../types';
 import JSZip from 'jszip';
+import CloudAccessCard from './CloudAccessCard';
 import {
   FloppyDisk as Save,
   Trash as Trash2,
@@ -456,6 +457,9 @@ export default function ProjectInfoCards() {
           ))}
         </div>
       </section>
+
+      {/* Cloud access and invitations (Cloudflare projects) */}
+      <CloudAccessCard />
 
       {/* Backup */}
       <section className="bg-card border border-border rounded-2xl p-5 space-y-4 shadow-card">

@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.6.0] — 2026-11-23
+
+### Added
+
+- **Proyectos en la nube con Cloudflare**
+  Nueva opción "Nube con Cloudflare" en Nuevo proyecto. Un botón "Desplegar en Cloudflare" instala el backend de Kora (carpeta `cloudflare-backend/`: un Worker y un Durable Object con SQLite) en la cuenta gratuita de Cloudflare de quien lo pulsa, sin terminal ni código. Durante el despliegue se elige una contraseña de administración (`ADMIN_TOKEN`); luego basta con pegar en Kora la dirección del Worker y esa contraseña. Funciona igual desde la versión en la nube de Kora que desde `localhost`, y los datos viven solo en la cuenta del equipo. Incluye todo lo que ya tenían los proyectos de Firebase: sincronización en tiempo real (por WebSocket), edición colaborativa de documentos con cursores y presencia, y quién edita cada documento. Los archivos pueden pesar hasta unos 5 MB (en Firebase, 1 MB). En "Opciones avanzadas" se puede usar un mismo backend para varios proyectos independientes ("espacios").
+
+- **Invitaciones al equipo con enlace o código**
+  En el inicio de un proyecto de Cloudflare, la tarjeta "Acceso al proyecto en la nube" muestra el backend y, a quien lo administra, permite crear una invitación por persona (miembro o administrador). La invitación se comparte como enlace (abre Kora en la misma dirección y une al proyecto con un clic) o como código (para quien use Kora en otra dirección: se pega en "Nube con Cloudflare → Tengo una invitación"). Al abrir el enlace, Kora pide confirmación, quita el token de la barra de direcciones y agrega el proyecto; si ya estaba, solo actualiza el acceso. Las invitaciones activas se listan y se pueden revocar: quien la tenía pierde el acceso al momento y Kora se lo avisa y lo devuelve a la lista de proyectos.
+
+- **Rutas en la URL para cada vista**
+  Las listas, tareas, documentos, carpetas de documentos, el explorador de medios, la papelera y "Acerca de" tienen su propia dirección (`#/listas/{id}`, `#/documentos/{id}`, `#/documentos/carpeta/{carpeta}`, `#/medios`, `#/papelera`, `#/acerca`). Una tarea abierta se añade como `?tarea=TSK-001` sobre la vista en la que está, y `#/tareas/TSK-001` abre la tarea sobre su lista. Las direcciones se pueden compartir y guardar en favoritos, se conservan al recargar la página (también después de iniciar sesión) y los botones Atrás y Adelante del navegador recorren la navegación, incluido el cambio entre tareas. Si una dirección apunta a algo que ya no existe, se muestra la vista más cercana. Las rutas van en el hash de la URL para que funcionen también con el servidor local del paquete distribuible.
+
+### Changed
+
+- **El detalle de la tarea se abre en una columna a la derecha**
+  La tarea ya no tapa la pantalla: se abre en un panel a la derecha de la lista (o de la vista abierta), así que se puede pasar de una tarea a otra con un clic sin cerrarla. La tarea abierta se resalta en las vistas Lista, Kanban y Tabla, y se puede arrastrar a otra lista aunque esté abierta. El panel se ensancha o estrecha arrastrando su borde izquierdo (doble clic para volver al ancho automático) y el ancho se recuerda en el navegador. Su contenido se adapta a su ancho: con espacio suficiente, las notas y la actividad van en una columna propia; si no, en la hoja inferior. En pantallas medianas (de 1024 a 1439 px), mientras hay una tarea abierta la barra lateral se colapsa en una franja con el menú y la búsqueda, y se abre por encima del contenido. En el móvil la tarea sigue ocupando toda la pantalla. Escape cierra la tarea.
+
+- **Filas de tareas según el espacio disponible**
+  En la vista Lista, cada tarea pasa a mostrarse en dos líneas cuando la lista es estrecha (por ejemplo, junto al panel de la tarea), en lugar de recortar el título.
+
+- **Carga más rápida de los proyectos en la nube**
+  Las listas y tareas se leen en paralelo al abrir un proyecto y en cada sincronización. Un aviso de cambio que llega mientras otra sincronización está en curso ya no se pierde: se vuelve a sincronizar al terminar.
+
+### Fixed
+
+- **Proyecto cargado dos veces al abrir Kora en desarrollo**
+  La inicialización de la app se ejecuta una sola vez aunque React la invoque dos veces en modo desarrollo. Así no se duplican las peticiones y una segunda carga ya no deshace la vista restaurada desde la URL.
+
 ## [1.5.1] — 2026-10-08
 
 ### Added

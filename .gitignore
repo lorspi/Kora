@@ -29,3 +29,7 @@ servidor-local/nul
 nul
 .documentos/behance-post.md
 .documentos/guia-nueva-app-suite.md
+
+# Cloudflare backend (local dev state and secrets)
+cloudflare-backend/.wrangler/
+cloudflare-backend/.dev.vars

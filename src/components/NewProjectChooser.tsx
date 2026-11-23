@@ -5,13 +5,15 @@
 
 /**
  * "Nuevo Proyecto": choose between a folder of the computer and a cloud project
- * (Firebase). Shared by the home screen and the sidebar's project manager.
+ * (the team's own Cloudflare or Firebase). Shared by the home screen and the
+ * sidebar's project manager.
  */
 import React, { useState, lazy, Suspense } from 'react';
 import { useProjectStore } from '../store';
-import { HardDrive, ArrowRight, X, Cloud } from '@phosphor-icons/react';
+import { HardDrive, ArrowRight, X, Cloud, Lightning } from '@phosphor-icons/react';
 import { saveDirectoryHandleWithKey } from '../lib/fs';
 const FirebaseLinkDialog = lazy(() => import('./FirebaseLinkDialog'));
+const CloudflareLinkDialog = lazy(() => import('./CloudflareLinkDialog'));
 
 interface Props {
   onClose: () => void;
@@ -24,7 +26,7 @@ interface Props {
 export default function NewProjectChooser({ onClose, onError, onStart }: Props) {
   const { registerProject, loadProjectById } = useProjectStore();
   const [fsaSupported] = useState<boolean>(() => 'showDirectoryPicker' in window);
-  const [showFirebaseLink, setShowFirebaseLink] = useState(false);
+  const [cloudDialog, setCloudDialog] = useState<'firebase' | 'cloudflare' | null>(null);
 
   const handleSelectFSA = async () => {
     onStart?.();
@@ -51,14 +53,16 @@ export default function NewProjectChooser({ onClose, onError, onStart }: Props) 
     }
   };
 
-  if (showFirebaseLink) {
+  if (cloudDialog) {
     return (
       <Suspense fallback={
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
         </div>
       }>
-        <FirebaseLinkDialog onClose={() => setShowFirebaseLink(false)} />
+        {cloudDialog === 'firebase'
+          ? <FirebaseLinkDialog onClose={() => setCloudDialog(null)} />
+          : <CloudflareLinkDialog onClose={() => setCloudDialog(null)} />}
       </Suspense>
     );
   }
@@ -76,7 +80,7 @@ export default function NewProjectChooser({ onClose, onError, onStart }: Props) 
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Option: Native File System (local, offline-first) */}
         <div 
           onClick={handleSelectFSA}
@@ -101,20 +105,40 @@ export default function NewProjectChooser({ onClose, onError, onStart }: Props) 
           </span>
         </div>
 
+        {/* Option: Cloudflare cloud (one-click deploy, realtime team sync) */}
+        <div
+          onClick={() => { onStart?.(); setCloudDialog('cloudflare'); }}
+          className="group border border-border bg-card hover:border-bento-orange/60 hover:shadow-card-hover rounded-2xl p-5 cursor-pointer transition-all duration-300 flex flex-col text-left h-full"
+        >
+          <div className="w-10 h-10 rounded-xl bg-bento-orange-light flex items-center justify-center text-bento-orange mb-4 transition-colors">
+            <Lightning className="w-5 h-5" />
+          </div>
+          <h3 className="font-semibold text-foreground text-sm flex items-center gap-1.5 flex-wrap font-heading">
+            Nube con Cloudflare
+            <span className="text-[10px] bg-bento-orange/10 text-bento-orange font-mono px-2 py-0.5 rounded-full">1 clic</span>
+          </h3>
+          <p className="mt-1.5 text-muted-foreground text-xs leading-normal flex-1">
+            Despliega el backend de Kora en tu cuenta gratuita de <strong>Cloudflare</strong> con un botón, o únete con la invitación de tu equipo.
+          </p>
+          <span className="mt-4 text-[11px] text-bento-orange font-medium group-hover:underline flex items-center gap-1">
+            Conectar Cloudflare <ArrowRight className="w-3 h-3" />
+          </span>
+        </div>
+
         {/* Option: Firebase cloud (realtime team sync) */}
         <div
-          onClick={() => { onStart?.(); setShowFirebaseLink(true); }}
+          onClick={() => { onStart?.(); setCloudDialog('firebase'); }}
           className="group border border-border bg-card hover:border-bento-orange/60 hover:shadow-card-hover rounded-2xl p-5 cursor-pointer transition-all duration-300 flex flex-col text-left h-full"
         >
           <div className="w-10 h-10 rounded-xl bg-bento-orange-light flex items-center justify-center text-bento-orange mb-4 transition-colors">
             <Cloud className="w-5 h-5" />
           </div>
-          <h3 className="font-semibold text-foreground text-sm flex items-center gap-1.5 font-heading">
-            Proyecto en la nube
+          <h3 className="font-semibold text-foreground text-sm flex items-center gap-1.5 flex-wrap font-heading">
+            Nube con Firebase
             <span className="text-[10px] bg-bento-orange/10 text-bento-orange font-mono px-2 py-0.5 rounded-full">Tiempo real</span>
           </h3>
           <p className="mt-1.5 text-muted-foreground text-xs leading-normal flex-1">
-            Conecta tu propio proyecto de <strong>Firebase</strong> para sincronizar al instante con todo el equipo, sin esperar a Drive ni Mega.
+            Conecta tu propio proyecto de <strong>Firebase</strong> para sincronizar al instante con todo el equipo.
           </p>
           <span className="mt-4 text-[11px] text-bento-orange font-medium group-hover:underline flex items-center gap-1">
             Vincular Firebase <ArrowRight className="w-3 h-3" />

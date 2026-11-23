@@ -525,7 +525,7 @@ Este proyecto cuenta la historia de un equipo pequeño que lanza **Origen**, una
 
 - Si el nombre de una lista o de un documento empieza por un emoji, ese emoji se usa como su icono.
 - Los documentos admiten diagramas **Mermaid**, tablas, listas de tareas, código e imágenes de la galería.
-- Todo se guarda como archivos JSON y Markdown legibles, en tu carpeta o en tu propio Firebase.
+- Todo se guarda como archivos JSON y Markdown legibles, en tu carpeta o en tu propio Firebase o Cloudflare.
 `,
     [roadmap.id]: `# 🗺️ Hoja de ruta
 

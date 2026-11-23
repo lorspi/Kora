@@ -35,12 +35,15 @@ import {
   query,
   where,
   onSnapshot,
+  runTransaction,
+  writeBatch,
   type Firestore,
   type DocumentReference,
   type CollectionReference,
 } from 'firebase/firestore';
 import { getAuth, signInAnonymously, type Auth } from 'firebase/auth';
 import { normalizePath } from './fs';
+import type { RecordStore } from './records';
 
 /** Shape of the public Firebase web config object the user pastes from the console. */
 export interface FirebaseConfig {
@@ -260,18 +263,91 @@ export class FirebaseAdapter {
     return collection(this.db, 'kora', this.spaceId, 'files');
   }
 
+  private recordStore: RecordStore | null = null;
+
   /**
-   * Raw Firestore access for the realtime collaboration layer (lib/collab). Its
-   * records live in the same collection as the files, so the security rules teams
-   * already have cover them, but they carry no `path` field: file listings and the
-   * change subscription (both filtered on `path`) never see them.
+   * Realtime records for collaborative editing (lib/collab, lib/docPresence). They
+   * live in the same collection as the files, so the security rules teams already
+   * have cover them, but they carry no `path` field: file listings and the change
+   * subscription (both filtered on `path`) never see them.
    */
-  collabAccess(): { db: Firestore; collection: CollectionReference; docRef: (id: string) => DocumentReference } {
-    return {
-      db: this.db,
-      collection: this.filesCollection(),
-      docRef: (id: string) => doc(this.db, 'kora', this.spaceId, 'files', id),
+  records(): RecordStore {
+    if (this.recordStore) return this.recordStore;
+    const db: Firestore = this.db;
+    const coll: CollectionReference = this.filesCollection();
+    const ref = (id: string): DocumentReference => doc(this.db, 'kora', this.spaceId, 'files', id);
+    const authReady = () => this.authReady;
+    this.recordStore = {
+      async get(id) {
+        await authReady();
+        const snap = await getDoc(ref(id));
+        return snap.exists() ? snap.data() : null;
+      },
+      async set(id, data) {
+        await authReady();
+        await setDoc(ref(id), data);
+      },
+      async remove(id) {
+        await authReady();
+        await deleteDoc(ref(id));
+      },
+      async removeMany(ids) {
+        await authReady();
+        // Firestore batches hold up to 500 writes.
+        for (let i = 0; i < ids.length; i += 400) {
+          const batch = writeBatch(db);
+          ids.slice(i, i + 400).forEach((id) => batch.delete(ref(id)));
+          await batch.commit();
+        }
+      },
+      async query(field, value) {
+        await authReady();
+        const snap = await getDocs(query(coll, where(field, '==', value)));
+        return snap.docs.map((d) => ({ id: d.id, data: d.data() }));
+      },
+      watch(id, onData, onError) {
+        let unsub = () => {};
+        let closed = false;
+        authReady().then(() => {
+          if (closed) return;
+          unsub = onSnapshot(ref(id), (snap) => onData(snap.exists() ? snap.data() : null), onError);
+        }, onError);
+        return () => {
+          closed = true;
+          unsub();
+        };
+      },
+      watchQuery(field, value, onChanges, onError) {
+        let unsub = () => {};
+        let closed = false;
+        authReady().then(() => {
+          if (closed) return;
+          unsub = onSnapshot(
+            query(coll, where(field, '==', value)),
+            (snap) => onChanges(snap.docChanges().map((c) => ({ type: c.type, id: c.doc.id, data: c.doc.data() }))),
+            onError
+          );
+        }, onError);
+        return () => {
+          closed = true;
+          unsub();
+        };
+      },
+      async transact(check, writes) {
+        await authReady();
+        return runTransaction(db, async (tx) => {
+          const cur = await tx.get(ref(check.id));
+          const current = cur.exists() ? cur.data() : null;
+          if ((current?.[check.field] ?? null) !== check.expect) return { ok: false, current };
+          for (const w of writes) {
+            if (w.op === 'update') tx.update(ref(w.id), w.data);
+            else tx.set(ref(w.id), w.data);
+          }
+          return { ok: true, current };
+        });
+      },
     };
+    return this.recordStore;
   }
 
   private fileDoc(path: string) {

@@ -64,7 +64,9 @@ export default defineConfig(() => {
       // Do not modify - file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // The Cloudflare backend is a separate project: its local state (.wrangler/) changes
+      // on every request while `wrangler dev` runs and must not reload the app.
+      watch: process.env.DISABLE_HMR === 'true' ? null : { ignored: ['**/cloudflare-backend/**'] },
       host: "::",
       port: 8080,
       allowedHosts: ["test.lorspi.com"],

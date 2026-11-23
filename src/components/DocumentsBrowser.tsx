@@ -33,7 +33,7 @@ import {
 import { useUI } from '../lib/ui';
 import { useProjectStore, isDocLockAlive } from '../store';
 import { DocMetadata } from '../types';
-import type { FirebaseAdapter } from '../lib/firebase';
+import { isCloudAdapter } from '../lib/records';
 import type { DocEditor } from '../lib/docPresence';
 import { markdownToHtml } from '../lib/markdown';
 import { splitLeadingEmoji } from '../lib/emoji';
@@ -244,11 +244,11 @@ function useDocEditors(): Record<string, DocEditor[]> {
 
   useEffect(() => {
     setCloud({});
-    if (!adapter || adapter.getMode() !== 'FIREBASE') return;
+    if (!isCloudAdapter(adapter)) return;
     let closed = false;
     let unsubscribe = () => {};
     import('../lib/docPresence').then(({ subscribeDocEditors }) => {
-      if (!closed) unsubscribe = subscribeDocEditors(adapter as FirebaseAdapter, setCloud);
+      if (!closed) unsubscribe = subscribeDocEditors(adapter, setCloud);
     });
     return () => {
       closed = true;

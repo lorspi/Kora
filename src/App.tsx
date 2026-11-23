@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, lazy, Suspense } from 'react';
+import React, { useEffect, useRef, lazy, Suspense } from 'react';
 import { useProjectStore } from './store';
 import ProjectBrowser from './components/ProjectBrowser';
 import ProjectOnboarding from './components/ProjectOnboarding';
@@ -19,6 +19,10 @@ import AboutKora from './components/AboutKora';
 import AccessibilitySection from './components/AccessibilitySection';
 import TaskDrawer from './components/TaskDrawer';
 import SearchDialog from './components/SearchDialog';
+import InviteJoinScreen from './components/InviteJoinScreen';
+import { useHashRouter, isInviteHash, clearRouteHash } from './lib/router';
+import { decodeInvite, CLOUD_ACCESS_LOST_EVENT } from './lib/cloudflare';
+import { useUI } from './lib/ui';
 import {
   CheckCircle as CheckCircle2,
   Stack as Layers,
@@ -79,8 +83,49 @@ export default function App() {
     initialize,
     isLoading,
     isOnboarding,
-    closeProject
+    closeProject,
+    pendingInvite,
+    setPendingInvite
   } = useProjectStore();
+
+  // Every view has an address in the URL (#/listas/..., ?tarea=...) while a project is open.
+  const workspaceReady = !!adapter && !!activeUser && !isOnboarding && !isLoading;
+  useHashRouter(workspaceReady);
+
+  // Leaving a project (back to the project browser) drops its address.
+  const hadAdapter = useRef(false);
+  useEffect(() => {
+    if (adapter) hadAdapter.current = true;
+    else if (hadAdapter.current) {
+      hadAdapter.current = false;
+      clearRouteHash();
+    }
+  }, [adapter]);
+
+  // The team's Cloudflare backend stopped accepting our access (invitation revoked).
+  const { toast } = useUI();
+  useEffect(() => {
+    const onAccessLost = () => {
+      toast('Ya no tienes acceso a este proyecto en la nube: la invitación fue revocada. Pide un enlace nuevo a quien administra el backend.', 'error');
+      useProjectStore.getState().goToProjectBrowser();
+    };
+    window.addEventListener(CLOUD_ACCESS_LOST_EVENT, onAccessLost);
+    return () => window.removeEventListener(CLOUD_ACCESS_LOST_EVENT, onAccessLost);
+  }, []);
+
+  // Invitation links (#/unirse?i=...): read the invitation, then take it out of the
+  // URL right away so the access token doesn't stay in the address bar or history.
+  useEffect(() => {
+    const readInvite = () => {
+      if (!isInviteHash(window.location.hash)) return;
+      const invite = decodeInvite(window.location.hash);
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+      if (invite) setPendingInvite(invite);
+    };
+    readInvite();
+    window.addEventListener('hashchange', readInvite);
+    return () => window.removeEventListener('hashchange', readInvite);
+  }, []);
 
   // Update browser tab title with project name
   useEffect(() => {
@@ -131,6 +176,8 @@ export default function App() {
     return () => clearInterval(interval);
   }, [adapter]);
 
+  const invite = pendingInvite ? <InviteJoinScreen /> : null;
+
   // Initial loading state
   if (isLoading) {
     return (
@@ -139,24 +186,28 @@ export default function App() {
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="font-mono text-muted-foreground">Cargando...</p>
         </div>
+        {invite}
       </div>
     );
   }
 
   // Stage 1: Show Project Browser (multi-project selection)
   if (!adapter) {
-    return <ProjectBrowser />;
+    return <><ProjectBrowser />{invite}</>;
   }
 
   // Stage 2: Onboarding for new project
   if (isOnboarding) {
-    return <ProjectOnboarding />;
+    return <><ProjectOnboarding />{invite}</>;
   }
 
   // Stage 3: Register/Authenticate Local User inside selected folder
   if (!activeUser) {
-    return <AuthScreen />;
+    return <><AuthScreen />{invite}</>;
   }
+
+  const cloudMode = adapter.getMode();
+  const isCloud = cloudMode === 'FIREBASE' || cloudMode === 'CLOUDFLARE';
 
   // Metrics calculators
   const totalTasks = tasks.length;
@@ -211,21 +262,21 @@ export default function App() {
                       ¡Hola de nuevo, {activeUser.name.split(' ')[0]}! 👋
                     </h1>
                     <p className="text-muted-foreground text-xs mt-1.5 leading-normal">
-                      {adapter?.getMode() === 'FIREBASE'
-                        ? 'Tu proyecto está conectado a Firebase y se sincroniza en tiempo real con tu equipo.'
+                      {isCloud
+                        ? `Tu proyecto está conectado a ${cloudMode === 'CLOUDFLARE' ? 'tu backend de Cloudflare' : 'Firebase'} y se sincroniza en tiempo real con tu equipo.`
                         : 'Has cargado exitosamente la carpeta local de tu proyecto. Tu base de conocimientos está lista y 100% desconectada.'}
                     </p>
                   </div>
 
                   <div className="text-xs font-mono bg-card border border-border p-3 rounded-xl shadow-card">
-                    {adapter?.getMode() === 'FIREBASE' ? (
+                    {isCloud ? (
                       <>
                         <div className="flex items-center gap-2 mb-1 text-muted-foreground">
                           <Cloud className="w-4 h-4 text-bento-orange" />
                           <span>Base de Datos:</span>
                         </div>
                         <strong className="text-bento-orange font-semibold uppercase font-mono text-[11px]">
-                          Proyecto en la nube
+                          {cloudMode === 'CLOUDFLARE' ? 'Nube · Cloudflare' : 'Nube · Firebase'}
                         </strong>
                       </>
                     ) : (
@@ -294,13 +345,15 @@ export default function App() {
           )}
         </div>
       </main>
-      </div>
 
-      {/* Task detail context panel drawer */}
-      <TaskDrawer />
+        {/* Task detail: a column to the right of the open view (full screen on mobile) */}
+        <TaskDrawer />
+      </div>
 
       {/* Global Command palette search dialog */}
       <SearchDialog />
+
+      {invite}
 
     </div>
   );

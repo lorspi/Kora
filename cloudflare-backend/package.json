@@ -1,0 +1,30 @@
+{
+  "name": "kora-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend de Kora en Cloudflare (Workers + Durable Objects) para proyectos en la nube con sincronización en tiempo real.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "check": "tsc --noEmit"
+  },
+  "cloudflare": {
+    "label": "Backend de Kora",
+    "products": ["Workers", "Durable Objects"],
+    "categories": ["storage"],
+    "bindings": {
+      "ADMIN_TOKEN": {
+        "description": "Contraseña de administración. Elige una larga (mínimo 12 caracteres) y guárdala: la pegarás en Kora junto con la dirección del Worker. Con ella podrás generar enlaces de invitación para tu equipo."
+      },
+      "SPACE": {
+        "description": "Almacenamiento de los proyectos (Durable Objects con SQLite, incluido en el plan gratuito)."
+      }
+    }
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261119.1",
+    "typescript": "~5.8.2",
+    "wrangler": "^4.166.0"
+  }
+}

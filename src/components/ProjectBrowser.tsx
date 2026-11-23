@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useProjectStore } from '../store';
-import { RegisteredProject } from '../types';
+import { RegisteredProject, isCloudProjectType } from '../types';
 import {
   FolderOpen, HardDrive, Warning as AlertTriangle,
   ArrowRight, GithubLogo as Github, Download, Plus, X,
@@ -142,7 +142,7 @@ export default function ProjectBrowser() {
             <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground font-mono pt-2">
               <span className="flex items-center gap-2">
                 <HelpCircle className="w-4 h-4 text-bento-blue/70" />
-                En modo local tus datos no salen de tu equipo. En modo nube viven en tu propio Firebase.
+                En modo local tus datos no salen de tu equipo. En modo nube viven en tu propio Firebase o Cloudflare.
               </span>
               <a 
                 href="https://github.com/lorspi/Kora" 
@@ -184,11 +184,11 @@ export default function ProjectBrowser() {
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                        project.type === 'FIREBASE'
+                        isCloudProjectType(project.type)
                           ? 'bg-bento-orange-light text-bento-orange'
                           : 'bg-bento-blue-light text-bento-blue'
                       }`}>
-                        {project.type === 'FIREBASE' ? <Cloud className="w-4 h-4" /> : <HardDrive className="w-4 h-4" />}
+                        {isCloudProjectType(project.type) ? <Cloud className="w-4 h-4" /> : <HardDrive className="w-4 h-4" />}
                       </div>
                       <div className="flex items-center gap-1.5">
                         {/* Auth indicator */}
@@ -228,7 +228,7 @@ export default function ProjectBrowser() {
 
                     <h3 className="font-semibold text-foreground text-sm truncate">{project.name}</h3>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {project.type === 'FIREBASE' ? 'Proyecto en la nube' : 'Carpeta Local'}
+                      {isCloudProjectType(project.type) ? 'Proyecto en la nube' : 'Carpeta Local'}
                       {project.pathHint && <span className="ml-1">· {project.pathHint}</span>}
                     </p>
 
@@ -248,7 +248,7 @@ export default function ProjectBrowser() {
             <div className="flex items-center justify-center gap-4 pt-4 text-xs text-muted-foreground font-mono border-t border-border">
               <span className="flex items-center gap-2">
                 <HelpCircle className="w-4 h-4 text-bento-blue/70" />
-                En modo local tus datos no salen de tu equipo. En modo nube viven en tu propio Firebase.
+                En modo local tus datos no salen de tu equipo. En modo nube viven en tu propio Firebase o Cloudflare.
               </span>
               <a 
                 href="https://github.com/lorspi/Kora" 

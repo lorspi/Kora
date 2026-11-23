@@ -23,6 +23,8 @@ import {
 import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDirectoryHandle, clearDirectoryHandle, saveDirectoryHandleWithKey, loadDirectoryHandleByKey, deleteDirectoryHandleByKey, dbClear } from '../lib/fs';
 import type { FirebaseAdapter, FirebaseConfig } from '../lib/firebase';
 import { saveFirebaseConfigForProject, loadFirebaseConfigForProject, deleteFirebaseConfigForProject } from '../lib/firebaseConfigStore';
+import type { CloudflareAdapter, CloudflareLink, CloudflareInvite } from '../lib/cloudflare';
+import { saveCloudflareLinkForProject, loadCloudflareLinkForProject, deleteCloudflareLinkForProject } from '../lib/cloudflareConfigStore';
 import { hashPassword } from '../lib/crypto';
 import { buildSampleProject, SAMPLE_MEDIA } from './sampleProject';
 
@@ -31,7 +33,14 @@ import { buildSampleProject, SAMPLE_MEDIA } from './sampleProject';
  * interface (readTextFile/writeTextFile/listFiles/fileExists/...), so the entire
  * store, CRUD, locks and polling logic works against either one unchanged.
  */
-export type StorageAdapter = FileSystemAdapter | FirebaseAdapter;
+export type StorageAdapter = FileSystemAdapter | FirebaseAdapter | CloudflareAdapter;
+
+/** Close the realtime connection of an adapter that is no longer in use. */
+function releaseAdapter(adapter: StorageAdapter | null) {
+  if (adapter && adapter.getMode() === 'CLOUDFLARE') {
+    (adapter as CloudflareAdapter).dispose().catch(() => {});
+  }
+}
 
 interface ProjectState {
   // Engines
@@ -201,6 +210,15 @@ interface ProjectState {
   loadProjectById: (projectId: string) => Promise<void>;
   registerProject: (name: string, type: ProjectStorageType, pathHint?: string) => string;
   registerFirebaseProject: (name: string, config: FirebaseConfig, spaceId?: string) => string;
+  registerCloudflareProject: (name: string, link: CloudflareLink) => string;
+  /**
+   * Join a Cloudflare project from an invitation: reuses the project if it is
+   * already registered here (refreshing its token), otherwise registers it. Loads it.
+   */
+  joinCloudflareInvite: (invite: CloudflareInvite) => Promise<void>;
+  /** Invitation opened through a link (#/unirse?i=...), waiting for confirmation. */
+  pendingInvite: CloudflareInvite | null;
+  setPendingInvite: (invite: CloudflareInvite | null) => void;
   unregisterProject: (projectId: string) => void;
   goToProjectBrowser: () => void;
 }
@@ -426,6 +444,30 @@ function migrateOldProject(): RegisteredProject[] {
   return projects;
 }
 
+/**
+ * Read and parse the .json files of a folder in parallel, keeping their order.
+ * Files that can't be read or parsed are skipped with a warning.
+ */
+async function readJsonFiles<T>(adapter: StorageAdapter, folder: string, files: string[], what: string): Promise<T[]> {
+  const results = await Promise.all(
+    files.filter((file) => file.endsWith('.json')).map(async (file) => {
+      try {
+        return JSON.parse(await adapter.readTextFile(`${folder}/${file}`)) as T;
+      } catch (e) {
+        console.warn(`Error reading ${what} file: ${file}`, e);
+        return null;
+      }
+    })
+  );
+  return results.filter((x): x is Awaited<T> & {} => x !== null) as T[];
+}
+
+/** A background reload was requested while one was running (see backgroundReload). */
+let reloadAgain = false;
+
+/** The app-load initialization in progress or done (see initialize). */
+let initializeOnce: Promise<void> | null = null;
+
 export const useProjectStore = create<ProjectState>((set, get) => {
   
   // Save specific logs helper
@@ -501,6 +543,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     // Multi-project browser state
     registeredProjects: loadRegisteredProjects(),
     loadedProjectId: null,
+    pendingInvite: null,
+    setPendingInvite: (invite) => set({ pendingInvite: invite }),
 
     // Read full project contents on load (local folder mode)
     loadProjectDirectory: async (handle, mode) => {
@@ -510,6 +554,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
     // Generic loader that works for any storage adapter (local folder or Firebase).
     loadFromAdapter: async (adapter) => {
+      const previous = get().adapter;
+      if (previous && previous !== adapter) releaseAdapter(previous);
       set({ isLoading: true });
 
       try {
@@ -555,32 +601,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         }
 
         // Load lists
+        // (Files are read in parallel: in cloud projects each read is a network round trip.)
         const listFiles = await adapter.listFiles('/lists');
-        const lists: TaskList[] = [];
-        for (const file of listFiles) {
-          if (file.endsWith('.json')) {
-            try {
-              const listRaw = await adapter.readTextFile(`/lists/${file}`);
-              lists.push(JSON.parse(listRaw));
-            } catch (e) {
-              console.warn(`Error reading list file: ${file}`, e);
-            }
-          }
-        }
+        const lists: TaskList[] = (await readJsonFiles<TaskList>(adapter, '/lists', listFiles, 'list'));
 
         // Load tasks
         const taskFiles = await adapter.listFiles('/tasks');
-        const tasks: Task[] = [];
-        for (const file of taskFiles) {
-          if (file.endsWith('.json')) {
-            try {
-              const taskRaw = await adapter.readTextFile(`/tasks/${file}`);
-              tasks.push(JSON.parse(taskRaw));
-            } catch (e) {
-              console.warn(`Error reading task file: ${file}`, e);
-            }
-          }
-        }
+        const tasks: Task[] = (await readJsonFiles<Task>(adapter, '/tasks', taskFiles, 'task'));
 
         // Load doc list from index file in /docs/info.json
         let docs: DocMetadata[] = [];
@@ -691,37 +718,45 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
-    // Auto-initialize on app load — migrate old single-project to multi-project browser
-    initialize: async () => {
-      // Try migration from old single-project system (old PERSISTENCE_KEY)
-      const migrated = migrateOldProject();
-      if (migrated.length > 0) {
-        set({ registeredProjects: migrated });
-        // COMENTARIO: No retornamos aqui — continuamos para intentar
-        // auto-cargar el ultimo proyecto abierto.
-      }
-
-      // Check if there's a last opened project to auto-restore on reload
-      const lastOpenedId = loadLastOpenedProjectId();
-      if (lastOpenedId) {
-        const projectExists = get().registeredProjects.some(p => p.id === lastOpenedId);
-        if (projectExists) {
-          try {
-            await get().loadProjectById(lastOpenedId);
-            return; // loadProjectById sets isLoading to false
-          } catch (e) {
-            console.warn('Could not auto-load last project', e);
-            // Clear the stale reference so we don't keep trying
-            clearLastOpenedProjectId();
+    // Auto-initialize on app load — migrate old single-project to multi-project browser.
+    // Runs once even if called twice (React StrictMode runs mount effects twice in
+    // development): a second, concurrent load would reset the selection restored
+    // from the URL when it finished.
+    initialize: () => {
+      if (!initializeOnce) {
+        initializeOnce = (async () => {
+          // Try migration from old single-project system (old PERSISTENCE_KEY)
+          const migrated = migrateOldProject();
+          if (migrated.length > 0) {
+            set({ registeredProjects: migrated });
+            // COMENTARIO: No retornamos aqui — continuamos para intentar
+            // auto-cargar el ultimo proyecto abierto.
           }
-        } else {
-          // Project no longer registered, clean up
-          clearLastOpenedProjectId();
-        }
-      }
 
-      // Projects are already loaded synchronously in the initial state from localStorage
-      set({ isLoading: false });
+          // Check if there's a last opened project to auto-restore on reload
+          const lastOpenedId = loadLastOpenedProjectId();
+          if (lastOpenedId) {
+            const projectExists = get().registeredProjects.some(p => p.id === lastOpenedId);
+            if (projectExists) {
+              try {
+                await get().loadProjectById(lastOpenedId);
+                return; // loadProjectById sets isLoading to false
+              } catch (e) {
+                console.warn('Could not auto-load last project', e);
+                // Clear the stale reference so we don't keep trying
+                clearLastOpenedProjectId();
+              }
+            } else {
+              // Project no longer registered, clean up
+              clearLastOpenedProjectId();
+            }
+          }
+
+          // Projects are already loaded synchronously in the initial state from localStorage
+          set({ isLoading: false });
+        })();
+      }
+      return initializeOnce;
     },
 
     saveProjectConfig: async (config) => {
@@ -993,8 +1028,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     // Background interval check to load recent updates from syncing folders
     backgroundReload: async () => {
       const { adapter, isPolling } = get();
-      if (!adapter || isPolling) return;
-      
+      if (!adapter) return;
+      // A change announced while a reload is running may not be in what it reads:
+      // reload once more when it finishes.
+      if (isPolling) {
+        reloadAgain = true;
+        return;
+      }
+      reloadAgain = false;
+
       set({ isPolling: true });
       try {
         // Read locks list
@@ -1044,26 +1086,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           else delete docLocks[openDocId];
         }
 
-        // Re-read lists catalog
-        const listFiles = await adapter.listFiles('/lists');
-        const lists: TaskList[] = [];
-        for (const file of listFiles) {
-          if (file.endsWith('.json')) {
-            const listRaw = await adapter.readTextFile(`/lists/${file}`);
-            lists.push(JSON.parse(listRaw));
-          }
-        }
+        // Re-read lists catalog and tasks (in parallel; any failed read skips this round)
+        const readAll = async <T,>(folder: string): Promise<T[]> => {
+          const files = (await adapter.listFiles(folder)).filter((f) => f.endsWith('.json'));
+          return Promise.all(files.map(async (f) => JSON.parse(await adapter.readTextFile(`${folder}/${f}`)) as T));
+        };
+        const [lists, tasks] = await Promise.all([readAll<TaskList>('/lists'), readAll<Task>('/tasks')]);
         sortListsInPlace(lists);
-
-        // Re-read tasks
-        const taskFiles = await adapter.listFiles('/tasks');
-        const tasks: Task[] = [];
-        for (const file of taskFiles) {
-          if (file.endsWith('.json')) {
-            const taskRaw = await adapter.readTextFile(`/tasks/${file}`);
-            tasks.push(JSON.parse(taskRaw));
-          }
-        }
         tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
 
         // Re-read doc info
@@ -1117,6 +1146,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         console.warn('Sync background check bypassed/idle', err);
         set({ isPolling: false });
       }
+      if (reloadAgain && get().adapter === adapter) void get().backgroundReload();
     },
 
     // Import a backup ZIP into the currently loaded project, replacing its contents.
@@ -1285,6 +1315,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     closeProject: async () => {
+      releaseAdapter(get().adapter);
       // Clear persistence state and stored FSA handle
       localStorage.removeItem(PERSISTENCE_KEY);
       localStorage.removeItem(SAVED_SESSION_KEY);
@@ -1353,6 +1384,49 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       return projectId;
     },
 
+    // Register a cloud project on the team's own Cloudflare backend.
+    registerCloudflareProject: (name, link) => {
+      const projectId = crypto.randomUUID();
+      let host = link.url;
+      try {
+        host = new URL(link.url).host;
+      } catch { /* keep as is */ }
+      const project: RegisteredProject = {
+        id: projectId,
+        name,
+        type: 'CLOUDFLARE',
+        createdAt: Date.now(),
+        pathHint: link.spaceId && link.spaceId !== 'default' ? `${host} · ${link.spaceId}` : host,
+      };
+      const projects = [...get().registeredProjects, project];
+      saveRegisteredProjects(projects);
+      saveCloudflareLinkForProject(projectId, link);
+      saveLastOpenedProjectId(projectId);
+      set({ registeredProjects: projects, loadedProjectId: projectId });
+      return projectId;
+    },
+
+    joinCloudflareInvite: async (invite) => {
+      const { testCloudflareConnection } = await import('../lib/cloudflare');
+      const link: CloudflareLink = { url: invite.url, token: invite.token, spaceId: invite.spaceId || 'default' };
+      // Fails early (and with a friendly message) if the invitation was revoked.
+      await testCloudflareConnection(link);
+      const existing = get().registeredProjects.find((p) => {
+        if (p.type !== 'CLOUDFLARE') return false;
+        const l = loadCloudflareLinkForProject(p.id);
+        return !!l && l.url === link.url && l.spaceId === link.spaceId;
+      });
+      let projectId: string;
+      if (existing) {
+        projectId = existing.id;
+        saveCloudflareLinkForProject(projectId, link);
+      } else {
+        projectId = get().registerCloudflareProject(invite.name?.trim() || 'Proyecto en la nube', link);
+      }
+      await get().loadProjectById(projectId);
+      set({ pendingInvite: null });
+    },
+
     unregisterProject: (projectId) => {
       const projects = get().registeredProjects.filter(p => p.id !== projectId);
       saveRegisteredProjects(projects);
@@ -1370,8 +1444,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         } catch (e) { /* ignore */ }
       })();
 
-      // Clean up any stored Firebase config for cloud projects.
+      // Clean up any stored backend link for cloud projects.
       deleteFirebaseConfigForProject(projectId);
+      deleteCloudflareLinkForProject(projectId);
 
       // If the unregistered project is the currently loaded one, go back to home
       if (get().loadedProjectId === projectId) {
@@ -1402,6 +1477,21 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           await adapter.ready();
           set({ fsMode: 'FSA_API' });
           await get().loadFromAdapter(adapter);
+        } else if (project.type === 'CLOUDFLARE') {
+          const link = loadCloudflareLinkForProject(projectId);
+          if (!link) {
+            throw new Error('No se encontró la conexión con el backend de Cloudflare de este proyecto.');
+          }
+          const { CloudflareAdapter } = await import('../lib/cloudflare');
+          const adapter = new CloudflareAdapter(link);
+          try {
+            await adapter.ready();
+          } catch (err) {
+            adapter.dispose();
+            throw err;
+          }
+          set({ fsMode: 'FSA_API' });
+          await get().loadFromAdapter(adapter);
         } else {
           // Local folder (FSA API)
           const handle = await loadDirectoryHandleByKey('fsa-handle-' + projectId);
@@ -1425,6 +1515,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     goToProjectBrowser: () => {
+      releaseAdapter(get().adapter);
       localStorage.removeItem(PERSISTENCE_KEY);
       clearLastOpenedProjectId();
       clearDirectoryHandle();

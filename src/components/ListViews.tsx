@@ -57,6 +57,7 @@ export default function ListViews() {
     updateListConfig, 
     deleteList, 
     setSelectedTask,
+    selectedTaskId,
     locks,
     logs,
     activeUser
@@ -252,7 +253,7 @@ export default function ListViews() {
     ) : null;
 
   return (
-    <div id="list-views-container" className="flex-1 flex flex-col h-full bg-background font-body overflow-hidden">
+    <div id="list-views-container" className="@container flex-1 flex flex-col h-full bg-background font-body overflow-hidden">
       {bulkDialog && (
         <BulkTaskDialog
           initialText={bulkDialog.initialText}
@@ -387,7 +388,7 @@ export default function ListViews() {
                       onDrop={(e) => handleStatusDrop(e, status.id)}
                     >
                       {statusTasks.map(task => {
-                        const isLocked = locks[task.id] && Date.now() < locks[task.id].expiresAt;
+                        const isLocked = isLockedByOther(task.id);
                         const completeCount = task.subtasks.filter(s => s.isCompleted).length;
                         const totalCount = task.subtasks.length;
                         const pendingBlocked = task.dependencies.length > 0;
@@ -396,11 +397,11 @@ export default function ListViews() {
                         return (
                           <div 
                             key={task.id}
-                            draggable={!locks[task.id] || Date.now() >= locks[task.id].expiresAt}
+                            draggable={!isLocked}
                             onDragStart={(e) => handleTaskDragStart(e, task.id)}
                             onDragEnd={handleTaskDragEnd}
                             onDragOver={(e) => handleTaskDragOver(e, status.id, task.id)}
-                            className={`relative p-3.5 hover:bg-accent/50 transition-colors group ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'} ${draggedTaskId === task.id ? 'opacity-50' : ''}`}
+                            className={`relative p-3.5 hover:bg-accent/50 transition-colors group ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'} ${draggedTaskId === task.id ? 'opacity-50' : ''} ${selectedTaskId === task.id ? 'bg-accent/70 shadow-[inset_3px_0_0_var(--color-bento-blue)]' : ''}`}
                           >
                             {dropBar(status.id, task.id)}
                             <div className="flex items-start gap-3 min-w-0">
@@ -421,7 +422,7 @@ export default function ListViews() {
 
                               <div onClick={() => setSelectedTask(task.id)} className="cursor-pointer min-w-0 flex-1">
                                 {/* Desktop: single row layout */}
-                                <div className="hidden lg:block">
+                                <div className="hidden @3xl:block">
                                   <div className="flex items-center gap-2 mb-0.5">
                                     <span className="font-mono text-[10px] font-bold text-muted-foreground shrink-0">{task.taskCode}</span>
                                     {pendingBlocked && (
@@ -470,8 +471,8 @@ export default function ListViews() {
                                   </div>
                                 </div>
 
-                                {/* Mobile: stacked layout */}
-                                <div className="lg:hidden">
+                                {/* Narrow (mobile, or beside the task panel): stacked layout */}
+                                <div className="@3xl:hidden">
                                   <div className="flex items-center gap-2 mb-0.5">
                                     <span className="font-mono text-[10px] font-bold text-muted-foreground shrink-0">{task.taskCode}</span>
                                     {pendingBlocked && (
@@ -566,7 +567,7 @@ export default function ListViews() {
                   </div>
 
                   <div className="flex-1 overflow-y-auto space-y-2 mb-3 pr-1 min-h-[150px]">                      {statusTasks.map(task => {
-                      const isLocked = locks[task.id] && Date.now() < locks[task.id].expiresAt;
+                      const isLocked = isLockedByOther(task.id);
                       const hasUnreadNotesKanban = unreadNotesByTask.has(task.id);
                       return (
                         <div 
@@ -576,7 +577,7 @@ export default function ListViews() {
                           onDragEnd={handleTaskDragEnd}
                           onDragOver={(e) => handleTaskDragOver(e, status.id, task.id)}
                           onClick={() => setSelectedTask(task.id)}
-                          className={`relative bg-card hover:bg-accent/50 p-3 rounded-lg border border-border hover:border-bento-blue/40 transition-all ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'} ${draggedTaskId === task.id ? 'opacity-50' : ''} group shadow-card flex flex-col gap-2.5`}
+                          className={`relative bg-card hover:bg-accent/50 p-3 rounded-lg border hover:border-bento-blue/40 transition-all ${selectedTaskId === task.id ? 'border-bento-blue ring-1 ring-bento-blue/40' : 'border-border'} ${isLocked ? 'cursor-not-allowed' : 'cursor-grab'} ${draggedTaskId === task.id ? 'opacity-50' : ''} group shadow-card flex flex-col gap-2.5`}
                         >
                           {draggedTaskId && dropAt?.statusId === status.id && dropAt.taskId === task.id && (
                             <span
@@ -670,10 +671,10 @@ export default function ListViews() {
                 </thead>
                 <tbody className="divide-y divide-border bg-card">
                   {listTasks.map(task => {
-                    const isLocked = locks[task.id] && Date.now() < locks[task.id].expiresAt;
+                    const isLocked = isLockedByOther(task.id);
                     const hasUnreadNotesTable = unreadNotesByTask.has(task.id);
                     return (
-                      <tr key={task.id} className="hover:bg-accent/50 transition-colors group">
+                      <tr key={task.id} className={`hover:bg-accent/50 transition-colors group ${selectedTaskId === task.id ? 'bg-accent/70' : ''}`}>
                         <td className="p-3 font-mono text-[10px] font-bold text-muted-foreground text-center">
                           {task.taskCode}
                         </td>

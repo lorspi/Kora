@@ -14,7 +14,7 @@
  * round-trips to the exact same dialect (see lib/tiptapMarkdown), so the read-only
  * MarkdownPreview elsewhere and the unsaved-changes diff keep working.
  *
- * In cloud (Firebase) projects the doc is edited collaboratively in real time
+ * In cloud (Firebase or Cloudflare) projects the doc is edited collaboratively in real time
  * (lib/collab): instead of one editor holding the lock, everyone edits at once and
  * sees the others' cursors. The file stays the saved copy: whoever edits saves it
  * shortly after, and the others save too if it is still behind the shared state.
@@ -43,7 +43,7 @@ import {
 import TipTapDocEditor from './editor/TipTapDocEditor';
 import type { TipTapDocEditorHandle, EditorCollab } from './editor/TipTapDocEditor';
 import { normalizeMarkdown } from '../lib/tiptapMarkdown';
-import type { FirebaseAdapter } from '../lib/firebase';
+import { isCloudAdapter } from '../lib/records';
 import type { CollabSession, CollabPeer } from '../lib/collab';
 
 type CollabModule = typeof import('../lib/collab');
@@ -116,7 +116,7 @@ export default function DocView() {
   const docMeta = docs.find((d) => d.id === selectedDocId);
 
   // ── Realtime collaboration (cloud projects) ──────────────────────────────────────
-  const isCloud = adapter?.getMode() === 'FIREBASE';
+  const isCloud = isCloudAdapter(adapter);
   // Which session the doc was opened with; null session = lock-based editing.
   const [collabInfo, setCollabInfo] = useState<{ docId: string; session: CollabSession | null } | null>(null);
   const collab = collabInfo?.docId === selectedDocId ? collabInfo.session : null;
@@ -176,7 +176,7 @@ export default function DocView() {
     (async () => {
       const normalized = normalizeMarkdown(await getDocContent(docId));
       const st = useProjectStore.getState();
-      if (st.adapter?.getMode() === 'FIREBASE' && st.activeUser) {
+      if (isCloudAdapter(st.adapter) && st.activeUser) {
         try {
           // Someone on an older Kora holds the doc with a plain lock: stay with locks.
           const lock = await st.readDocLock(docId);
@@ -184,7 +184,7 @@ export default function DocView() {
           if (!plainHolder) {
             const mod = await import('../lib/collab');
             collabModRef.current = mod;
-            session = await mod.openCollabSession(st.adapter as FirebaseAdapter, docId, normalized, {
+            session = await mod.openCollabSession(st.adapter, docId, normalized, {
               id: st.activeUser.id,
               name: st.activeUser.name,
               color: st.activeUser.avatarColor || '#64748b',

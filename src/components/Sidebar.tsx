@@ -11,7 +11,8 @@ import {
   ProjectMetadata, 
   TaskList, 
   DocMetadata,
-  RegisteredProject
+  RegisteredProject,
+  isCloudProjectType
 } from '../types';
 
 import {
@@ -32,7 +33,8 @@ import {
   HardDrive,
   Cloud,
   ArrowRight,
-  House as Home
+  House as Home,
+  List as MenuIcon
 } from '@phosphor-icons/react';
 import ThemeToggle from './ThemeToggle';
 import { ContextMenu, ContextMenuItem } from './ContextMenu';
@@ -41,6 +43,7 @@ import { loadSavedSessions } from '../store/sessions';
 import NewProjectChooser from './NewProjectChooser';
 import { splitLeadingEmoji } from '../lib/emoji';
 import { TASK_DRAG_TYPE } from './ListViews';
+import { useMediaQuery, COMPACT_DESKTOP_QUERY } from '../hooks/useMediaQuery';
 
 export default function Sidebar() {
   const { 
@@ -68,6 +71,7 @@ export default function Sidebar() {
     adapter,
     sidebarOpen,
     setSidebarOpen,
+    selectedTaskId,
     showTrash,
     setShowTrash,
     trashItems,
@@ -222,24 +226,54 @@ export default function Sidebar() {
     refreshDocFolders().catch(() => {});
   }, [docs, refreshDocFolders]);
 
+  // On medium desktop widths the open task takes the room of the sidebar: it
+  // collapses into a slim rail and opens over the content, like on mobile.
+  const compactDesktop = useMediaQuery(COMPACT_DESKTOP_QUERY);
+  const collapsed = compactDesktop && !!selectedTaskId;
+
   return (
     <>
-      {/* Overlay backdrop for mobile */}
+      {/* Overlay backdrop for mobile (and for the collapsed sidebar) */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          className={`fixed inset-0 z-40 bg-black/50 ${collapsed ? '' : 'lg:hidden'}`}
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
+      {/* Slim rail while the sidebar is collapsed */}
+      {collapsed && (
+        <nav aria-label="Navegación" className="hidden lg:flex flex-col items-center gap-1 w-12 shrink-0 py-3 bg-card border-r border-border">
+          <img src="/icon.svg" alt="Kora" className="w-7 h-7 mb-2" />
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            data-tooltip="Abrir menú"
+            aria-label="Abrir menú"
+          >
+            <MenuIcon className="w-4.5 h-4.5" />
+          </button>
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="p-2 rounded-lg hover:bg-accent text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            data-tooltip="Buscar globalmente"
+            data-shortcut="Ctrl+K"
+            aria-label="Buscar"
+          >
+            <Search className="w-4.5 h-4.5" />
+          </button>
+        </nav>
+      )}
+
       <aside 
         id="app-sidebar" 
+        data-collapsed={collapsed || undefined}
         className={`
           fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw]
           bg-card border-r border-border text-card-foreground 
           flex flex-col h-full font-body select-none
           transform transition-transform duration-300 ease-in-out
-          lg:relative lg:inset-auto lg:z-auto lg:w-64 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:transition-none
+          ${collapsed ? '' : 'lg:relative lg:inset-auto lg:z-auto lg:w-64 lg:max-w-none lg:shrink-0 lg:translate-x-0 lg:transition-none'}
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
@@ -251,7 +285,7 @@ export default function Sidebar() {
           <div className="leading-tight overflow-hidden">
             <span className="text-xs font-bold text-foreground block truncate font-heading">{projectMeta?.name || 'Kora Workspace'}</span>
             <span className="text-[10px] text-muted-foreground flex items-center gap-1 font-mono truncate">
-              {currentProjectType === 'FIREBASE' ? (
+              {isCloudProjectType(currentProjectType) ? (
                 <>
                   <Cloud className="w-2.5 h-2.5 text-bento-orange shrink-0" />
                   En la nube
@@ -281,7 +315,7 @@ export default function Sidebar() {
         {/* Close sidebar button – visible only on mobile */}
         <button
           onClick={() => setSidebarOpen(false)}
-          className="lg:hidden p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          className={`${collapsed ? '' : 'lg:hidden'} p-1.5 hover:bg-accent rounded-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer`}
           aria-label="Cerrar menú"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -649,11 +683,11 @@ export default function Sidebar() {
                       }`}
                     >
                       <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                        project.type === 'FIREBASE'
+                        isCloudProjectType(project.type)
                           ? 'bg-bento-orange-light text-bento-orange'
                           : 'bg-bento-blue-light text-bento-blue'
                       }`}>
-                        {project.type === 'FIREBASE' ? <Cloud className="w-3.5 h-3.5" /> : <HardDrive className="w-3.5 h-3.5" />}
+                        {isCloudProjectType(project.type) ? <Cloud className="w-3.5 h-3.5" /> : <HardDrive className="w-3.5 h-3.5" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
@@ -662,7 +696,7 @@ export default function Sidebar() {
                         </div>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className="text-[10px] text-muted-foreground">
-                            {project.type === 'FIREBASE' ? 'Proyecto en la nube' : 'Carpeta Local'}
+                            {isCloudProjectType(project.type) ? 'Proyecto en la nube' : 'Carpeta Local'}
                           </span>
                           {/* Auth indicator dot */}
                           <span className={`inline-block w-1.5 h-1.5 rounded-full ${isAuthenticated ? 'bg-bento-green' : 'bg-muted-foreground'}`} 

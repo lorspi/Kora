@@ -163,7 +163,12 @@ export interface ProjectLocks {
 /**
  * A project registered in the project browser.
  */
-export type ProjectStorageType = 'FSA_API' | 'FIREBASE';
+export type ProjectStorageType = 'FSA_API' | 'FIREBASE' | 'CLOUDFLARE';
+
+/** Cloud projects sync in real time with the team (Firebase or a Cloudflare backend). */
+export function isCloudProjectType(type: ProjectStorageType | undefined | null): boolean {
+  return type === 'FIREBASE' || type === 'CLOUDFLARE';
+}
 
 export interface RegisteredProject {
   id: string;

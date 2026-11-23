@@ -66,6 +66,29 @@ npm run dev
 ```
 4. Accede a la herramienta en tu servidor local: [localhost:8080](http://localhost:8080/)
 
+## Proyectos en la nube
+
+Además de una carpeta de tu computador, un proyecto puede vivir en la nube para que todo el equipo trabaje en tiempo real (cambios al instante y documentos editados a la vez). Kora no tiene servidor propio: cada equipo usa su propia cuenta, y funciona igual desde [kora.lorspi.com](https://kora.lorspi.com) que desde `localhost`.
+
+### Cloudflare (recomendado, 1 clic)
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/lorspi/Kora/tree/main/cloudflare-backend)
+
+1. Pulsa el botón e inicia sesión en Cloudflare (la cuenta gratuita basta).
+2. En `ADMIN_TOKEN` escribe una contraseña tuya de al menos 12 caracteres.
+3. Al terminar, copia la dirección del Worker (`https://kora-backend.<tu-cuenta>.workers.dev`).
+4. En Kora: **Nuevo proyecto → Nube con Cloudflare** y pega la dirección y la contraseña.
+
+Para sumar a tu equipo, en el inicio del proyecto (**Acceso al proyecto en la nube**) crea una invitación por persona: se comparte como enlace o como código, y se puede revocar cuando quieras. Más detalles en [cloudflare-backend/README.md](cloudflare-backend/README.md).
+
+### Firebase
+
+**Nuevo proyecto → Nube con Firebase** guía paso a paso para conectar tu propio proyecto de Firebase (Firestore + inicio de sesión anónimo).
+
+## Rutas
+
+Cada vista tiene su dirección, que se puede compartir, guardar en favoritos o recorrer con los botones Atrás y Adelante del navegador: `#/listas/{id}`, `#/documentos`, `#/documentos/{id}`, `#/medios`, `#/papelera`… y `?tarea=TSK-001` para abrir una tarea en el panel lateral (o el atajo `#/tareas/TSK-001`).
+
 ## Stack Tecnológico
 
 - React 19

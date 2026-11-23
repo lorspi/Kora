@@ -1,0 +1,15 @@
+{
+  // Backend de Kora en Cloudflare: un Worker y un Durable Object por espacio.
+  // Lo despliega el botón "Deploy to Cloudflare" en la cuenta de quien lo pulsa.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "kora-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-01",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [{ "name": "SPACE", "class_name": "KoraSpace" }]
+  },
+  // SQLite-backed Durable Objects: disponibles en el plan gratuito.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["KoraSpace"] }]
+}

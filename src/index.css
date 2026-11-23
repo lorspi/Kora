@@ -285,7 +285,9 @@ body {
 
 /* ===== Mobile Responsive Layout ===== */
 @media (min-width: 1024px) {
-  #app-sidebar {
+  /* While a task is open on medium widths the sidebar collapses (data-collapsed)
+     and opens over the content like on mobile. */
+  #app-sidebar:not([data-collapsed]) {
     transform: translateX(0) !important;
     position: relative !important;
     inset: auto !important;
