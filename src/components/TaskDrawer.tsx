@@ -8,6 +8,8 @@ import { useUI } from '../lib/ui';
 import { useProjectStore } from '../store';
 import { Task, SystemUser } from '../types';
 import { MarkdownPreview } from '../lib/markdown';
+import { RichText, mentionedUserIds, openDocKeepingTask } from '../lib/richText';
+import MentionTextarea from './MentionTextarea';
 import MobileNotesDrawer from './MobileNotesDrawer';
 import CustomSelect from './CustomSelect';
 import { Dropdown } from './Dropdown';
@@ -70,7 +72,8 @@ export default function TaskDrawer() {
     lockTask,
     unlockTask,
     locks,
-    logs
+    logs,
+    docs
   } = useProjectStore();
 
   const task = tasks.find(t => t.id === selectedTaskId);
@@ -246,6 +249,9 @@ export default function TaskDrawer() {
   if (!task || !activeList) return null;
 
   const taskLogs = logs.filter(l => l.taskId === task.id);
+  // Mentions (@usuario) and document links in the description and notes.
+  const richCtx = { users, docs, activeUserId: activeUser?.id };
+  const openDoc = (docId: string) => openDocKeepingTask(docId, task.taskCode);
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -497,20 +503,31 @@ export default function TaskDrawer() {
                 <span className="text-[9px] font-mono">Soporta texto plano / Markdown</span>
               </div>
               {isEditingDesc && !isLockedByOther ? (
-                <textarea
+                <MentionTextarea
                   ref={descTextareaRef}
                   disabled={isLockedByOther}
                   className="w-full bg-card border border-input rounded-xl p-4 text-xs text-foreground placeholder-muted-foreground focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-colors h-44 font-body leading-relaxed shadow-card resize-y"
                   placeholder="Ingresa los requerimientos, detalles o adjuntos en formato libre..."
                   value={desc}
-                  onChange={(e) => setDesc(e.target.value)}
+                  onValueChange={setDesc}
                   onBlur={handleDescBlur}
+                  docs={docs}
+                  showHint
                 />
               ) : (
                 <div
                   role="button"
                   tabIndex={isLockedByOther ? -1 : 0}
-                  onClick={handleDescPreviewClick}
+                  onClick={(e) => {
+                    // A document link opens the document (the task stays open beside it).
+                    const ref = (e.target as HTMLElement).closest('[data-doc-ref]');
+                    if (ref) {
+                      e.preventDefault();
+                      openDoc(ref.getAttribute('data-doc-ref') || '');
+                      return;
+                    }
+                    handleDescPreviewClick();
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
@@ -523,6 +540,7 @@ export default function TaskDrawer() {
                 >
                   <MarkdownPreview
                     content={desc}
+                    richText={richCtx}
                     emptyMessage="Ingresa los requerimientos, detalles o adjuntos en formato libre..."
                   />
                 </div>
@@ -761,6 +779,9 @@ export default function TaskDrawer() {
                           {isUnread && (
                             <span className="w-2 h-2 rounded-full bg-bento-blue shrink-0 animate-pulse" data-tooltip="Nota sin leer" />
                           )}
+                          {isUnread && activeUser && mentionedUserIds(log.comment?.text || '', users).includes(activeUser.id) && (
+                            <span className="text-[9px] font-bold text-bento-orange bg-bento-yellow-light px-1 rounded shrink-0">Te mencionó</span>
+                          )}
                           {(canEditComment || canDeleteComment) && (
                             <div className="ml-auto flex items-center gap-0.5 opacity-0 group-hover/log:opacity-100 transition-opacity">
                               {isEditing ? (
@@ -784,9 +805,9 @@ export default function TaskDrawer() {
                         {log.comment && (
                           <div className="mt-1.5 p-2 bg-card border border-border rounded-lg text-foreground font-body break-words whitespace-pre-line leading-relaxed shadow-card">
                             {isEditing ? (
-                              <textarea className="w-full bg-secondary border border-input rounded-lg p-2 text-xs text-foreground focus:outline-none focus:border-ring resize-none h-16 font-body" value={editingText} onChange={(e) => setEditingText(e.target.value)} autoFocus />
+                              <MentionTextarea className="w-full bg-secondary border border-input rounded-lg p-2 text-xs text-foreground focus:outline-none focus:border-ring resize-none h-16 font-body" value={editingText} onValueChange={setEditingText} users={users} docs={docs} autoFocus />
                             ) : (
-                              log.comment.text && <span>{log.comment.text}</span>
+                              log.comment.text && <span><RichText text={log.comment.text} ctx={richCtx} onOpenDoc={openDoc} /></span>
                             )}
                             {log.comment.attachments && log.comment.attachments.length > 0 && (
                               <div className={`space-y-1.5 ${log.comment.text ? 'mt-2' : ''}`}>
@@ -820,13 +841,17 @@ export default function TaskDrawer() {
                 <form onSubmit={handleCommentSubmit} className="space-y-2 shrink-0 pt-2 border-t border-border">
                   <div className="flex gap-1">
                     <div className="w-full">
-                      <textarea
+                      <MentionTextarea
                         ref={commentTextareaRef}
+                        users={users}
+                        docs={docs}
+                        showHint
+                        suggestionsAbove
                         disabled={isLockedByOther}
                         className="w-full bg-card border border-input text-foreground placeholder-muted-foreground rounded-lg p-2.5 text-xs focus:outline-none focus:border-ring min-h-[6rem] resize-none leading-relaxed font-body shadow-card"
                         placeholder="Escribir una nota u opinión..."
                         value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
+                        onValueChange={setNewComment}
                         onPaste={handleCommentPaste}
                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommentSubmit(e); } }}
                       />

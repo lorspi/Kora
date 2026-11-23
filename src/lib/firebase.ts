@@ -434,10 +434,12 @@ export class FirebaseAdapter {
   /**
    * Files whose path starts with `prefix`, as a range query on `path`. Only
    * downloads that folder, and never the collaboration documents (lib/collab),
-   * which share the collection but have no `path` field.
+   * which share the collection but have no `path` field. The upper bound is the
+   * prefix with its last char ("/") bumped: Firestore orders strings by UTF-8
+   * bytes, so prefix + U+F8FF would leave out names with emoji.
    */
   private filesUnder(prefix: string) {
-    return query(this.filesCollection(), where('path', '>=', prefix), where('path', '<', prefix + ''));
+    return query(this.filesCollection(), where('path', '>=', prefix), where('path', '<', prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1)));
   }
 
   /** List file names (not full paths) that are direct children of a folder. */

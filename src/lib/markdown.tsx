@@ -4,14 +4,17 @@
  */
 
 import React from 'react';
+import { richTextToHtml, type RichTextContext } from './richText';
 
 export function markdownToHtml(
   content: string,
-  resolvedUrls: Record<string, string> = {}
+  resolvedUrls: Record<string, string> = {},
+  /** Render mentions and document references (see lib/richText). */
+  richText?: RichTextContext
 ): string {
   if (!content.trim()) return '';
 
-  let html = content;
+  let html = richText ? richTextToHtml(content, richText) : content;
 
   html = html.replace(/!\[(.*?)\]\((attachments\/images\/.*?)\)/g, (match, alt, filePath) => {
     const resolved = resolvedUrls[filePath];
@@ -86,9 +89,11 @@ interface MarkdownPreviewProps {
   resolvedUrls?: Record<string, string>;
   className?: string;
   emptyMessage?: string;
+  /** Render mentions and document references (see lib/richText). */
+  richText?: RichTextContext;
 }
 
-export function MarkdownPreview({ content, resolvedUrls, className = '', emptyMessage }: MarkdownPreviewProps) {
+export function MarkdownPreview({ content, resolvedUrls, className = '', emptyMessage, richText }: MarkdownPreviewProps) {
   if (!content.trim()) {
     return <span className="text-muted-foreground italic text-xs">{emptyMessage ?? 'Sin contenido.'}</span>;
   }
@@ -96,7 +101,7 @@ export function MarkdownPreview({ content, resolvedUrls, className = '', emptyMe
   return (
     <div
       className={`prose max-w-full font-body select-text ${className}`}
-      dangerouslySetInnerHTML={{ __html: markdownToHtml(content, resolvedUrls) }}
+      dangerouslySetInnerHTML={{ __html: markdownToHtml(content, resolvedUrls, richText) }}
     />
   );
 }

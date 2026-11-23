@@ -412,25 +412,36 @@ export class CollabSession {
     if (added.length || removed.length) this.emit();
   };
 
-  private async writePeer() {
+  /**
+   * Presence writes, one after another: a backend reached over plain HTTP may get
+   * parallel requests out of order, and a late write would re-create the record
+   * after destroy() removed it (a ghost editor in the others' views).
+   */
+  private peerChain: Promise<void> = Promise.resolve();
+
+  private writePeer(): Promise<void> {
     if (this.peerTimer) clearTimeout(this.peerTimer);
     this.peerTimer = null;
-    if (this.destroyed) return;
+    if (this.destroyed) return this.peerChain;
     const clientId = this.ydoc.clientID;
-    try {
-      await this.fx.set(peerId(this.docId, clientId), {
-        kind: PEER_KIND,
-        peerDoc: this.docId,
-        clientId,
-        userId: this.user.id,
-        name: this.user.name,
-        color: this.user.color,
-        a: toBase64(encodeAwarenessUpdate(this.awareness, [clientId])),
-        t: Date.now(),
-      });
-    } catch (err) {
-      console.warn('Could not share cursor position', err);
-    }
+    this.peerChain = this.peerChain.then(async () => {
+      if (this.destroyed) return;
+      try {
+        await this.fx.set(peerId(this.docId, clientId), {
+          kind: PEER_KIND,
+          peerDoc: this.docId,
+          clientId,
+          userId: this.user.id,
+          name: this.user.name,
+          color: this.user.color,
+          a: toBase64(encodeAwarenessUpdate(this.awareness, [clientId])),
+          t: Date.now(),
+        });
+      } catch (err) {
+        console.warn('Could not share cursor position', err);
+      }
+    });
+    return this.peerChain;
   }
 
   /** TipTap extensions binding an editor to this session. */
@@ -473,7 +484,9 @@ export class CollabSession {
     this.resetListeners.clear();
     this.ydoc.off('update', this.onLocalUpdate);
     this.awareness.off('update', this.onAwarenessUpdate);
-    this.fx.remove(peerId(this.docId, this.ydoc.clientID)).catch(() => {});
+    // After any presence write still on its way (see peerChain).
+    const clientId = this.ydoc.clientID;
+    this.peerChain.finally(() => this.fx.remove(peerId(this.docId, clientId)).catch(() => {}));
     this.awareness.destroy();
     // The doc itself is left to GC: the editor may still be unmounting with it.
   }

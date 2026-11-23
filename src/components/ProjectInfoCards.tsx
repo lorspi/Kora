@@ -240,6 +240,13 @@ export default function ProjectInfoCards() {
             const md = await fileAdapter.readTextFile(`/docs/${doc.filename}`);
             zip.file(`docs/${doc.filename}`, md);
           } catch (e) {}
+          // The document's comment threads (one file each)
+          try {
+            const folder = `comments/${doc.id}`;
+            for (const f of await fileAdapter.listFiles(`/${folder}`)) {
+              if (f.endsWith('.json')) zip.file(`${folder}/${f}`, await fileAdapter.readTextFile(`/${folder}/${f}`));
+            }
+          } catch (e) { /* no comments */ }
         }
 
       const content = await zip.generateAsync({ type: 'blob' });

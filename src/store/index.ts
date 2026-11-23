@@ -18,7 +18,9 @@ import {
   TaskLock,
   TrashItem,
   RegisteredProject,
-  ProjectStorageType
+  ProjectStorageType,
+  DocCommentThread,
+  DocCommentAnchor
 } from '../types';
 import { FileSystemAdapter, FsMode, normalizePath, saveDirectoryHandle, loadDirectoryHandle, clearDirectoryHandle, saveDirectoryHandleWithKey, loadDirectoryHandleByKey, deleteDirectoryHandleByKey, dbClear } from '../lib/fs';
 import type { FirebaseAdapter, FirebaseConfig } from '../lib/firebase';
@@ -153,10 +155,29 @@ interface ProjectState {
    * session has held the lock continuously until now: then a lock another session
    * wrote without having seen ours (a stale read) is reclaimed instead of obeyed.
    */
-  lockDoc: (docId: string, session: string, claimLive: boolean, collab?: boolean) => Promise<boolean>;
+  /**
+   * `takeOverShared`: exclusive editing (autosave off) may replace a realtime
+   * session's lock; the caller checked that nobody is in that session anymore.
+   */
+  lockDoc: (docId: string, session: string, claimLive: boolean, collab?: boolean, takeOverShared?: boolean) => Promise<boolean>;
   unlockDoc: (docId: string) => Promise<void>;
   /** Read a doc's lock as stored right now (also refreshes it in `docLocks`). */
   readDocLock: (docId: string) => Promise<TaskLock | null>;
+
+  // Document comments (threads on fragments of the open document)
+  /** Comment threads of `docCommentsFor` (the open document). */
+  docComments: DocCommentThread[];
+  docCommentsFor: string | null;
+  loadDocComments: (docId: string) => Promise<void>;
+  addDocCommentThread: (docId: string, anchor: DocCommentAnchor, text: string) => Promise<DocCommentThread>;
+  replyDocComment: (threadId: string, text: string) => Promise<void>;
+  editDocComment: (threadId: string, commentId: string, text: string) => Promise<void>;
+  /** Deletes the comment; the thread goes too if it was its last comment. */
+  deleteDocComment: (threadId: string, commentId: string) => Promise<void>;
+  deleteDocCommentThread: (threadId: string) => Promise<void>;
+  setDocCommentResolved: (threadId: string, resolved: boolean) => Promise<void>;
+  /** Store where the commented fragments are now (after the document changed). */
+  updateDocCommentAnchors: (updates: { id: string; anchor: DocCommentAnchor }[]) => Promise<void>;
   
   // Activity logger & notes
   addComment: (taskId: string, commentText: string, attachments?: string[]) => Promise<void>;
@@ -462,6 +483,88 @@ async function readJsonFiles<T>(adapter: StorageAdapter, folder: string, files: 
   return results.filter((x): x is Awaited<T> & {} => x !== null) as T[];
 }
 
+/** Folder of the comment threads of a document: one JSON file per thread. */
+export function docCommentsFolder(docId: string): string {
+  return `/comments/${docId}`;
+}
+
+function docCommentPath(docId: string, threadId: string): string {
+  return `${docCommentsFolder(docId)}/${threadId}.json`;
+}
+
+/** All comment threads of a document (none if it has no comments folder yet). */
+async function readDocCommentThreads(adapter: StorageAdapter, docId: string): Promise<DocCommentThread[]> {
+  let files: string[] = [];
+  try {
+    files = (await adapter.listFiles(docCommentsFolder(docId))).filter((f) => f.endsWith('.json'));
+  } catch {
+    return [];
+  }
+  const threads = await Promise.all(
+    files.map(async (f) => {
+      try {
+        return JSON.parse(await adapter.readTextFile(`${docCommentsFolder(docId)}/${f}`)) as DocCommentThread;
+      } catch {
+        return null;
+      }
+    })
+  );
+  return threads.filter((t): t is DocCommentThread => !!t && Array.isArray(t.comments)).sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/**
+ * Bumped by every local change to document comments. A read of the comments that
+ * started before a change must not overwrite it when it lands (see backgroundReload).
+ */
+let docCommentsRev = 0;
+
+/** Local changes to comment threads, applied one after another (see mutateDocThread). */
+let docCommentQueue: Promise<void> = Promise.resolve();
+
+/**
+ * This tab's writes to the project, per part of the state they feed. A background
+ * reload that overlapped a write to, say, the notes may have read them from before
+ * that write: it keeps the local notes and applies the rest (see backgroundReload).
+ */
+let writeSeq = 0;
+const sliceWrites: Record<string, number> = {};
+
+/** The part of the state a file feeds (null: none that a background reload sets). */
+function stateSliceOf(path: unknown): string | null {
+  if (typeof path !== 'string') return null;
+  const p = normalizePath(path);
+  if (p.startsWith('/lists')) return 'lists';
+  if (p.startsWith('/tasks')) return 'tasks';
+  if (p === '/docs/info.json') return 'docs';
+  if (p === '/activity/logs.json') return 'logs';
+  if (p === '/activity/locks.json') return 'locks';
+  if (p.startsWith('/activity/doc-locks')) return 'docLocks';
+  if (p.startsWith('/users')) return 'users';
+  if (p.startsWith('/trash')) return 'trash';
+  if (p.startsWith('/comments')) return 'comments';
+  return null;
+}
+
+/** Record the writes of an adapter in sliceWrites (once per adapter instance). */
+function trackLocalWrites(adapter: StorageAdapter) {
+  const target = adapter as unknown as Record<string, unknown> & { __koraTracked?: boolean };
+  if (target.__koraTracked) return;
+  target.__koraTracked = true;
+  for (const method of ['writeTextFile', 'writeBinaryFile', 'deleteFile', 'deleteDirectory']) {
+    const original = target[method];
+    if (typeof original !== 'function') continue;
+    target[method] = async (...args: unknown[]) => {
+      const slice = stateSliceOf(args[0]);
+      if (slice) sliceWrites[slice] = ++writeSeq;
+      try {
+        return await (original as (...a: unknown[]) => Promise<unknown>).apply(adapter, args);
+      } finally {
+        if (slice) sliceWrites[slice] = ++writeSeq;
+      }
+    };
+  }
+}
+
 /** A background reload was requested while one was running (see backgroundReload). */
 let reloadAgain = false;
 
@@ -470,15 +573,26 @@ let initializeOnce: Promise<void> | null = null;
 
 export const useProjectStore = create<ProjectState>((set, get) => {
   
-  // Save specific logs helper
-  const saveLogsAndRefresh = async (adapter: StorageAdapter, newLogs: TaskActivityLog[]) => {
-    await adapter.writeTextFile('/activity/logs.json', JSON.stringify(newLogs, null, 2));
-    set({ logs: newLogs });
+  /**
+   * Change the activity log (notes and task history). Changes run one after another,
+   * each on the log as the previous one left it: two at once (e.g. the history entry
+   * of an edited description and a new note) would otherwise each write the log
+   * without the other's entry.
+   */
+  let logsQueue: Promise<void> = Promise.resolve();
+  const updateLogs = (adapter: StorageAdapter, fn: (logs: TaskActivityLog[]) => TaskActivityLog[]): Promise<void> => {
+    const run = logsQueue.then(async () => {
+      const next = fn(get().logs);
+      set({ logs: next });
+      await adapter.writeTextFile('/activity/logs.json', JSON.stringify(next, null, 2));
+    });
+    logsQueue = run.catch(() => {});
+    return run;
   };
 
   // Write a single project activity note
   const logActivityAction = async (taskId: string, action: string, commentText?: string, attachments?: string[]) => {
-    const { adapter, logs, activeUser } = get();
+    const { adapter, activeUser } = get();
     if (!adapter || !activeUser) return;
     
     let commentObj = undefined;
@@ -503,8 +617,64 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       comment: commentObj
     };
 
-    const updatedLogs = [newLog, ...logs];
-    await saveLogsAndRefresh(adapter, updatedLogs);
+    await updateLogs(adapter, (logs) => [newLog, ...logs]);
+  };
+
+  /**
+   * Change one comment thread of the open document: re-read its file, apply `fn`
+   * (null deletes the thread) and write it back. `touch` bumps updatedAt.
+   */
+  const mutateDocThread = (
+    threadId: string,
+    fn: (t: DocCommentThread) => DocCommentThread | null,
+    touch = true
+  ): Promise<void> => {
+    // Show it right away; the file is written next (and the state replaced with it).
+    const shown = get().docComments.find((t) => t.id === threadId);
+    if (shown) {
+      docCommentsRev++;
+      const optimistic = fn(shown);
+      set((st) => ({
+        docComments: optimistic
+          ? st.docComments.map((t) => (t.id === threadId ? optimistic : t))
+          : st.docComments.filter((t) => t.id !== threadId),
+      }));
+    }
+    // One change at a time: two changes read concurrently would each write back the
+    // file without the other's (e.g. resolving while the anchor is being updated).
+    const run = docCommentQueue.then(() => applyDocThreadChange(threadId, fn, touch, shown));
+    docCommentQueue = run.catch(() => {});
+    return run;
+  };
+
+  const applyDocThreadChange = async (
+    threadId: string,
+    fn: (t: DocCommentThread) => DocCommentThread | null,
+    touch: boolean,
+    known: DocCommentThread | undefined
+  ) => {
+    const { adapter, docCommentsFor } = get();
+    if (!adapter || !known || !docCommentsFor) return;
+    const path = docCommentPath(known.docId, threadId);
+    let current = known;
+    try {
+      current = JSON.parse(await adapter.readTextFile(path)) as DocCommentThread;
+    } catch {
+      // Deleted meanwhile by someone else: nothing left to change.
+      set((st) => ({ docComments: st.docComments.filter((t) => t.id !== threadId) }));
+      return;
+    }
+    const next = fn(current);
+    docCommentsRev++;
+    if (next) {
+      const stamped = touch ? { ...next, updatedAt: Date.now() } : next;
+      await adapter.writeTextFile(path, JSON.stringify(stamped, null, 2));
+      docCommentsRev++;
+      set((st) => ({ docComments: st.docComments.map((t) => (t.id === threadId ? stamped : t)) }));
+    } else {
+      await adapter.deleteFile(path);
+      set((st) => ({ docComments: st.docComments.filter((t) => t.id !== threadId) }));
+    }
   };
 
   return {
@@ -545,6 +715,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     loadedProjectId: null,
     pendingInvite: null,
     setPendingInvite: (invite) => set({ pendingInvite: invite }),
+    docComments: [],
+    docCommentsFor: null,
 
     // Read full project contents on load (local folder mode)
     loadProjectDirectory: async (handle, mode) => {
@@ -554,6 +726,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
     // Generic loader that works for any storage adapter (local folder or Firebase).
     loadFromAdapter: async (adapter) => {
+      trackLocalWrites(adapter);
       const previous = get().adapter;
       if (previous && previous !== adapter) releaseAdapter(previous);
       set({ isLoading: true });
@@ -1036,6 +1209,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         return;
       }
       reloadAgain = false;
+      const startSeq = writeSeq;
+      // Parts written by us while this reload was reading keep their local state.
+      const fresh = (slice: string) => !((sliceWrites[slice] ?? 0) > startSeq);
 
       set({ isPolling: true });
       try {
@@ -1124,6 +1300,22 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         }
 
         // Check if current active user is still in the list
+        // Comments of the open document
+        const commentsDocId = get().selectedDocId;
+        let commentsUpdate: Partial<ProjectState> = {};
+        if (commentsDocId) {
+          const rev = docCommentsRev;
+          const threads = await readDocCommentThreads(adapter, commentsDocId);
+          if (get().selectedDocId === commentsDocId && rev === docCommentsRev && fresh('comments')) {
+            const st = get();
+            if (st.docCommentsFor !== commentsDocId || JSON.stringify(threads) !== JSON.stringify(st.docComments)) {
+              commentsUpdate = { docComments: threads, docCommentsFor: commentsDocId };
+            }
+          }
+        }
+
+        // We wrote something meanwhile: what was read may predate it. Read again.
+
         const currentActiveUser = get().activeUser;
         let activeUser = currentActiveUser;
         if (currentActiveUser && !users.find(u => u.id === currentActiveUser.id)) {
@@ -1131,15 +1323,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         }
 
         set({
-          lists,
-          tasks,
-          docs,
-          logs,
-          locks: cleanedLocks,
-          docLocks,
-          users,
-          activeUser,
-          trashItems,
+          ...(fresh('lists') ? { lists } : {}),
+          ...(fresh('tasks') ? { tasks } : {}),
+          ...(fresh('docs') ? { docs } : {}),
+          ...(fresh('logs') ? { logs } : {}),
+          ...(fresh('locks') ? { locks: cleanedLocks } : {}),
+          ...(fresh('docLocks') ? { docLocks } : {}),
+          ...(fresh('users') ? { users, activeUser } : {}),
+          ...(fresh('trash') ? { trashItems } : {}),
+          ...commentsUpdate,
           isPolling: false
         });
       } catch (err) {
@@ -1701,7 +1893,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
               action: 'creó esta tarea',
               timestamp: now + i
             })).reverse(); // logs are stored newest first
-            await saveLogsAndRefresh(adapter, [...newLogs, ...get().logs]);
+            await updateLogs(adapter, (logs) => [...newLogs, ...logs]);
           }
         }
       }
@@ -2556,7 +2748,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
-    lockDoc: async (docId, session, claimLive, collab = false) => {
+    lockDoc: async (docId, session, claimLive, collab = false, takeOverShared = false) => {
       const { adapter, activeUser } = get();
       if (!adapter || !activeUser) return false;
 
@@ -2567,7 +2759,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         if (existing && existing.session !== session) {
           // Same user in another tab/session: take it over, as before. Collaborative
           // sessions share the doc, so they just take turns refreshing the lock.
-          if (existing.userId !== activeUser.id && !(collab && existing.collab)) {
+          if (existing.userId !== activeUser.id && !(collab && existing.collab) && !(takeOverShared && existing.collab)) {
             const alive = isDocLockAlive(docId, existing);
             const wroteBlindOverOurs = claimLive && existing.replaces !== session;
             if (alive && !wroteBlindOverOurs) {
@@ -2629,27 +2821,100 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       return lock;
     },
 
+    // ─── Document comments ─────────────────────────────────────────────────────
+    // Each thread is its own file, and every change re-reads it first, so people
+    // commenting on the same document at once don't overwrite each other.
+
+    loadDocComments: async (docId) => {
+      const { adapter } = get();
+      if (!adapter) return;
+      const rev = docCommentsRev;
+      const threads = await readDocCommentThreads(adapter, docId);
+      // Only if that document is still the open one, and nothing changed meanwhile.
+      if (get().selectedDocId === docId && rev === docCommentsRev) set({ docComments: threads, docCommentsFor: docId });
+    },
+
+    addDocCommentThread: async (docId, anchor, text) => {
+      const { adapter, activeUser } = get();
+      if (!adapter || !activeUser) throw new Error('Sin proyecto abierto');
+      const now = Date.now();
+      const thread: DocCommentThread = {
+        id: crypto.randomUUID(),
+        docId,
+        anchor,
+        createdAt: now,
+        createdBy: activeUser.id,
+        updatedAt: now,
+        resolved: null,
+        comments: [{ id: crypto.randomUUID(), userId: activeUser.id, userName: activeUser.name, text: text.trim(), createdAt: now }],
+      };
+      docCommentsRev++;
+      await adapter.writeTextFile(docCommentPath(docId, thread.id), JSON.stringify(thread, null, 2));
+      if (get().docCommentsFor === docId) set((st) => ({ docComments: [...st.docComments, thread] }));
+      return thread;
+    },
+
+    replyDocComment: async (threadId, text) => {
+      const { activeUser } = get();
+      if (!activeUser) return;
+      await mutateDocThread(threadId, (t) => ({
+        ...t,
+        comments: [...t.comments, { id: crypto.randomUUID(), userId: activeUser.id, userName: activeUser.name, text: text.trim(), createdAt: Date.now() }],
+      }));
+    },
+
+    editDocComment: async (threadId, commentId, text) => {
+      await mutateDocThread(threadId, (t) => ({
+        ...t,
+        comments: t.comments.map((c) => (c.id === commentId ? { ...c, text: text.trim(), editedAt: Date.now() } : c)),
+      }));
+    },
+
+    deleteDocComment: async (threadId, commentId) => {
+      await mutateDocThread(threadId, (t) => {
+        const comments = t.comments.filter((c) => c.id !== commentId);
+        return comments.length ? { ...t, comments } : null;
+      });
+    },
+
+    deleteDocCommentThread: async (threadId) => {
+      await mutateDocThread(threadId, () => null);
+    },
+
+    setDocCommentResolved: async (threadId, resolved) => {
+      const { activeUser } = get();
+      if (!activeUser) return;
+      await mutateDocThread(threadId, (t) => ({
+        ...t,
+        resolved: resolved ? { userId: activeUser.id, userName: activeUser.name, at: Date.now() } : null,
+      }));
+    },
+
+    updateDocCommentAnchors: async (updates) => {
+      for (const u of updates) {
+        await mutateDocThread(u.id, (t) => ({ ...t, anchor: u.anchor }), false);
+      }
+    },
+
     addComment: async (taskId, commentText, attachments) => {
       await logActivityAction(taskId, 'comentó', commentText, attachments);
     },
 
     editComment: async (logId, newText) => {
-      const { adapter, logs } = get();
+      const { adapter } = get();
       if (!adapter) return;
-      const updatedLogs = logs.map(log => {
+      await updateLogs(adapter, (logs) => logs.map(log => {
         if (log.id === logId && log.comment) {
           return { ...log, comment: { ...log.comment, text: newText } };
         }
         return log;
-      });
-      await saveLogsAndRefresh(adapter, updatedLogs);
+      }));
     },
 
     deleteComment: async (logId) => {
-      const { adapter, logs } = get();
+      const { adapter } = get();
       if (!adapter) return;
-      const updatedLogs = logs.filter(log => log.id !== logId);
-      await saveLogsAndRefresh(adapter, updatedLogs);
+      await updateLogs(adapter, (logs) => logs.filter(log => log.id !== logId));
     },
 
     // Mark a note as read with debounce to avoid excessive disk writes on hover
@@ -2856,6 +3121,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
       const item = trashItems.find(t => t.id === trashItemId);
 
+      // A document deleted for good takes its comments with it.
+      if (item?.type === 'document' && item.originalData?.id) {
+        try { await adapter.deleteDirectory(docCommentsFolder(item.originalData.id)); } catch { /* no comments */ }
+      }
+
       // If it's a media item with a trash file, delete the trash file too
       if (item?.type === 'media') {
         const mediaData = item.originalData as { trashFilePath?: string | null };
@@ -2877,8 +3147,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const { adapter, trashItems } = get();
       if (!adapter) return;
 
-      // Delete all trash media files
+      // Delete all trash media files (and the comments of the documents)
       for (const item of trashItems) {
+        if (item.type === 'document' && item.originalData?.id) {
+          try { await adapter.deleteDirectory(docCommentsFolder(item.originalData.id)); } catch { /* no comments */ }
+        }
         if (item.type === 'media') {
           const mediaData = item.originalData as { trashFilePath?: string | null };
           if (mediaData.trashFilePath) {
@@ -2929,7 +3202,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       if (prevTaskId && prevTaskId !== taskId) {
         get().unlockTask(prevTaskId);
       }
-      set({ selectedTaskId: taskId, selectedDocId: null, showTrash: false });
+      // The task opens in a column beside the open view; an open document stays open
+      // (e.g. one referenced from the task).
+      set({ selectedTaskId: taskId, showTrash: false });
     },
     setFsMode: (mode) => set({ fsMode: mode }),
     setDocHasUnsavedChanges: (has) => set({ docHasUnsavedChanges: has }),

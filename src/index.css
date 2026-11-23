@@ -558,3 +558,15 @@ body {
 .collaboration-carets__selection {
   border-radius: 2px;
 }
+
+/* ===== Document comments: commented fragments ===== */
+.kora-comment {
+  background-color: hsl(var(--bento-yellow) / 0.22);
+  border-bottom: 2px solid hsl(var(--bento-yellow) / 0.7);
+  cursor: pointer;
+  border-radius: 2px;
+}
+.kora-comment.kora-comment-active {
+  background-color: hsl(var(--bento-yellow) / 0.45);
+  border-bottom-color: hsl(var(--bento-orange));
+}

@@ -5,6 +5,9 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { SystemUser, TaskActivityLog } from '../types';
+import { useProjectStore } from '../store';
+import { RichText, openDocKeepingTask } from '../lib/richText';
+import MentionTextarea from './MentionTextarea';
 import {
   PaperPlaneRight as Send,
   Paperclip,
@@ -77,6 +80,11 @@ export default function MobileNotesDrawer({
   commentTextareaRef,
 }: MobileNotesDrawerProps) {
   const [drawerHeight, setDrawerHeight] = useState<DrawerHeight>('collapsed');
+  // Mentions and document links in the notes (a document opens beside the task).
+  const { docs, tasks, selectedTaskId } = useProjectStore();
+  const richCtx = { users, docs, activeUserId: activeUser?.id };
+  const taskCode = tasks.find((t) => t.id === selectedTaskId)?.taskCode;
+  const openDoc = (docId: string) => openDocKeepingTask(docId, taskCode);
   const drawerRef = useRef<HTMLDivElement>(null);
   const dragStartY = useRef<number>(0);
   const dragStartHeight = useRef<DrawerHeight>('collapsed');
@@ -238,9 +246,9 @@ export default function MobileNotesDrawer({
                       {log.comment && (
                         <div className="mt-1.5 p-2 bg-card border border-border rounded-lg text-foreground font-body break-words whitespace-pre-line leading-relaxed shadow-card">
                           {isEditing ? (
-                            <textarea className="w-full bg-secondary border border-input rounded-lg p-2 text-xs text-foreground focus:outline-none focus:border-ring resize-none h-16 font-body" value={editingText} onChange={(e) => setEditingText(e.target.value)} autoFocus />
+                            <MentionTextarea className="w-full bg-secondary border border-input rounded-lg p-2 text-xs text-foreground focus:outline-none focus:border-ring resize-none h-16 font-body" value={editingText} onValueChange={setEditingText} users={users} docs={docs} autoFocus />
                           ) : (
-                            log.comment.text && <span>{log.comment.text}</span>
+                            log.comment.text && <span><RichText text={log.comment.text} ctx={richCtx} onOpenDoc={openDoc} /></span>
                           )}
                           {log.comment.attachments && log.comment.attachments.length > 0 && (
                             <div className={`space-y-1.5 ${log.comment.text ? 'mt-2' : ''}`}>
@@ -274,13 +282,17 @@ export default function MobileNotesDrawer({
               {/* Input area - always at bottom */}
               <form onSubmit={handleCommentSubmit} className="shrink-0 pt-2 border-t border-border space-y-2">
                 <div className="flex gap-1">
-                  <textarea
+                  <MentionTextarea
                     ref={commentTextareaRef}
+                    users={users}
+                    docs={docs}
+                    suggestionsAbove
+                    wrapperClassName="flex-1 flex"
                     disabled={isLockedByOther}
                     className="flex-1 bg-card border border-input text-foreground placeholder-muted-foreground rounded-lg p-2 text-xs focus:outline-none focus:border-ring min-h-[3rem] max-h-[5rem] resize-none leading-relaxed font-body shadow-card"
                     placeholder="Escribir una nota..."
                     value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
+                    onValueChange={setNewComment}
                     onPaste={handleCommentPaste}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleCommentSubmit(e); } }}
                     onFocus={() => { if (drawerHeight === 'collapsed') setDrawerHeight('half'); }}

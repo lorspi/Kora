@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.7.0] — 2026-11-23
+
+### Added
+
+- **Editar tablas directamente en la tabla**
+  Las tablas de los documentos ya no se editan en un cuadro de código aparte: se hace clic en una celda y se escribe ahí mismo. Tab y Mayús+Tab pasan a la celda siguiente o anterior (Tab en la última celda agrega una fila), Enter baja a la celda de abajo, las flechas arriba y abajo cambian de fila y Escape termina la edición. Al editar una celda aparece una barra con herramientas para insertar filas arriba o abajo, subir, bajar o eliminar la fila, insertar columnas a la izquierda o a la derecha, moverlas, alinearlas (izquierda, centro o derecha) o eliminarlas; sin celda activa, al pasar el mouse se pueden agregar filas y columnas al final, y "+ Nueva fila" bajo la tabla. Las celdas muestran negrita, cursiva, tachado, código y enlaces, y al editarlas se ve su Markdown. La tabla se sigue guardando como tabla Markdown (ahora con las columnas alineadas) y el código fuente sigue disponible con el botón de código.
+
+- **Comentarios en los documentos**
+  Al seleccionar un fragmento del texto, la barra flotante tiene un botón "Comentar" (también en los documentos de solo lectura). Los comentarios se muestran en una columna a la derecha del documento, que se abre con el botón de comentarios del encabezado (con el número de comentarios abiertos) y se abre sola en pantallas grandes si el documento tiene comentarios. El texto comentado queda resaltado: al hacer clic en él se activa su comentario, y al hacer clic en un comentario el documento se desplaza hasta su texto. Los comentarios se pueden responder, resolver y reabrir (los resueltos quedan en "Resueltos" y dejan de resaltarse), editar y eliminar (cada quien los suyos; el superadmin, cualquiera) y pueden mencionar a otras personas con @. El resaltado sigue al texto cuando el documento cambia, también con la edición en tiempo real; si el texto comentado se borra, el comentario se conserva con un aviso. Los comentarios no tocan el archivo Markdown: se guardan aparte, un archivo por hilo en `/comments/{documento}/`, funcionan en carpetas locales, Firebase y Cloudflare, se incluyen en el respaldo ZIP y se borran junto con el documento al vaciarlo de la papelera.
+
+- **Referencias a documentos en las tareas**
+  En la descripción y en las notas de una tarea, escribir `[[` abre una lista de documentos para enlazar uno. El enlace se guarda como un enlace Markdown normal a la ruta del documento y se muestra como una etiqueta con su título actual (y su emoji, si lo tiene); si el documento se elimina, la etiqueta aparece tachada. Al hacer clic, el documento se abre en el área principal y la tarea sigue abierta en la columna derecha.
+
+- **Menciones en las notas de las tareas**
+  En las notas, escribir `@` abre la lista de personas del proyecto (busca por usuario o por nombre). La mención se muestra con el nombre de la persona, resaltada en amarillo para quien es mencionado, y las notas sin leer que te mencionan muestran "Te mencionó".
+
+### Changed
+
+- **Apagar el autoguardado bloquea el documento para los demás**
+  En los proyectos en la nube, apagar el autoguardado (en el menú del documento) saca el documento de la edición en tiempo real y lo bloquea para que solo esa persona lo edite; mientras tanto el modo código también se puede editar y los cambios se guardan con Guardar (Ctrl+S). Arriba del documento queda un aviso permanente de que nadie más puede editarlo en tiempo real mientras el autoguardado esté apagado, con un botón para volver a activarlo. Los demás lo ven en solo lectura, con un aviso de quién lo está editando, y siguen sus cambios a medida que los guarda; al reactivar el autoguardado o cerrar el documento, todos vuelven a la edición en tiempo real. No se puede apagar mientras otra persona está editando el documento. Cada documento empieza con el autoguardado activo. En los proyectos locales el autoguardado sigue siendo una preferencia del navegador.
+
+- **El documento sigue abierto al abrir una tarea**
+  Abrir una tarea (por ejemplo desde la búsqueda) ya no cierra el documento que se estaba viendo: la tarea se abre en la columna derecha junto a él.
+
+### Fixed
+
+- **Archivos con emojis en el nombre en los proyectos en la nube**
+  Al listar una carpeta, los proyectos de Firebase y Cloudflare omitían los archivos cuyo nombre lleva emojis (por ejemplo, el documento "👋 Bienvenida", que se guarda como `👋-bienvenida.md`). Para Cloudflare, el arreglo está en el backend: actualiza tu copia de `cloudflare-backend` para que se despliegue de nuevo.
+
+- **Personas que seguían apareciendo en un documento tras cerrarlo**
+  En los proyectos de Cloudflare, quien cerraba un documento podía seguir apareciendo unos segundos como si lo estuviera editando.
+
+- **Notas de tareas que se perdían**
+  Si se escribía una nota justo después de cambiar la descripción, el estado u otro campo de la tarea, una de las dos entradas del historial podía perderse (también del archivo), porque ambas se guardaban a la vez sobre la misma versión. Ahora los cambios del historial se guardan uno tras otro.
+
+- **Cambios propios que se deshacían un momento con la sincronización**
+  En los proyectos en la nube, una sincronización que estaba leyendo los archivos mientras se guardaba un cambio podía mostrar por un momento los datos anteriores (una nota recién enviada, una tarea editada) hasta la siguiente sincronización. Ahora conserva lo que se acaba de guardar.
+
 ## [1.6.0] — 2026-11-23
 
 ### Added

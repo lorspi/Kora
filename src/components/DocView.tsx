@@ -20,6 +20,14 @@
  * shortly after, and the others save too if it is still behind the shared state.
  * If collaboration is unavailable (or someone on an older version holds the doc),
  * the lock-based flow applies as in local projects.
+ *
+ * Comments: fragments of the text can be commented (DocCommentsPanel on the right,
+ * highlights in the editor through editor/commentHighlights). They are stored apart
+ * from the Markdown, one file per thread (see the store).
+ *
+ * Turning autosave off in a cloud project switches the doc to exclusive editing: the
+ * session leaves the realtime collaboration and takes the lock, so the others can
+ * only read it (and code mode becomes editable) until autosave is back on.
  */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useUI } from '../lib/ui';
@@ -39,7 +47,11 @@ import {
   CloudCheck,
   CaretRight,
   FolderSimple,
+  LockSimple,
+  ChatCircleText,
 } from '@phosphor-icons/react';
+import DocCommentsPanel from './DocCommentsPanel';
+import type { DocCommentAnchor } from '../types';
 import TipTapDocEditor from './editor/TipTapDocEditor';
 import type { TipTapDocEditorHandle, EditorCollab } from './editor/TipTapDocEditor';
 import { normalizeMarkdown } from '../lib/tiptapMarkdown';
@@ -97,12 +109,18 @@ export default function DocView() {
     activeUser,
     docLocks,
     lockDoc,
+    readDocLock,
     unlockDoc,
     setDocHasUnsavedChanges,
     pendingNavigationAction,
     confirmPendingNavigation,
     cancelPendingNavigation,
     setShowDocs,
+    docComments,
+    docCommentsFor,
+    loadDocComments,
+    addDocCommentThread,
+    updateDocCommentAnchors,
   } = useProjectStore();
   const { toast, confirm } = useUI();
 
@@ -125,6 +143,12 @@ export default function DocView() {
     ? 'plain'
     : collabInfo?.docId === selectedDocId ? (collabInfo.session ? 'collab' : 'plain') : null;
   const [collabGen, setCollabGen] = useState(0);
+  // Cloud docs only: the doc whose autosave this session turned off, i.e. that it
+  // edits exclusively (outside the realtime collaboration, holding the lock).
+  const [exclusiveDocId, setExclusiveDocId] = useState<string | null>(null);
+  const exclusive = isCloud && !!selectedDocId && exclusiveDocId === selectedDocId;
+  const exclusiveRef = useRef(exclusive);
+  exclusiveRef.current = exclusive;
   const [savedHash, setSavedHash] = useState<string | null>(null);
   const [peers, setPeers] = useState<CollabPeer[]>([]);
   const collabModRef = useRef<CollabModule | null>(null);
@@ -165,6 +189,51 @@ export default function DocView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<TipTapDocEditorHandle>(null);
 
+  // ── Comments ─────────────────────────────────────────────────────────────────────
+  const threads = useMemo(
+    () => (docCommentsFor === selectedDocId ? docComments : []),
+    [docComments, docCommentsFor, selectedDocId]
+  );
+  const openThreadCount = threads.filter((t) => !t.resolved).length;
+  const [showComments, setShowComments] = useState(false);
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [draftAnchor, setDraftAnchor] = useState<DocCommentAnchor | null>(null);
+  // Bumped whenever an editor instance is ready (a doc loads, code mode ends...).
+  const [editorReadyGen, setEditorReadyGen] = useState(0);
+  const [editorReady, setEditorReady] = useState(false);
+  const [commentPositions, setCommentPositions] = useState<Record<string, number>>({});
+  const autoOpenedFor = useRef<string | null>(null);
+  const placementsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refreshCommentPositions = useCallback(() => {
+    const placements = editorRef.current?.getCommentPlacements() ?? {};
+    const next: Record<string, number> = {};
+    Object.entries(placements).forEach(([id, p]) => { next[id] = p.pos; });
+    setCommentPositions((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+  }, []);
+
+  // Every doc opens with autosave on: leaving one ends its exclusive editing.
+  useEffect(() => () => {
+    exclusiveRef.current = false;
+    setExclusiveDocId(null);
+  }, [selectedDocId]);
+
+  // Comments of the open doc: load them, and start without a draft or selection.
+  useEffect(() => {
+    setActiveThreadId(null);
+    setDraftAnchor(null);
+    setCommentPositions({});
+    if (selectedDocId) loadDocComments(selectedDocId).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDocId]);
+
+  // Open the comments column the first time a doc with open comments is shown (wide screens).
+  useEffect(() => {
+    if (!selectedDocId || docCommentsFor !== selectedDocId || autoOpenedFor.current === selectedDocId) return;
+    autoOpenedFor.current = selectedDocId;
+    if (openThreadCount > 0 && window.innerWidth >= 1280) setShowComments(true);
+  }, [selectedDocId, docCommentsFor, openThreadCount]);
+
   // ── Load document ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedDocId) return;
@@ -176,7 +245,8 @@ export default function DocView() {
     (async () => {
       const normalized = normalizeMarkdown(await getDocContent(docId));
       const st = useProjectStore.getState();
-      if (isCloudAdapter(st.adapter) && st.activeUser) {
+      // Exclusive editing (autosave off) stays out of the realtime session.
+      if (isCloudAdapter(st.adapter) && st.activeUser && !exclusiveRef.current) {
         try {
           // Someone on an older Kora holds the doc with a plain lock: stay with locks.
           const lock = await st.readDocLock(docId);
@@ -258,7 +328,10 @@ export default function DocView() {
   const handleEditorChange = useCallback((markdown: string, remote: boolean) => {
     lastChangeRemoteRef.current = remote;
     setCurrentMarkdown(markdown);
-  }, []);
+    // Highlights move with the text: refresh the order of the comments column.
+    if (placementsTimer.current) clearTimeout(placementsTimer.current);
+    placementsTimer.current = setTimeout(refreshCommentPositions, 400);
+  }, [refreshCommentPositions]);
 
   // Someone else renamed the doc while we hadn't touched the title: follow it.
   useEffect(() => {
@@ -278,6 +351,54 @@ export default function DocView() {
       setBaselineMarkdown(markdown);
     }
     setCurrentMarkdown(markdown);
+    setEditorReady(true);
+    setEditorReadyGen((g) => g + 1);
+  }, []);
+
+  // Give the editor the threads to highlight (open ones), then learn where they are.
+  useEffect(() => {
+    if (!editorReady || codeMode) return;
+    editorRef.current?.setCommentThreads(threads.filter((t) => !t.resolved).map((t) => ({ id: t.id, anchor: t.anchor })));
+    editorRef.current?.setActiveComment(activeThreadId);
+    refreshCommentPositions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads, editorReadyGen, editorReady, codeMode]);
+
+  useEffect(() => {
+    editorRef.current?.setActiveComment(activeThreadId);
+  }, [activeThreadId]);
+
+  const handleRequestComment = useCallback(() => {
+    const anchor = editorRef.current?.startCommentDraft();
+    if (!anchor) {
+      toast('Selecciona un fragmento de texto para comentarlo', 'info');
+      return;
+    }
+    setDraftAnchor(anchor);
+    setActiveThreadId(null);
+    setShowComments(true);
+  }, [toast]);
+
+  const handleCommentClick = useCallback((id: string) => {
+    setShowComments(true);
+    setActiveThreadId(id);
+  }, []);
+
+  const handleSubmitDraft = useCallback(async (text: string) => {
+    if (!selectedDocId || !draftAnchor) return;
+    try {
+      const thread = await addDocCommentThread(selectedDocId, draftAnchor, text);
+      editorRef.current?.endCommentDraft(thread.id);
+      setDraftAnchor(null);
+      setActiveThreadId(thread.id);
+    } catch {
+      toast('No se pudo guardar el comentario', 'error');
+    }
+  }, [selectedDocId, draftAnchor, addDocCommentThread, toast]);
+
+  const handleCancelDraft = useCallback(() => {
+    editorRef.current?.endCommentDraft();
+    setDraftAnchor(null);
   }, []);
 
   // Re-read the doc from disk (used while someone else holds the lock, so we show
@@ -317,7 +438,7 @@ export default function DocView() {
         try {
           // Our own clock only: we've held it continuously if the last renewal is within the TTL.
           const claimLive = claimUntilRef.current > Date.now();
-          const ok = await lockDoc(selectedDocId, session, claimLive, shared);
+          const ok = await lockDoc(selectedDocId, session, claimLive, shared, exclusiveRef.current);
           if (!closed) claimUntilRef.current = ok ? Date.now() + DOC_LOCK_TTL : 0;
         } finally {
           inFlight = false;
@@ -352,8 +473,10 @@ export default function DocView() {
   useEffect(() => {
     if (!selectedDocId || !activeUser) return;
     const activeLock = docLocks[selectedDocId];
-    // Collaborative sessions don't exclude each other.
-    const heldByOther = !!activeLock && activeLock.userId !== activeUser.id && !(collab && activeLock.collab)
+    // A realtime session's lock never excludes: whoever sees it joins that session
+    // (or, editing exclusively, takes over its leftover lock; see toggleAutoSave).
+    // Only a plain lock (exclusive editing, local projects, older Kora) does.
+    const heldByOther = !!activeLock && activeLock.userId !== activeUser.id && !activeLock.collab
       && isDocLockAlive(selectedDocId, activeLock);
     const ourClaimWins = heldByOther && claimUntilRef.current > Date.now() && activeLock.replaces !== sessionRef.current;
     if (heldByOther && !ourClaimWins) {
@@ -364,7 +487,7 @@ export default function DocView() {
       setLockingUser(null);
     }
     if (ourClaimWins) acquireLockRef.current?.();
-  }, [selectedDocId, activeUser?.id, docLocks, collab]);
+  }, [selectedDocId, activeUser?.id, docLocks, collab, exclusive]);
 
   // While read-only, follow the editor's saves; when the lock passes to us, start
   // from the latest saved version rather than what we loaded earlier.
@@ -381,6 +504,12 @@ export default function DocView() {
     // A different doc is loaded by the load effect above; a collaborative one is
     // kept current by the session.
     if (docChanged || initialLoading || collab) return;
+    // In a cloud project the doc was held exclusively (or by an older Kora): once
+    // free, rejoin the realtime session instead of just reloading the file.
+    if (wasLocked && !isLockedByOther && isCloud && !exclusive) {
+      setCollabGen((g) => g + 1);
+      return;
+    }
     if ((wasLocked && !isLockedByOther) || (isLockedByOther && editedChanged)) reloadFromDisk();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDocId, isLockedByOther, docMeta?.editedAt]);
@@ -431,6 +560,17 @@ export default function DocView() {
       // revert to pre-save content.
       setInitialMarkdown(markdown);
       setLastSavedAt(Date.now());
+      // Commented fragments whose text changed: store where they are now.
+      if (!codeMode && editorRef.current) {
+        const placements = editorRef.current.getCommentPlacements();
+        const updates = threads
+          .filter((t) => !t.resolved)
+          .flatMap((t) => {
+            const anchor = placements[t.id]?.anchor;
+            return anchor && anchor.quote !== t.anchor.quote ? [{ id: t.id, anchor }] : [];
+          });
+        if (updates.length) updateDocCommentAnchors(updates).catch(() => {});
+      }
       return true;
     } catch {
       toast('Error al guardar documento', 'error');
@@ -439,13 +579,14 @@ export default function DocView() {
       savingRef.current = false;
       setLoading(false);
     }
-  }, [selectedDocId, isLockedByOther, codeMode, collab, currentMarkdown, title, saveDocContent, toast]);
+  }, [selectedDocId, isLockedByOther, codeMode, collab, currentMarkdown, title, saveDocContent, toast, threads, updateDocCommentAnchors]);
 
   // ── Autosave ─────────────────────────────────────────────────────────────────────
   const handleSaveRef = useRef(handleSave);
   handleSaveRef.current = handleSave;
-  // Collaborative docs always autosave: the others' edits must reach the file too.
-  const effectiveAutoSave = autoSave || !!collab;
+  // Cloud docs autosave unless this session edits them exclusively (autosave off);
+  // in local projects it is a per-device preference.
+  const effectiveAutoSave = isCloud ? !exclusive : autoSave;
   useEffect(() => {
     if (!effectiveAutoSave || !hasChanges || isLockedByOther || loading || (collab && codeMode)) return;
     let delay = collab && lastChangeRemoteRef.current
@@ -457,12 +598,50 @@ export default function DocView() {
     return () => clearTimeout(timer);
   }, [effectiveAutoSave, collab, codeMode, hasChanges, isLockedByOther, loading, currentMarkdown, title]);
 
-  const toggleAutoSave = () => {
-    const next = !autoSave;
-    setAutoSave(next);
-    try { localStorage.setItem(AUTOSAVE_KEY, String(next)); } catch { /* storage unavailable */ }
+  const toggleAutoSave = async () => {
     setShowDocMenu(false);
+    if (!isCloud) {
+      const next = !autoSave;
+      setAutoSave(next);
+      try { localStorage.setItem(AUTOSAVE_KEY, String(next)); } catch { /* storage unavailable */ }
+      return;
+    }
+    if (!selectedDocId) return;
+    if (!exclusive) {
+      // Autosave off: edit alone. Not while others are editing it right now.
+      const others = peers.filter((p, i) => p.userId !== activeUser?.id && peers.findIndex((q) => q.userId === p.userId) === i);
+      if (others.length > 0) {
+        toast(`No puedes apagar el autoguardado mientras ${others.map((p) => p.name).join(', ')} ${others.length === 1 ? 'edita' : 'editan'} este documento.`, 'warning');
+        return;
+      }
+      if (hasChanges && !(await handleSave())) return;
+      // Read the current lock (our local copy may be stale): someone else may hold it.
+      const lock = await readDocLock(selectedDocId);
+      // A realtime session's lock outlives its owner by a few seconds: it only counts
+      // if that person is still in the document.
+      const holderPresent = !lock?.collab || peers.some((p) => p.userId === lock.userId);
+      if (lock && lock.userId !== activeUser?.id && isDocLockAlive(selectedDocId, lock) && holderPresent) {
+        toast(`No puedes apagar el autoguardado mientras ${lock.username} edita este documento.`, 'warning');
+        return;
+      }
+      setExclusiveDocId(selectedDocId);
+    } else {
+      // Autosave back on: save what is pending, release the doc and rejoin the realtime session.
+      if (hasChanges && !(await handleSave())) return;
+      setExclusiveDocId(null);
+    }
+    setCollabGen((g) => g + 1);
   };
+
+  // Exclusive editing needs the lock: if someone else got it first, go back to the
+  // shared editing instead of staying read-only.
+  useEffect(() => {
+    if (!exclusive || !isLockedByOther) return;
+    toast(`No se pudo apagar el autoguardado: ${lockingUser ?? 'otra persona'} está editando este documento.`, 'warning');
+    setExclusiveDocId(null);
+    setCollabGen((g) => g + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exclusive, isLockedByOther]);
 
   // Keep the "Guardado hace…" label fresh.
   useEffect(() => {
@@ -635,11 +814,15 @@ export default function DocView() {
 
   // ── Toggle code mode: sync markdown between the two views ──────────────────────────
   const toggleCodeMode = () => {
+    // The doc is (re)loading: that load would undo the switch.
+    if (initialLoading) return;
     if (!codeMode) {
       // Entering code mode: pull latest markdown from the editor.
       const md = editorRef.current?.getMarkdown() ?? currentMarkdown;
       setCurrentMarkdown(md);
       setCodeMode(true);
+      setEditorReady(false);
+      if (draftAnchor) handleCancelDraft();
     } else {
       // Leaving code mode: push edited markdown back into the editor.
       editorRef.current?.setMarkdown(currentMarkdown);
@@ -652,13 +835,30 @@ export default function DocView() {
   if (!docMeta) return null;
 
   return (
-    <div id="doc-view-container" className="flex-1 flex flex-col h-full bg-background font-body overflow-hidden">
+    <div id="doc-view-container" className="@container flex-1 flex flex-col h-full bg-background font-body overflow-hidden">
       {isLockedByOther && (
         <div className="bg-bento-yellow-light border-b border-border p-3 flex items-center gap-2.5 text-bento-yellow text-xs shrink-0 select-none">
           <ShieldAlert className="w-5 h-5 shrink-0" />
           <div className="flex-1 font-semibold">
-            Documento de solo lectura: @{lockingUser} está editando este archivo desde otra terminal ahora mismo.
+            {isCloud
+              ? `Documento de solo lectura: @${lockingUser} lo está editando con el autoguardado apagado. Podrás editarlo cuando lo vuelva a activar o cierre el documento.`
+              : `Documento de solo lectura: @${lockingUser} está editando este archivo desde otra terminal ahora mismo.`}
           </div>
+        </div>
+      )}
+
+      {exclusive && !isLockedByOther && (
+        <div role="status" className="bg-bento-blue-light border-b border-border px-3 py-2.5 flex items-center gap-2.5 text-bento-blue text-xs shrink-0 select-none">
+          <LockSimple className="w-5 h-5 shrink-0" />
+          <div className="flex-1 font-semibold">
+            Autoguardado apagado: mientras no lo actives, nadie más puede editar este documento en tiempo real. Tus cambios se guardan al pulsar Guardar (Ctrl+S).
+          </div>
+          <button
+            onClick={toggleAutoSave}
+            className="shrink-0 px-3 py-1.5 rounded-lg bg-card border border-border text-foreground font-semibold hover:bg-accent transition-colors cursor-pointer"
+          >
+            Activar autoguardado
+          </button>
         </div>
       )}
 
@@ -767,6 +967,19 @@ export default function DocView() {
             )}
           </div>
 
+          {/* Comments column */}
+          <button
+            onClick={() => setShowComments((v) => !v)}
+            aria-pressed={showComments}
+            className={`p-2 border rounded-xl transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold ${
+              showComments ? 'bg-accent border-border text-foreground' : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-accent'
+            }`}
+            data-tooltip={showComments ? 'Ocultar comentarios' : 'Comentarios (selecciona texto y pulsa Comentar)'}
+          >
+            <ChatCircleText className="w-3.5 h-3.5" />
+            {openThreadCount > 0 && <span className="font-mono text-[10px]">{openThreadCount}</span>}
+          </button>
+
           {peers.length > 0 && (() => {
             const people = peers.filter((p, i) => peers.findIndex((q) => q.userId === p.userId) === i);
             return (
@@ -845,7 +1058,8 @@ export default function DocView() {
               <div className="absolute top-full right-0 mt-1 bg-card border border-border rounded-xl shadow-card-hover py-1 z-50 min-w-[180px]">
                 <button
                   onClick={toggleCodeMode}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer transition-colors text-left"
+                  disabled={initialLoading}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer transition-colors text-left disabled:opacity-50 disabled:cursor-wait"
                 >
                   <FileCode className="w-3.5 h-3.5" />
                   {codeMode ? 'Modo bloques' : 'Modo código'}
@@ -854,8 +1068,7 @@ export default function DocView() {
                   role="menuitemcheckbox"
                   aria-checked={effectiveAutoSave}
                   onClick={toggleAutoSave}
-                  disabled={!!collab}
-                  data-tooltip={collab ? 'En la edición en tiempo real los cambios siempre se guardan solos' : undefined}
+                  data-tooltip={isCloud ? (exclusive ? 'Volver a la edición en tiempo real' : 'Apagarlo bloquea el documento para que solo tú lo edites') : undefined}
                   className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer transition-colors text-left disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <CloudCheck className="w-3.5 h-3.5" />
@@ -882,9 +1095,18 @@ export default function DocView() {
         </div>
       </div>
 
-      {/* Editor body */}
+      {/* Editor body (and the comments column) */}
+      <div className="flex-1 min-h-0 flex relative">
       {!codeMode ? (
-        <div className="flex-1 overflow-y-auto">
+        <div
+          className="flex-1 min-w-0 overflow-y-auto"
+          onClick={(e) => {
+            // A commented fragment: show its thread.
+            const el = (e.target as HTMLElement).closest('[data-comment-id]');
+            const id = el?.getAttribute('data-comment-id');
+            if (id) handleCommentClick(id);
+          }}
+        >
           <div className="max-w-3xl mx-auto px-4 sm:px-8 py-6 sm:py-10">
             {!initialLoading && (
               <TipTapDocEditor
@@ -896,6 +1118,8 @@ export default function DocView() {
                 resolvedUrls={resolvedUrls}
                 onChange={handleEditorChange}
                 onReady={handleEditorReady}
+                onRequestComment={handleRequestComment}
+                onCommentClick={handleCommentClick}
               />
             )}
           </div>
@@ -918,6 +1142,27 @@ export default function DocView() {
           />
         </div>
       )}
+      {showComments && (
+        <DocCommentsPanel
+          threads={threads}
+          positions={commentPositions}
+          positionsReady={editorReady && !codeMode}
+          activeId={activeThreadId}
+          onActivate={(id) => {
+            setActiveThreadId(id);
+            editorRef.current?.scrollToComment(id);
+          }}
+          draft={draftAnchor}
+          onSubmitDraft={handleSubmitDraft}
+          onCancelDraft={handleCancelDraft}
+          onClose={() => {
+            if (draftAnchor) handleCancelDraft();
+            setShowComments(false);
+            setActiveThreadId(null);
+          }}
+        />
+      )}
+      </div>
 
       {/* Media Library Picker Modal */}
       {showMediaPicker && (

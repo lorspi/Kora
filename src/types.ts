@@ -119,6 +119,38 @@ export interface DocMetadata {
   order?: number;
 }
 
+/**
+ * Where a document comment points: the commented text plus a little of what
+ * surrounds it, so it can be found again after the document changes.
+ */
+export interface DocCommentAnchor {
+  quote: string;
+  prefix: string;
+  suffix: string;
+}
+
+export interface DocCommentEntry {
+  id: string;
+  userId: string;
+  userName: string;
+  /** Plain text; may hold @mentions (see lib/richText). */
+  text: string;
+  createdAt: number;
+  editedAt?: number;
+}
+
+/** A comment thread on a fragment of a document (/comments/{docId}/{id}.json). */
+export interface DocCommentThread {
+  id: string;
+  docId: string;
+  anchor: DocCommentAnchor;
+  createdAt: number;
+  createdBy: string;
+  updatedAt: number;
+  resolved?: { userId: string; userName: string; at: number } | null;
+  comments: DocCommentEntry[];
+}
+
 export interface TaskLock {
   userId: string;
   username: string;

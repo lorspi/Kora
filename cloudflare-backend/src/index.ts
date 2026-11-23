@@ -150,6 +150,15 @@ function randomToken(bytes = 24): string {
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
+/**
+ * Exclusive upper bound of the paths that start with `prefix` (which ends in "/"):
+ * "/docs/" -> "/docs0". SQLite compares UTF-8 bytes, so a bound like prefix + U+FFFF
+ * would leave out names with emoji (their bytes start at F0).
+ */
+function prefixEnd(prefix: string): string {
+  return prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
+}
+
 function matches(data: any | null, sub: Sub & { k: 'q' }): boolean {
   return !!data && data[sub.f] === sub.v;
 }
@@ -286,7 +295,7 @@ export class KoraSpace extends DurableObject<Env> {
     const path = this.checkPath(raw);
     if (isPrefix) {
       const prefix = path.endsWith('/') ? path : path + '/';
-      this.sql.exec('DELETE FROM files WHERE path >= ? AND path < ?', prefix, prefix + '￿');
+      this.sql.exec('DELETE FROM files WHERE path >= ? AND path < ?', prefix, prefixEnd(prefix));
     } else {
       this.sql.exec('DELETE FROM files WHERE path = ?', path);
     }
@@ -298,7 +307,7 @@ export class KoraSpace extends DurableObject<Env> {
     const path = this.checkPath(raw);
     const prefix = path.endsWith('/') ? path : path + '/';
     const paths = this.sql
-      .exec<{ path: string }>('SELECT path FROM files WHERE path >= ? AND path < ? ORDER BY path', prefix, prefix + '￿')
+      .exec<{ path: string }>('SELECT path FROM files WHERE path >= ? AND path < ? ORDER BY path', prefix, prefixEnd(prefix))
       .toArray()
       .map((r) => r.path);
     return json({ paths });

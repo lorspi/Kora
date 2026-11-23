@@ -42,12 +42,18 @@ import {
   Minus,
   GitBranch,
   Table,
+  ChatCircleText,
 } from '@phosphor-icons/react';
 import { buildExtensions } from './extensions';
 import { BlockGutter } from './BlockGutter';
 import { LinkPopover } from './LinkPopover';
 import { EditorAssetsProvider } from './editorStoreBridge';
 import { pmDocToMarkdown, markdownToTiptapHtml, normalizeMarkdown } from '../../lib/tiptapMarkdown';
+import {
+  CommentHighlights, commentHighlightsKey, commentRanges, anchorAt, DRAFT_COMMENT_ID,
+  type HighlightThread,
+} from './commentHighlights';
+import type { DocCommentAnchor } from '../../types';
 
 export interface TipTapDocEditorHandle {
   /** Serialize current document to the on-disk Markdown dialect. */
@@ -63,6 +69,18 @@ export interface TipTapDocEditorHandle {
   insertVideo: (src: string) => void;
   /** Focus the editor. */
   focus: () => void;
+
+  // ── Comments (see commentHighlights) ──
+  /** The selected text as a comment anchor, highlighted as a draft; null if no text is selected. */
+  startCommentDraft: () => DocCommentAnchor | null;
+  /** Drop the draft highlight, or turn it into the highlight of a created thread. */
+  endCommentDraft: (threadId?: string) => void;
+  /** The threads to highlight (resolved ones should be left out). */
+  setCommentThreads: (threads: HighlightThread[]) => void;
+  setActiveComment: (id: string | null) => void;
+  /** Where each highlighted thread is now: document position and current anchor. */
+  getCommentPlacements: () => Record<string, { pos: number; anchor: DocCommentAnchor | null }>;
+  scrollToComment: (id: string) => void;
 }
 
 /** Binds the editor to a realtime collaborative session (see lib/collab). */
@@ -93,6 +111,10 @@ interface TipTapDocEditorProps {
    * to compare against when deciding whether the user actually changed anything.
    */
   onReady?: (markdown: string) => void;
+  /** "Comentar" was pressed with some text selected (enables the comment button). */
+  onRequestComment?: () => void;
+  /** A highlighted (commented) fragment was clicked. */
+  onCommentClick?: (threadId: string) => void;
 }
 
 // ─── Slash command definitions ────────────────────────────────────────────────────
@@ -228,7 +250,7 @@ function SlashMenu({ editor, onClose }: { editor: Editor; onClose: () => void })
 
 // ─── Bubble (floating format) toolbar ─────────────────────────────────────────────
 
-function FormatBubble({ editor }: { editor: Editor }) {
+function FormatBubble({ editor, onComment }: { editor: Editor; onComment?: () => void }) {
   const [linkMode, setLinkMode] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const linkInputRef = useRef<HTMLInputElement>(null);
@@ -263,6 +285,15 @@ function FormatBubble({ editor }: { editor: Editor }) {
           <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleStrike().run(); }} className={btn(editor.isActive('strike'))} data-tooltip="Tachado"><Strikethrough className="w-4 h-4" /></button>
           <button onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleCode().run(); }} className={btn(editor.isActive('code'))} data-tooltip="Código"><Code className="w-4 h-4" /></button>
           <button onMouseDown={(e) => { e.preventDefault(); setLinkUrl(editor.getAttributes('link').href || ''); setLinkMode(true); }} className={btn(editor.isActive('link'))} data-tooltip="Enlace"><LinkIcon className="w-4 h-4" /></button>
+          {onComment && (
+            <>
+              <span className="w-px h-5 bg-border mx-0.5" />
+              <button onMouseDown={(e) => { e.preventDefault(); onComment(); }} className={`${btn(false)} flex items-center gap-1 text-xs font-semibold`} data-tooltip="Comentar el texto seleccionado">
+                <ChatCircleText className="w-4 h-4" />
+                Comentar
+              </button>
+            </>
+          )}
         </>
       ) : (
         <div className="flex items-center gap-1 px-1">
@@ -282,17 +313,45 @@ function FormatBubble({ editor }: { editor: Editor }) {
   );
 }
 
+// ─── Comment bubble (read-only documents) ─────────────────────────────────────────
+
+/** In a read-only document text can still be commented. */
+function CommentBubble({ editor, onComment }: { editor: Editor; onComment: () => void }) {
+  return (
+    <BubbleMenu
+      editor={editor}
+      options={{ placement: 'top' }}
+      shouldShow={({ editor: e, from, to }) => from !== to && !e.isEditable}
+      className="bg-card border border-border rounded-xl shadow-card-hover px-1 py-1 flex items-center animate-fade-in"
+    >
+      <button
+        onMouseDown={(e) => { e.preventDefault(); onComment(); }}
+        className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer flex items-center gap-1 text-xs font-semibold"
+      >
+        <ChatCircleText className="w-4 h-4" />
+        Comentar
+      </button>
+    </BubbleMenu>
+  );
+}
+
 // ─── Main editor component ─────────────────────────────────────────────────────────
 
 const TipTapDocEditor = forwardRef<TipTapDocEditorHandle, TipTapDocEditorProps>(
-  ({ initialMarkdown, collab = null, readOnly = false, resolvedUrls, onChange, onReady }, ref) => {
+  ({ initialMarkdown, collab = null, readOnly = false, resolvedUrls, onChange, onReady, onRequestComment, onCommentClick }, ref) => {
     const [showSlash, setShowSlash] = useState(true);
     const [viewReady, setViewReady] = useState(false);
+    const commentClickRef = useRef(onCommentClick);
+    commentClickRef.current = onCommentClick;
+    const commentHighlights = useMemo(
+      () => CommentHighlights.configure({ onClick: (id: string) => commentClickRef.current?.(id) }),
+      []
+    );
 
     const editor = useEditor({
       extensions: collab
-        ? [...buildExtensions({ collaborative: true }), ...collab.extensions]
-        : buildExtensions(),
+        ? [...buildExtensions({ collaborative: true }), ...collab.extensions, commentHighlights]
+        : [...buildExtensions(), commentHighlights],
       // A collaborative document's content comes from the shared state.
       content: collab ? undefined : markdownToTiptapHtml(normalizeMarkdown(initialMarkdown)),
       editable: !readOnly,
@@ -332,6 +391,48 @@ const TipTapDocEditor = forwardRef<TipTapDocEditorHandle, TipTapDocEditorProps>(
         editor?.chain().focus().insertContent({ type: 'mediaVideo', attrs: { src } }).run();
       },
       focus: () => editor?.commands.focus(),
+
+      startCommentDraft: () => {
+        if (!editor) return null;
+        const { from, to } = editor.state.selection;
+        if (from === to) return null;
+        const anchor = anchorAt(editor.state.doc, from, to);
+        if (!anchor) return null;
+        editor.view.dispatch(editor.state.tr.setMeta(commentHighlightsKey, { type: 'add', id: DRAFT_COMMENT_ID, from, to }));
+        return anchor;
+      },
+      endCommentDraft: (threadId?: string) => {
+        if (!editor) return;
+        const meta = threadId
+          ? { type: 'rename', from: DRAFT_COMMENT_ID, to: threadId }
+          : { type: 'remove', id: DRAFT_COMMENT_ID };
+        editor.view.dispatch(editor.state.tr.setMeta(commentHighlightsKey, meta));
+      },
+      setCommentThreads: (threads: HighlightThread[]) => {
+        if (!editor || editor.isDestroyed) return;
+        editor.view.dispatch(editor.state.tr.setMeta(commentHighlightsKey, { type: 'set', threads }));
+      },
+      setActiveComment: (id: string | null) => {
+        if (!editor || editor.isDestroyed) return;
+        editor.view.dispatch(editor.state.tr.setMeta(commentHighlightsKey, { type: 'active', id }));
+      },
+      getCommentPlacements: () => {
+        const out: Record<string, { pos: number; anchor: DocCommentAnchor | null }> = {};
+        if (!editor || editor.isDestroyed) return out;
+        commentRanges(editor.state).forEach((r, id) => {
+          if (id.startsWith(DRAFT_COMMENT_ID)) return;
+          out[id] = { pos: r.from, anchor: anchorAt(editor.state.doc, r.from, r.to) };
+        });
+        return out;
+      },
+      scrollToComment: (id: string) => {
+        if (!editor || editor.isDestroyed) return;
+        const r = commentRanges(editor.state).get(id);
+        if (!r) return;
+        const { node } = editor.view.domAtPos(r.from);
+        const el = (node.nodeType === Node.TEXT_NODE ? node.parentElement : node) as HTMLElement | null;
+        el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      },
     }), [editor]);
 
     const assets = useMemo(() => ({ resolvedUrls }), [resolvedUrls]);
@@ -342,7 +443,8 @@ const TipTapDocEditor = forwardRef<TipTapDocEditorHandle, TipTapDocEditorProps>(
       <EditorAssetsProvider value={assets}>
         <EditorContent editor={editor} />
         {viewReady && editor.isEditable && <BlockGutter editor={editor} />}
-        {viewReady && editor.isEditable && <FormatBubble editor={editor} />}
+        {viewReady && editor.isEditable && <FormatBubble editor={editor} onComment={onRequestComment} />}
+        {viewReady && !editor.isEditable && onRequestComment && <CommentBubble editor={editor} onComment={onRequestComment} />}
         {viewReady && <LinkPopover editor={editor} />}
         {viewReady && editor.isEditable && showSlash && <SlashMenu editor={editor} onClose={() => setShowSlash(true)} />}
       </EditorAssetsProvider>
