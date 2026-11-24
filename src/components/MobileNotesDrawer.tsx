@@ -244,7 +244,7 @@ export default function MobileNotesDrawer({
                         </div>
                       </div>
                       {log.comment && (
-                        <div className="mt-1.5 p-2 bg-card border border-border rounded-lg text-foreground font-body break-words whitespace-pre-line leading-relaxed shadow-card">
+                        <div className="mt-1.5 p-2 bg-card border border-border rounded-lg text-foreground font-body break-words whitespace-pre-line leading-relaxed shadow-card select-text cursor-text">
                           {isEditing ? (
                             <MentionTextarea className="w-full bg-secondary border border-input rounded-lg p-2 text-xs text-foreground focus:outline-none focus:border-ring resize-none h-16 font-body" value={editingText} onValueChange={setEditingText} users={users} docs={docs} autoFocus />
                           ) : (

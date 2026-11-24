@@ -64,8 +64,8 @@ type CollabModule = typeof import('../lib/collab');
 const AUTOSAVE_KEY = 'kora-doc-autosave';
 /** Quiet period after the last edit before an autosave runs. */
 const AUTOSAVE_DELAY = 1500;
-/** Lock renewal interval; must stay well under DOC_LOCK_TTL. */
-const LOCK_HEARTBEAT = 15000;
+/** Lock renewal interval; must stay well under DOC_LOCK_TTL (each renewal is a read and a write). */
+const LOCK_HEARTBEAT = 30000;
 /**
  * Collaborative docs: when the pending change is someone else's, give its author
  * time to save it before saving it ourselves (randomized so the others don't all

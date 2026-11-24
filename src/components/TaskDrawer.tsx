@@ -201,7 +201,8 @@ export default function TaskDrawer() {
       }
     };
     acquireLock();
-    heartbeatTimer.current = setInterval(acquireLock, 14000);
+    // Renew well before TASK_LOCK_TTL runs out (each renewal is a read and a write).
+    heartbeatTimer.current = setInterval(acquireLock, 20000);
     return () => {
       if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
       unlockTask(selectedTaskId);
@@ -803,7 +804,7 @@ export default function TaskDrawer() {
                           )}
                         </div>
                         {log.comment && (
-                          <div className="mt-1.5 p-2 bg-card border border-border rounded-lg text-foreground font-body break-words whitespace-pre-line leading-relaxed shadow-card">
+                          <div className="mt-1.5 p-2 bg-card border border-border rounded-lg text-foreground font-body break-words whitespace-pre-line leading-relaxed shadow-card select-text cursor-text">
                             {isEditing ? (
                               <MentionTextarea className="w-full bg-secondary border border-input rounded-lg p-2 text-xs text-foreground focus:outline-none focus:border-ring resize-none h-16 font-body" value={editingText} onValueChange={setEditingText} users={users} docs={docs} autoFocus />
                             ) : (

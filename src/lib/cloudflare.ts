@@ -31,6 +31,8 @@ export const CLOUD_ACCESS_LOST_EVENT = 'kora:cloud-access-lost';
 
 /** Backend API versions this Kora understands. */
 const MIN_BACKEND_API = 1;
+/** First backend API version with POST /snapshot and changed paths in the `files` event. */
+const SNAPSHOT_API = 2;
 
 /** Public repository folder the deploy button copies into the team's account. */
 export const CLOUDFLARE_BACKEND_REPO = 'https://github.com/lorspi/Kora/tree/main/cloudflare-backend';
@@ -198,14 +200,21 @@ async function request(
  * Check that a backend is reachable with the given token. Returns the role the
  * token has. Throws a friendly (Spanish) error otherwise.
  */
-export async function testCloudflareConnection(link: CloudflareLink): Promise<{ role: CloudflareRole }> {
+export async function testCloudflareConnection(link: CloudflareLink): Promise<{ role: CloudflareRole; api: number }> {
   const info = await request(link, 'GET', '/info');
   if (!info?.ok) throw new Error('Esa dirección no responde como un backend de Kora.');
   if (typeof info.api !== 'number' || info.api < MIN_BACKEND_API) {
     throw new Error('Tu backend de Kora está desactualizado. Vuelve a desplegarlo desde el botón de Cloudflare.');
   }
-  return { role: info.role === 'admin' ? 'admin' : 'member' };
+  return { role: info.role === 'admin' ? 'admin' : 'member', api: info.api };
 }
+
+/**
+ * Called when files of the space change. `paths` lists what changed (a path
+ * ending in "/" is a whole folder); undefined means "anything may have changed"
+ * (an older backend, or a reconnection after being offline).
+ */
+export type FileChangeListener = (paths?: string[]) => void;
 
 // ─── Realtime connection ──────────────────────────────────────────────────────
 
@@ -230,6 +239,7 @@ const FIRST_SNAPSHOT_TIMEOUT = 10_000;
 export class CloudflareAdapter {
   private link: CloudflareLink;
   private role: CloudflareRole = 'member';
+  private api = 0;
   private readyPromise: Promise<void> | null = null;
   /** Identifies this tab, so the backend doesn't echo our own file writes back. */
   private clientId = randomId();
@@ -241,7 +251,7 @@ export class CloudflareAdapter {
   private retryDelay = 1000;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
-  private fileListeners = new Set<() => void>();
+  private fileListeners = new Set<FileChangeListener>();
   private subs = new Map<string, Sub>();
   private recordStore: RecordStore | null = null;
   private accessLost = false;
@@ -253,8 +263,9 @@ export class CloudflareAdapter {
   /** Validate the token once (and learn its role). Safe to call repeatedly. */
   ready(): Promise<void> {
     if (!this.readyPromise) {
-      this.readyPromise = testCloudflareConnection(this.link).then(({ role }) => {
+      this.readyPromise = testCloudflareConnection(this.link).then(({ role, api }) => {
         this.role = role;
+        this.api = api;
       });
       this.readyPromise.catch(() => {
         // Allow a retry on the next call.
@@ -305,6 +316,37 @@ export class CloudflareAdapter {
   async readTextFile(path: string): Promise<string> {
     const data = await this.call('GET', `/file?path=${encodeURIComponent(normalizePath(path))}`);
     return typeof data.content === 'string' ? data.content : '';
+  }
+
+  /** Like readTextFile, but null when the file doesn't exist (one request instead of exists + read). */
+  async readTextFileIfExists(path: string): Promise<string | null> {
+    try {
+      return await this.readTextFile(path);
+    } catch (err) {
+      if (err instanceof BackendError && err.status === 404) return null;
+      throw err;
+    }
+  }
+
+  /**
+   * Read many text files in one request: the given paths that exist, plus every
+   * file under each prefix (folder). Returns null when the backend is too old to
+   * support it, so the caller falls back to one request per file.
+   */
+  async readSnapshot(paths: string[], prefixes: string[]): Promise<Map<string, string> | null> {
+    await this.ready();
+    if (this.api < SNAPSHOT_API) return null;
+    const data = await this.call('POST', '/snapshot', {
+      paths: paths.map(normalizePath),
+      prefixes: prefixes.map((p) => this.folderPrefix(p)),
+    });
+    const files = data?.files && typeof data.files === 'object' ? data.files : {};
+    return new Map(Object.entries(files).filter((e): e is [string, string] => typeof e[1] === 'string'));
+  }
+
+  /** Whether the realtime connection is up (changes by others arrive without polling). */
+  isRealtimeConnected(): boolean {
+    return this.authed;
   }
 
   async writeTextFile(path: string, content: string): Promise<void> {
@@ -380,7 +422,7 @@ export class CloudflareAdapter {
    * unsubscribe function. Also fires after a reconnection, in case something
    * changed while offline.
    */
-  subscribe(onChange: () => void): () => void {
+  subscribe(onChange: FileChangeListener): () => void {
     this.fileListeners.add(onChange);
     this.ensureSocket();
     return () => {
@@ -536,7 +578,8 @@ export class CloudflareAdapter {
       }
       case 'files': {
         if (msg.by === this.clientId) return;
-        this.fileListeners.forEach((fn) => fn());
+        const paths = Array.isArray(msg.paths) ? msg.paths.filter((p: unknown) => typeof p === 'string') : undefined;
+        this.fileListeners.forEach((fn) => fn(paths));
         return;
       }
       case 'doc': {

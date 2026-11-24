@@ -146,34 +146,73 @@ export default function App() {
   }, []);
 
   // Sync loop.
-  //  - Local folder mode: poll every 7s (folder changes aren't observable otherwise).
-  //  - Firebase cloud mode: subscribe to realtime changes for instant updates,
-  //    plus a slow safety poll.
+  //  - Local folder mode: poll every 7s while the tab is visible (folder changes
+  //    aren't observable otherwise).
+  //  - Cloud modes: subscribe to realtime changes. Cloudflare says which files
+  //    changed, so only those parts are re-read. A slow safety poll runs only while
+  //    the realtime connection isn't confirmed up (every request counts against
+  //    the team's free quota).
   useEffect(() => {
     if (!adapter) return;
+    const isHidden = () => typeof document !== 'undefined' && document.hidden;
 
-    // Firebase adapters expose a realtime subscribe(); use it when available.
     const maybeSubscribe = (adapter as any).subscribe;
     if (typeof maybeSubscribe === 'function') {
-      const unsubscribe = maybeSubscribe.call(adapter, () => {
-        backgroundReload();
+      // Group the notices of a burst of writes (e.g. a task and its log) into one reload.
+      let pendingPaths: Set<string> | null = null;
+      let pendingAll = false;
+      let flushTimer: ReturnType<typeof setTimeout> | null = null;
+      const flush = () => {
+        flushTimer = null;
+        const paths = pendingAll ? undefined : Array.from(pendingPaths ?? []);
+        pendingPaths = null;
+        pendingAll = false;
+        backgroundReload(paths);
+      };
+      const unsubscribe = maybeSubscribe.call(adapter, (paths?: string[]) => {
+        if (!Array.isArray(paths)) pendingAll = true;
+        else {
+          pendingPaths = pendingPaths ?? new Set();
+          paths.forEach((p) => pendingPaths!.add(p));
+        }
+        if (!flushTimer) flushTimer = setTimeout(flush, 500);
       });
-      // Safety net poll (much slower) in case a realtime event is missed.
-      const slowInterval = setInterval(() => {
+
+      const SAFETY_POLL = 5 * 60_000;
+      const realtimeUp = () =>
+        typeof (adapter as any).isRealtimeConnected === 'function' && (adapter as any).isRealtimeConnected();
+      let lastPoll = Date.now();
+      const safetyPoll = () => {
+        if (isHidden() || realtimeUp()) return;
+        lastPoll = Date.now();
         backgroundReload();
-      }, 30000);
+      };
+      const slowInterval = setInterval(safetyPoll, SAFETY_POLL);
+      const onVisible = () => {
+        if (!isHidden() && Date.now() - lastPoll > SAFETY_POLL) safetyPoll();
+      };
+      document.addEventListener('visibilitychange', onVisible);
       return () => {
         if (typeof unsubscribe === 'function') unsubscribe();
+        if (flushTimer) clearTimeout(flushTimer);
         clearInterval(slowInterval);
+        document.removeEventListener('visibilitychange', onVisible);
       };
     }
 
-    // Local folder mode: background reload every 7 seconds.
+    // Local folder mode: background reload every 7 seconds while visible, and on return.
     const interval = setInterval(() => {
-      backgroundReload();
+      if (!isHidden()) backgroundReload();
     }, 7000);
+    const onVisible = () => {
+      if (!isHidden()) backgroundReload();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [adapter]);
 
   const invite = pendingInvite ? <InviteJoinScreen /> : null;

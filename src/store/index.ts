@@ -89,7 +89,12 @@ interface ProjectState {
   initializeNewProject: (projectName: string, projectDesc: string, firstUser: SystemUser, useSampleData: boolean) => Promise<void>;
   createListDirect: (name: string, color: string) => Promise<TaskList>;
   seedSampleProjectOnboarding: (projectMeta: ProjectMetadata, config: ProjectConfig, firstUser: SystemUser) => Promise<void>;
-  backgroundReload: () => Promise<void>;
+  /**
+   * Re-read what others may have changed. With `changedPaths` (a path ending in
+   * "/" is a whole folder) only the parts of the state those files feed are read;
+   * without it, everything.
+   */
+  backgroundReload: (changedPaths?: string[]) => Promise<void>;
   importBackupZip: (file: File) => Promise<void>;
   
   // User Authentication
@@ -294,10 +299,23 @@ function docLockPath(docId: string): string {
   return `/activity/doc-locks/${docId}.json`;
 }
 
+/**
+ * A file's text, or null if it doesn't exist. On Cloudflare that is one request
+ * (a missing file answers 404) instead of an exists check plus a read.
+ */
+async function readTextIfExists(adapter: StorageAdapter, path: string): Promise<string | null> {
+  if (adapter.getMode() === 'CLOUDFLARE') return (adapter as CloudflareAdapter).readTextFileIfExists(path);
+  return (await adapter.fileExists(path)) ? adapter.readTextFile(path) : null;
+}
+
+/** How long a task lock lasts without renewal (TaskDrawer renews it well before). */
+export const TASK_LOCK_TTL = 45000;
+
 async function readDocLockFile(adapter: StorageAdapter, docId: string): Promise<TaskLock | null> {
   try {
-    if (!(await adapter.fileExists(docLockPath(docId)))) return null;
-    const lock = JSON.parse(await adapter.readTextFile(docLockPath(docId)));
+    const text = await readTextIfExists(adapter, docLockPath(docId));
+    if (text === null) return null;
+    const lock = JSON.parse(text);
     return lock && lock.userId ? lock : null;
   } catch {
     return null;
@@ -465,24 +483,6 @@ function migrateOldProject(): RegisteredProject[] {
   return projects;
 }
 
-/**
- * Read and parse the .json files of a folder in parallel, keeping their order.
- * Files that can't be read or parsed are skipped with a warning.
- */
-async function readJsonFiles<T>(adapter: StorageAdapter, folder: string, files: string[], what: string): Promise<T[]> {
-  const results = await Promise.all(
-    files.filter((file) => file.endsWith('.json')).map(async (file) => {
-      try {
-        return JSON.parse(await adapter.readTextFile(`${folder}/${file}`)) as T;
-      } catch (e) {
-        console.warn(`Error reading ${what} file: ${file}`, e);
-        return null;
-      }
-    })
-  );
-  return results.filter((x): x is Awaited<T> & {} => x !== null) as T[];
-}
-
 /** Folder of the comment threads of a document: one JSON file per thread. */
 export function docCommentsFolder(docId: string): string {
   return `/comments/${docId}`;
@@ -565,8 +565,98 @@ function trackLocalWrites(adapter: StorageAdapter) {
   }
 }
 
-/** A background reload was requested while one was running (see backgroundReload). */
-let reloadAgain = false;
+/** The parts of the state a background reload sets, and the file or folder each one reads. */
+type ReloadSlice = 'lists' | 'tasks' | 'docs' | 'logs' | 'locks' | 'docLocks' | 'users' | 'trash' | 'comments';
+const RELOAD_SLICES: Record<ReloadSlice, string> = {
+  lists: '/lists/',
+  tasks: '/tasks/',
+  docs: '/docs/info.json',
+  logs: '/activity/logs.json',
+  locks: '/activity/locks.json',
+  docLocks: '/activity/doc-locks/',
+  users: '/users/',
+  trash: '/trash/',
+  comments: '/comments/',
+};
+
+/** The slices fed by some changed files (a path ending in "/" is a whole folder). */
+function slicesForPaths(paths: string[]): Set<ReloadSlice> {
+  const out = new Set<ReloadSlice>();
+  for (const raw of paths) {
+    if (raw.endsWith('/')) {
+      const folder = normalizePath(raw).replace(/\/?$/, '/');
+      for (const [slice, root] of Object.entries(RELOAD_SLICES) as [ReloadSlice, string][]) {
+        if (root.startsWith(folder) || folder.startsWith(root)) out.add(slice);
+      }
+    } else {
+      const slice = stateSliceOf(raw);
+      if (slice && slice in RELOAD_SLICES) out.add(slice as ReloadSlice);
+    }
+  }
+  return out;
+}
+
+/** Slices requested while a background reload was running (see backgroundReload). */
+let pendingReload: Set<ReloadSlice> | null = null;
+
+/**
+ * Reads files for a background reload: from one snapshot request when the backend
+ * supports it (Cloudflare), otherwise one request per file.
+ */
+interface ReloadReader {
+  /** A file's text, or null if it doesn't exist. */
+  text(path: string): Promise<string | null>;
+  /**
+   * The .json files directly inside a folder, by name (throws if it can't be listed).
+   * A file that can't be read throws too, unless `skipUnreadable` (then it's left out).
+   */
+  jsonFiles(folder: string, skipUnreadable?: boolean): Promise<{ name: string; text: string }[]>;
+}
+
+async function makeReloadReader(adapter: StorageAdapter, paths: string[], prefixes: string[]): Promise<ReloadReader> {
+  const snap =
+    adapter.getMode() === 'CLOUDFLARE' && (paths.length || prefixes.length)
+      ? await (adapter as CloudflareAdapter).readSnapshot(paths, prefixes)
+      : null;
+  if (snap) {
+    return {
+      text: async (path) => snap.get(normalizePath(path)) ?? null,
+      jsonFiles: async (folder) => {
+        const prefix = normalizePath(folder).replace(/\/?$/, '/');
+        const out: { name: string; text: string }[] = [];
+        snap.forEach((text, path) => {
+          if (!path.startsWith(prefix)) return;
+          const name = path.slice(prefix.length);
+          if (name && !name.includes('/') && name.endsWith('.json')) out.push({ name, text });
+        });
+        return out.sort((a, b) => a.name.localeCompare(b.name));
+      },
+    };
+  }
+  const readIfExists =
+    adapter.getMode() === 'CLOUDFLARE'
+      ? (path: string) => (adapter as CloudflareAdapter).readTextFileIfExists(path)
+      : async (path: string) => ((await adapter.fileExists(path)) ? adapter.readTextFile(path) : null);
+  return {
+    text: readIfExists,
+    jsonFiles: async (folder, skipUnreadable) => {
+      const dir = normalizePath(folder).replace(/\/$/, '');
+      const files = (await adapter.listFiles(dir)).filter((f) => f.endsWith('.json'));
+      const read = await Promise.all(
+        files.map(async (name) => {
+          try {
+            return { name, text: await adapter.readTextFile(`${dir}/${name}`) };
+          } catch (e) {
+            if (!skipUnreadable) throw e;
+            console.warn(`Error reading file: ${dir}/${name}`, e);
+            return null;
+          }
+        })
+      );
+      return read.filter((f): f is { name: string; text: string } => f !== null);
+    },
+  };
+}
 
 /** The app-load initialization in progress or done (see initialize). */
 let initializeOnce: Promise<void> | null = null;
@@ -732,9 +822,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({ isLoading: true });
 
       try {
-        const configExists = await adapter.fileExists('/config.json');
-        
-        if (!configExists) {
+        // Everything the project view needs; a capable backend serves it in one request.
+        const read = await makeReloadReader(
+          adapter,
+          ['/config.json', '/project.json', '/users/users.json', '/docs/info.json', '/activity/locks.json', '/activity/logs.json', '/trash/items.json'],
+          ['/lists/', '/tasks/']
+        );
+        const configRaw = await read.text('/config.json');
+
+        if (configRaw === null) {
           // New project setup! Enable onboarding flow instead of seeding automatically
           set({ adapter, isOnboarding: true });
           set({ isLoading: false });
@@ -742,7 +838,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         }
 
         // Existing project folder! Load everything
-        const projectRaw = await adapter.readTextFile('/project.json');
+        const projectRaw = (await read.text('/project.json')) ?? (await adapter.readTextFile('/project.json'));
         const projectMeta: ProjectMetadata = JSON.parse(projectRaw);
 
         let projectConfig: ProjectConfig = {
@@ -752,79 +848,45 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         };
 
         try {
-          if (await adapter.fileExists('/config.json')) {
-            const configRaw = await adapter.readTextFile('/config.json');
-            const loadedConfig = JSON.parse(configRaw) as ProjectConfig;
-            projectConfig = {
-              ...projectConfig,
-              ...loadedConfig
-            };
-          }
+          const loadedConfig = JSON.parse(configRaw) as ProjectConfig;
+          projectConfig = {
+            ...projectConfig,
+            ...loadedConfig
+          };
         } catch (e) {
           console.warn('Error loading project config', e);
         }
 
-        // Load users
-        let users: SystemUser[] = [];
-        try {
-          const usersRaw = await adapter.readTextFile('/users/users.json');
-          users = JSON.parse(usersRaw);
-        } catch (e) {
-          console.warn('Error reading users list', e);
-        }
-
-        // Load lists
-        // (Files are read in parallel: in cloud projects each read is a network round trip.)
-        const listFiles = await adapter.listFiles('/lists');
-        const lists: TaskList[] = (await readJsonFiles<TaskList>(adapter, '/lists', listFiles, 'list'));
-
-        // Load tasks
-        const taskFiles = await adapter.listFiles('/tasks');
-        const tasks: Task[] = (await readJsonFiles<Task>(adapter, '/tasks', taskFiles, 'task'));
-
-        // Load doc list from index file in /docs/info.json
-        let docs: DocMetadata[] = [];
-        try {
-          if (await adapter.fileExists('/docs/info.json')) {
-            const docsRaw = await adapter.readTextFile('/docs/info.json');
-            docs = JSON.parse(docsRaw);
+        /** An optional JSON file: its fallback when missing or unreadable. */
+        const readOptional = async <T,>(path: string, fallback: T, what?: string): Promise<T> => {
+          try {
+            const text = await read.text(path);
+            return text === null ? fallback : (JSON.parse(text) as T);
+          } catch (e) {
+            if (what) console.warn(`Error loading ${what}`, e);
+            return fallback;
           }
-        } catch (e) {
-          console.warn('Error loading documents catalog', e);
-        }
-
-        // Load locks
-        let locks: ProjectLocks = {};
-        try {
-          if (await adapter.fileExists('/activity/locks.json')) {
-            const locksRaw = await adapter.readTextFile('/activity/locks.json');
-            locks = JSON.parse(locksRaw);
+        };
+        /** The .json files of a folder; files that can't be parsed are skipped with a warning. */
+        const readFolder = async <T,>(folder: string, what: string): Promise<T[]> => {
+          const out: T[] = [];
+          for (const { name, text } of await read.jsonFiles(folder, true)) {
+            try {
+              out.push(JSON.parse(text) as T);
+            } catch (e) {
+              console.warn(`Error reading ${what} file: ${name}`, e);
+            }
           }
-        } catch (e) {
-          // Locks might not exist
-        }
+          return out;
+        };
 
-        // Load logs
-        let logs: TaskActivityLog[] = [];
-        try {
-          if (await adapter.fileExists('/activity/logs.json')) {
-            const logsRaw = await adapter.readTextFile('/activity/logs.json');
-            logs = JSON.parse(logsRaw);
-          }
-        } catch (e) {
-          // Logs empty or failure
-        }
-
-        // Load trash items
-        let trashItems: TrashItem[] = [];
-        try {
-          if (await adapter.fileExists('/trash/items.json')) {
-            const trashRaw = await adapter.readTextFile('/trash/items.json');
-            trashItems = JSON.parse(trashRaw);
-          }
-        } catch (e) {
-          // Trash might not exist yet
-        }
+        const users = await readOptional<SystemUser[]>('/users/users.json', [], 'users list');
+        const lists = await readFolder<TaskList>('/lists', 'list');
+        const tasks = await readFolder<Task>('/tasks', 'task');
+        const docs = await readOptional<DocMetadata[]>('/docs/info.json', [], 'documents catalog');
+        const locks = await readOptional<ProjectLocks>('/activity/locks.json', {});
+        const logs = await readOptional<TaskActivityLog[]>('/activity/logs.json', []);
+        const trashItems = await readOptional<TrashItem[]>('/trash/items.json', []);
 
         // Sort structures
         sortListsInPlace(lists);
@@ -1199,146 +1261,172 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
     // Seed beautiful demo project data for full interaction review out-of-the-box
     // Background interval check to load recent updates from syncing folders
-    backgroundReload: async () => {
+    backgroundReload: async (changedPaths?: string[]) => {
       const { adapter, isPolling } = get();
       if (!adapter) return;
+      const wanted = changedPaths
+        ? slicesForPaths(changedPaths)
+        : new Set(Object.keys(RELOAD_SLICES) as ReloadSlice[]);
+      if (!wanted.size) return;
       // A change announced while a reload is running may not be in what it reads:
-      // reload once more when it finishes.
+      // reload those parts once more when it finishes.
       if (isPolling) {
-        reloadAgain = true;
+        pendingReload = pendingReload ?? new Set();
+        wanted.forEach((sl) => pendingReload!.add(sl));
         return;
       }
-      reloadAgain = false;
       const startSeq = writeSeq;
       // Parts written by us while this reload was reading keep their local state.
-      const fresh = (slice: string) => !((sliceWrites[slice] ?? 0) > startSeq);
+      const fresh = (slice: ReloadSlice) => !((sliceWrites[slice] ?? 0) > startSeq);
 
       set({ isPolling: true });
       try {
-        // Read locks list
-        let locks: ProjectLocks = {};
-        if (await adapter.fileExists('/activity/locks.json')) {
-          const locksRaw = await adapter.readTextFile('/activity/locks.json');
-          locks = JSON.parse(locksRaw);
-        }
+        const openDocId = get().selectedDocId;
+        const showDocs = get().showDocs;
 
-        // Keep active locks only if they haven't expired
-        const now = Date.now();
-        const cleanedLocks: ProjectLocks = {};
-        let locksChanged = false;
-        
-        for (const [taskId, lockInfo] of Object.entries(locks)) {
-          if (lockInfo.expiresAt > now) {
-            cleanedLocks[taskId] = lockInfo;
-          } else {
-            locksChanged = true;
-          }
+        // Everything this reload needs, so a capable backend serves it in one request.
+        const paths: string[] = [];
+        const prefixes: string[] = [];
+        if (wanted.has('locks')) paths.push(RELOAD_SLICES.locks);
+        if (wanted.has('docLocks')) {
+          if (showDocs) prefixes.push(RELOAD_SLICES.docLocks);
+          else if (openDocId) paths.push(docLockPath(openDocId));
         }
-        
-        // Expired entries are only dropped in memory. Rewriting locks.json here raced
-        // with other users' lock writes and erased them.
-        void locksChanged;
+        if (wanted.has('lists')) prefixes.push(RELOAD_SLICES.lists);
+        if (wanted.has('tasks')) prefixes.push(RELOAD_SLICES.tasks);
+        if (wanted.has('docs')) paths.push(RELOAD_SLICES.docs);
+        if (wanted.has('logs')) paths.push(RELOAD_SLICES.logs);
+        if (wanted.has('trash')) paths.push('/trash/items.json');
+        if (wanted.has('users')) paths.push('/users/users.json');
+        if (wanted.has('comments') && openDocId) prefixes.push(docCommentsFolder(openDocId));
+        const read = await makeReloadReader(adapter, paths, prefixes);
+        const readJson = async <T,>(path: string): Promise<T | null> => {
+          const text = await read.text(path);
+          return text === null ? null : (JSON.parse(text) as T);
+        };
+
+        const update: Partial<ProjectState> = {};
+
+        // Locks: keep only the ones that haven't expired. Expired entries are only
+        // dropped in memory; rewriting locks.json here raced with other users' lock
+        // writes and erased them.
+        if (wanted.has('locks')) {
+          const locks = (await readJson<ProjectLocks>(RELOAD_SLICES.locks)) ?? {};
+          const now = Date.now();
+          const cleanedLocks: ProjectLocks = {};
+          for (const [taskId, lockInfo] of Object.entries(locks)) {
+            if (lockInfo.expiresAt > now) cleanedLocks[taskId] = lockInfo;
+          }
+          if (fresh('locks')) update.locks = cleanedLocks;
+        }
 
         // Refresh the open doc's lock. The documents view also shows who is editing
         // each doc, so there every lock is read.
-        const openDocId = get().selectedDocId;
-        let docLocks = get().docLocks;
-        if (get().showDocs) {
-          docLocks = {};
-          try {
-            for (const file of await adapter.listFiles('/activity/doc-locks')) {
-              if (!file.endsWith('.json')) continue;
-              const id = file.slice(0, -5);
-              const lock = await readDocLockFile(adapter, id);
-              if (lock) docLocks[id] = lock;
+        if (wanted.has('docLocks') && (showDocs || openDocId)) {
+          const parseLock = (text: string | null): TaskLock | null => {
+            try {
+              const lock = text ? JSON.parse(text) : null;
+              return lock && lock.userId ? lock : null;
+            } catch {
+              return null;
             }
-          } catch {
-            // No doc locks folder yet
+          };
+          let docLocks = get().docLocks;
+          if (showDocs) {
+            docLocks = {};
+            try {
+              for (const { name, text } of await read.jsonFiles(RELOAD_SLICES.docLocks)) {
+                const lock = parseLock(text);
+                if (lock) docLocks[name.slice(0, -5)] = lock;
+              }
+            } catch {
+              // No doc locks folder yet
+            }
+          } else if (openDocId) {
+            const docLock = parseLock(await read.text(docLockPath(openDocId)).catch(() => null));
+            docLocks = { ...docLocks };
+            if (docLock) docLocks[openDocId] = docLock;
+            else delete docLocks[openDocId];
           }
-        } else if (openDocId) {
-          const docLock = await readDocLockFile(adapter, openDocId);
-          docLocks = { ...docLocks };
-          if (docLock) docLocks[openDocId] = docLock;
-          else delete docLocks[openDocId];
+          if (fresh('docLocks')) update.docLocks = docLocks;
         }
 
-        // Re-read lists catalog and tasks (in parallel; any failed read skips this round)
-        const readAll = async <T,>(folder: string): Promise<T[]> => {
-          const files = (await adapter.listFiles(folder)).filter((f) => f.endsWith('.json'));
-          return Promise.all(files.map(async (f) => JSON.parse(await adapter.readTextFile(`${folder}/${f}`)) as T));
-        };
-        const [lists, tasks] = await Promise.all([readAll<TaskList>('/lists'), readAll<Task>('/tasks')]);
-        sortListsInPlace(lists);
-        tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
-
-        // Re-read doc info
-        let docs: DocMetadata[] = [];
-        if (await adapter.fileExists('/docs/info.json')) {
-          const docsRaw = await adapter.readTextFile('/docs/info.json');
-          docs = JSON.parse(docsRaw);
+        // Lists catalog and tasks (any failed read skips this round)
+        const readAll = async <T,>(folder: string): Promise<T[]> =>
+          (await read.jsonFiles(folder)).map((f) => JSON.parse(f.text) as T);
+        if (wanted.has('lists')) {
+          const lists = await readAll<TaskList>(RELOAD_SLICES.lists);
+          sortListsInPlace(lists);
+          if (fresh('lists')) update.lists = lists;
+        }
+        if (wanted.has('tasks')) {
+          const tasks = await readAll<Task>(RELOAD_SLICES.tasks);
+          tasks.sort((a, b) => a.taskCode.localeCompare(b.taskCode));
+          if (fresh('tasks')) update.tasks = tasks;
         }
 
-        // Re-read logs
-        let logs: TaskActivityLog[] = [];
-        if (await adapter.fileExists('/activity/logs.json')) {
-          const logsRaw = await adapter.readTextFile('/activity/logs.json');
-          logs = JSON.parse(logsRaw);
+        if (wanted.has('docs')) {
+          const docs = (await readJson<DocMetadata[]>(RELOAD_SLICES.docs)) ?? [];
+          if (fresh('docs')) update.docs = docs;
+        }
+        if (wanted.has('logs')) {
+          const logs = (await readJson<TaskActivityLog[]>(RELOAD_SLICES.logs)) ?? [];
+          if (fresh('logs')) update.logs = logs;
+        }
+        if (wanted.has('trash')) {
+          const trashItems = (await readJson<TrashItem[]>('/trash/items.json')) ?? [];
+          if (fresh('trash')) update.trashItems = trashItems;
         }
 
-        // Re-read trash
-        let trashItems: TrashItem[] = [];
-        if (await adapter.fileExists('/trash/items.json')) {
-          const trashRaw = await adapter.readTextFile('/trash/items.json');
-          trashItems = JSON.parse(trashRaw);
+        // Users: also check that the current active user is still in the list.
+        if (wanted.has('users')) {
+          const users = (await readJson<SystemUser[]>('/users/users.json')) ?? get().users;
+          const currentActiveUser = get().activeUser;
+          const activeUser =
+            currentActiveUser && !users.find((u) => u.id === currentActiveUser.id) ? null : currentActiveUser;
+          if (fresh('users')) {
+            update.users = users;
+            update.activeUser = activeUser;
+          }
         }
 
-        // Read users list to see if new user got registered
-        let users = get().users;
-        if (await adapter.fileExists('/users/users.json')) {
-          const uRaw = await adapter.readTextFile('/users/users.json');
-          users = JSON.parse(uRaw);
-        }
-
-        // Check if current active user is still in the list
         // Comments of the open document
-        const commentsDocId = get().selectedDocId;
-        let commentsUpdate: Partial<ProjectState> = {};
-        if (commentsDocId) {
+        if (wanted.has('comments') && openDocId) {
           const rev = docCommentsRev;
-          const threads = await readDocCommentThreads(adapter, commentsDocId);
-          if (get().selectedDocId === commentsDocId && rev === docCommentsRev && fresh('comments')) {
+          let threads: DocCommentThread[] = [];
+          try {
+            threads = (await read.jsonFiles(docCommentsFolder(openDocId)))
+              .map((f) => {
+                try {
+                  return JSON.parse(f.text) as DocCommentThread;
+                } catch {
+                  return null;
+                }
+              })
+              .filter((t): t is DocCommentThread => !!t && Array.isArray(t.comments))
+              .sort((a, b) => a.createdAt - b.createdAt);
+          } catch {
+            // No comments folder yet
+          }
+          if (get().selectedDocId === openDocId && rev === docCommentsRev && fresh('comments')) {
             const st = get();
-            if (st.docCommentsFor !== commentsDocId || JSON.stringify(threads) !== JSON.stringify(st.docComments)) {
-              commentsUpdate = { docComments: threads, docCommentsFor: commentsDocId };
+            if (st.docCommentsFor !== openDocId || JSON.stringify(threads) !== JSON.stringify(st.docComments)) {
+              update.docComments = threads;
+              update.docCommentsFor = openDocId;
             }
           }
         }
 
-        // We wrote something meanwhile: what was read may predate it. Read again.
-
-        const currentActiveUser = get().activeUser;
-        let activeUser = currentActiveUser;
-        if (currentActiveUser && !users.find(u => u.id === currentActiveUser.id)) {
-          activeUser = null;
-        }
-
-        set({
-          ...(fresh('lists') ? { lists } : {}),
-          ...(fresh('tasks') ? { tasks } : {}),
-          ...(fresh('docs') ? { docs } : {}),
-          ...(fresh('logs') ? { logs } : {}),
-          ...(fresh('locks') ? { locks: cleanedLocks } : {}),
-          ...(fresh('docLocks') ? { docLocks } : {}),
-          ...(fresh('users') ? { users, activeUser } : {}),
-          ...(fresh('trash') ? { trashItems } : {}),
-          ...commentsUpdate,
-          isPolling: false
-        });
+        set({ ...update, isPolling: false });
       } catch (err) {
         console.warn('Sync background check bypassed/idle', err);
         set({ isPolling: false });
       }
-      if (reloadAgain && get().adapter === adapter) void get().backgroundReload();
+      const again = pendingReload;
+      pendingReload = null;
+      if (again && get().adapter === adapter) {
+        void get().backgroundReload(Array.from(again, (sl) => RELOAD_SLICES[sl]));
+      }
     },
 
     // Import a backup ZIP into the currently loaded project, replacing its contents.
@@ -2691,11 +2779,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
       // Periodically refresh the lock file
       try {
-        let locks: ProjectLocks = {};
-        if (await adapter.fileExists('/activity/locks.json')) {
-          const locksRaw = await adapter.readTextFile('/activity/locks.json');
-          locks = JSON.parse(locksRaw);
-        }
+        const locksRaw = await readTextIfExists(adapter, '/activity/locks.json');
+        const locks: ProjectLocks = locksRaw ? JSON.parse(locksRaw) : {};
 
         const now = Date.now();
         const activeLock = locks[taskId];
@@ -2711,7 +2796,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         locks[taskId] = {
           userId: activeUser.id,
           username: activeUser.name,
-          expiresAt: now + 15000 // locked for next 15 seconds
+          expiresAt: now + TASK_LOCK_TTL
         };
 
         await adapter.writeTextFile('/activity/locks.json', JSON.stringify(locks, null, 2));
@@ -2732,11 +2817,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           return; // Not locked by us
         }
 
-        let freshLocks: ProjectLocks = {};
-        if (await adapter.fileExists('/activity/locks.json')) {
-          const locksRaw = await adapter.readTextFile('/activity/locks.json');
-          freshLocks = JSON.parse(locksRaw);
-        }
+        const locksRaw = await readTextIfExists(adapter, '/activity/locks.json');
+        const freshLocks: ProjectLocks = locksRaw ? JSON.parse(locksRaw) : {};
 
         if (freshLocks[taskId] && freshLocks[taskId].userId === activeUser.id) {
           delete freshLocks[taskId];

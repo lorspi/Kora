@@ -107,7 +107,7 @@ export default function BulkTaskDialog({
 
         <div className="px-5 pb-5">
           <p className="text-xs text-muted-foreground leading-relaxed mb-3">
-            Escribe o pega una tarea por línea. Las viñetas y numeraciones se quitan automáticamente.
+            Escribe el título de la tarea. Para crear varias, pon una por línea (las viñetas y numeraciones se quitan solas).
           </p>
           <textarea
             ref={textareaRef}
@@ -121,7 +121,7 @@ export default function BulkTaskDialog({
                 submit();
               }
             }}
-            placeholder={'Diseñar portada\nRevisar textos\nPublicar'}
+            placeholder={'Ej.: Diseñar portada\nRevisar textos\nPublicar'}
             className="w-full bg-secondary border border-input rounded-xl px-3 py-2 text-xs text-foreground leading-relaxed focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring resize-y min-h-[120px]"
           />
 

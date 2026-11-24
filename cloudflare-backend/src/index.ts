@@ -28,7 +28,7 @@ export interface Env {
 }
 
 /** Versión de la API. Kora la compara para avisar si el backend necesita actualizarse. */
-const API_VERSION = 1;
+const API_VERSION = 2;
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -43,6 +43,8 @@ const MAX_PATH_LENGTH = 1024;
 const MAX_ID_LENGTH = 512;
 const FIELD_RE = /^[A-Za-z0-9_]{1,64}$/;
 const SPACE_RE = /^[A-Za-z0-9_-]{1,64}$/;
+/** Rutas y prefijos que admite una sola petición de /snapshot. */
+const MAX_SNAPSHOT_ITEMS = 200;
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -223,6 +225,8 @@ export class KoraSpace extends DurableObject<Env> {
           return this.deleteFiles(url.searchParams.get('prefix'), true, client);
         case 'GET /list':
           return this.listFiles(url.searchParams.get('prefix'));
+        case 'POST /snapshot':
+          return this.snapshot(await request.json());
         case 'POST /rec':
           return json(this.recordOp(await request.json()));
         case 'GET /tokens':
@@ -287,7 +291,7 @@ export class KoraSpace extends DurableObject<Env> {
       body?.isBinary ? 1 : 0,
       Date.now()
     );
-    this.broadcastFiles(client);
+    this.broadcastFiles(client, [path]);
     return json({ ok: true });
   }
 
@@ -296,10 +300,11 @@ export class KoraSpace extends DurableObject<Env> {
     if (isPrefix) {
       const prefix = path.endsWith('/') ? path : path + '/';
       this.sql.exec('DELETE FROM files WHERE path >= ? AND path < ?', prefix, prefixEnd(prefix));
+      this.broadcastFiles(client, [prefix]);
     } else {
       this.sql.exec('DELETE FROM files WHERE path = ?', path);
+      this.broadcastFiles(client, [path]);
     }
-    this.broadcastFiles(client);
     return json({ ok: true });
   }
 
@@ -311,6 +316,38 @@ export class KoraSpace extends DurableObject<Env> {
       .toArray()
       .map((r) => r.path);
     return json({ paths });
+  }
+
+  /**
+   * Varios archivos de texto en una sola petición: los de `paths` que existan y
+   * todos los que haya bajo cada uno de `prefixes` (que terminan en "/"). Kora
+   * relee así el proyecto con una petición en vez de una por archivo.
+   */
+  private snapshot(body: any): Response {
+    const paths: unknown[] = Array.isArray(body?.paths) ? body.paths : [];
+    const prefixes: unknown[] = Array.isArray(body?.prefixes) ? body.prefixes : [];
+    if (paths.length + prefixes.length > MAX_SNAPSHOT_ITEMS) {
+      throw new HttpError(400, 'too_many', 'Demasiadas rutas en una sola petición.');
+    }
+    const files: Record<string, string> = {};
+    for (const raw of paths) {
+      const path = this.checkPath(raw as string);
+      const row = this.sql
+        .exec<{ content: string }>('SELECT content FROM files WHERE path = ? AND is_binary = 0', path)
+        .toArray()[0];
+      if (row) files[path] = row.content;
+    }
+    for (const raw of prefixes) {
+      const path = this.checkPath(raw as string);
+      const prefix = path.endsWith('/') ? path : path + '/';
+      const rows = this.sql.exec<{ path: string; content: string }>(
+        'SELECT path, content FROM files WHERE path >= ? AND path < ? AND is_binary = 0',
+        prefix,
+        prefixEnd(prefix)
+      );
+      for (const r of rows) files[r.path] = r.content;
+    }
+    return json({ files });
   }
 
   // ── Registros (edición colaborativa) ───────────────────────────────────────
@@ -544,11 +581,15 @@ export class KoraSpace extends DurableObject<Env> {
     }
   }
 
-  /** Avisa a todos los clientes (menos al que escribió) de que cambiaron archivos. */
-  private broadcastFiles(by: string) {
+  /**
+   * Avisa a los clientes de que cambiaron archivos, con sus rutas (una que termina
+   * en "/" es una carpeta entera), para que cada uno relea solo lo afectado. El
+   * cliente que escribió descarta el aviso por `by`.
+   */
+  private broadcastFiles(by: string, paths: string[]) {
     for (const ws of this.ctx.getWebSockets()) {
       const st = ws.deserializeAttachment() as SocketState | null;
-      if (st?.authed) this.send(ws, { t: 'files', by });
+      if (st?.authed) this.send(ws, { t: 'files', by, paths });
     }
   }
 

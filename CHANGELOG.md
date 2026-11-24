@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.8.0] — 2026-11-24
+
+### Changed
+
+- **Muchas menos peticiones en los proyectos de Cloudflare**
+  Un proyecto abierto ya no gasta la cuota gratuita de peticiones del Worker (100 000 al día). Antes, cada sincronización leía los archivos uno por uno (unas 70 peticiones en un proyecto mediano) y ocurría cada 30 segundos en cada pestaña abierta, y además en todos los demás cada vez que alguien renovaba el bloqueo de la tarea o del documento que tenía abierto. Ahora:
+  - Al abrir el proyecto y al sincronizar, todo se lee con una sola petición.
+  - Cada aviso de cambio dice qué archivos cambiaron, y cada persona relee solo esa parte (por ejemplo, si alguien renueva un bloqueo, solo se releen los bloqueos). Los cambios que llegan seguidos se agrupan en una sola sincronización.
+  - Mientras la conexión en tiempo real está abierta no hay sincronizaciones periódicas. Si se corta, se sincroniza cada 5 minutos y solo con la pestaña visible; al reconectar se relee todo.
+  - Los bloqueos se renuevan con menos frecuencia: el de una tarea cada 20 segundos (dura 45 si no se renueva) y el de un documento cada 30 segundos.
+
+  El ahorro principal requiere actualizar el backend: actualiza tu copia de `cloudflare-backend` (por ejemplo con "Sync fork") para que se despliegue de nuevo. Con un backend anterior, Kora sigue funcionando como antes, solo que sin agrupar las lecturas.
+
+- **Crear tareas más claro**
+  El campo del título y el botón "Crear" forman ahora una sola barra. Si se pulsa "Crear" sin escribir nada, se abre el formulario de creación en lugar de no hacer nada. Con un título escrito, la tarea se sigue creando al instante (también con Enter). El formulario explica que sirve para una tarea o para varias, una por línea.
+
+### Fixed
+
+- **Copiar el texto de las notas de una tarea**
+  El texto de las notas de una tarea ya se puede seleccionar y copiar, también en el panel de notas del móvil.
+
 ## [1.7.0] — 2026-11-23
 
 ### Added

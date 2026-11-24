@@ -291,18 +291,34 @@ export default function ListViews() {
 
           {activeTab !== 'settings' && (
             <div className="flex gap-2 items-center flex-wrap">
-              <input
-                id="quick-task-input"
-                type="text"
-                placeholder="Crear tarea o pegar varias..."
-                className="bg-card border border-input rounded-xl px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground w-full sm:w-60 focus:outline-none focus:border-ring focus:ring-1 focus:ring-ring transition-colors"
-                value={quickTitle}
-                onChange={(e) => setQuickTitle(e.target.value)}
-                onPaste={handleQuickPaste}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleQuickTaskAdd(activeList.statuses[0].id);
-                }}
-              />
+              {/* Title field and button form one control: people kept pressing the button
+                  with the field empty. With nothing typed, the button opens the dialog. */}
+              <div className="flex items-stretch w-full sm:w-auto bg-card border border-input rounded-xl overflow-hidden focus-within:border-ring focus-within:ring-1 focus-within:ring-ring transition-colors shadow-card">
+                <input
+                  id="quick-task-input"
+                  type="text"
+                  placeholder="Título de la nueva tarea..."
+                  aria-label="Título de la nueva tarea"
+                  className="bg-transparent px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground flex-1 min-w-0 sm:w-64 focus:outline-none"
+                  value={quickTitle}
+                  onChange={(e) => setQuickTitle(e.target.value)}
+                  onPaste={handleQuickPaste}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleQuickTaskAdd(activeList.statuses[0].id);
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (quickTitle.trim()) handleQuickTaskAdd(activeList.statuses[0].id);
+                    else setBulkDialog({ initialText: '', statusId: activeList.statuses[0].id });
+                  }}
+                  disabled={creatingTask}
+                  data-tooltip={quickTitle.trim() ? 'Crear (Enter)' : 'Escribe el título a la izquierda, o pulsa aquí para abrir el formulario'}
+                  className={`bg-primary hover:opacity-90 text-primary-foreground font-bold px-3 py-1.5 text-xs transition-colors flex items-center gap-1 shrink-0 cursor-pointer ${creatingTask ? 'opacity-60 cursor-not-allowed' : ''}`}
+                >
+                  <Plus className="w-3.5 h-3.5" /> Crear
+                </button>
+              </div>
               <CustomSelect
                 className="w-full sm:w-auto"
                 value={quickPriority}
@@ -314,13 +330,6 @@ export default function ListViews() {
                   { value: 'urgent', label: 'Prioridad Urgente' },
                 ]}
               />
-              <button 
-                onClick={() => handleQuickTaskAdd(activeList.statuses[0].id)}
-                disabled={creatingTask}
-                className={`bg-primary hover:opacity-90 text-primary-foreground font-bold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0 shadow-card ${creatingTask ? 'opacity-60 cursor-not-allowed' : ''}`}
-              >
-                <Plus className="w-3.5 h-3.5" /> Agregar
-              </button>
               <button
                 onClick={() => setBulkDialog({ initialText: quickTitle.trim(), statusId: activeList.statuses[0].id })}
                 className="bg-card hover:bg-accent text-muted-foreground hover:text-foreground border border-border font-semibold px-3 py-1.5 rounded-xl text-xs transition-colors flex items-center gap-1 shrink-0 cursor-pointer"

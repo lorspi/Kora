@@ -31,6 +31,7 @@ Un backend puede guardar varios proyectos independientes ("espacios"). En **Opci
 - Un **Worker** recibe las peticiones de Kora (`/api/{espacio}/...`) y las pasa al **Durable Object** del espacio.
 - Cada espacio es un Durable Object con **SQLite** que guarda los archivos del proyecto (los mismos JSON y Markdown que en una carpeta local), los registros de la edición colaborativa y las invitaciones (como hash).
 - El tiempo real va por **WebSocket** (con hibernación, así que no consume mientras nadie escribe).
+- Para ahorrar peticiones, Kora relee el proyecto con una sola petición (`/snapshot`) y cada aviso de cambio dice qué archivos cambiaron, así cada cliente relee solo lo afectado. Mientras la conexión en tiempo real está abierta no hay sondeos periódicos.
 - Autenticación: `Authorization: Bearer <token>` con la contraseña de administración o un token de invitación. El token del WebSocket viaja en el primer mensaje, no en la dirección.
 
 Límites del plan gratuito de Cloudflare relevantes: 100 000 peticiones al día y 5 GB de almacenamiento; cada archivo (incluidas imágenes adjuntas) puede pesar hasta unos 5 MB.
